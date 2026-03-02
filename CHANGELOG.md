@@ -1,3 +1,16 @@
+## [Unreleased]
+
+### 重构
+
+- **统一 Dashboard 端点** - 将 4 种 dashboard 端点（`/api/messages/channels/dashboard`, `/api/chat/channels/dashboard`, `/api/gemini/channels/dashboard` 及 `?type=responses`）统一为 `/api/messages/channels/dashboard?type=messages|responses|chat|gemini`，消除代码重复，符合 DRY 原则
+  - 后端：扩展 `GetChannelDashboard()` 支持 chat/gemini 类型，删除 `chat/dashboard.go` 和 `gemini/dashboard.go`
+  - 前端：简化 API 服务调用，删除 `getChatChannelDashboard()` 和 `getGeminiChannelDashboard()`，统一使用 `getChannelDashboard(type)`
+
+### 改进
+
+- **模型重定向源模型名支持自由输入** - 将源模型名输入框从 `v-select`（仅选列表）改为 `v-combobox`（可选可输入），与目标模型名保持一致
+- **源模型名输入验证实时反馈** - 新增 `validateSourceModelName` 函数，拦截非法输入：自定义模型名超过 50 字符（内置选项不受限）、含空格、含非法字符（仅允许字母、数字、`-_.:/@+`）；验证绑定到 `@update:model-value` 事件，输入时实时显示错误提示并禁用"添加"按钮
+
 ## [v2.6.21] - 2026-03-02
 
 ### 新增

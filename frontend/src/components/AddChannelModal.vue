@@ -232,7 +232,7 @@
 
                   <!-- 添加新映射 -->
                   <div class="d-flex align-center ga-2">
-                    <v-select
+                    <v-combobox
                       v-model="newMapping.source"
                       label="源模型名"
                       :items="sourceModelOptions"
@@ -240,7 +240,11 @@
                       density="comfortable"
                       hide-details
                       class="flex-1-1"
-                      placeholder="选择源模型名"
+                      placeholder="选择或输入源模型名"
+                      clearable
+                      :error="!!sourceMappingError"
+                      @update:model-value="handleSourceModelChange"
+                      @keyup.enter="addModelMapping"
                     />
                     <v-icon color="primary">mdi-arrow-right</v-icon>
                     <v-combobox
@@ -267,6 +271,9 @@
                     </v-btn>
                   </div>
                   <!-- 错误提示 -->
+                  <div v-if="sourceMappingError" class="text-error text-caption mt-2">
+                    {{ sourceMappingError }}
+                  </div>
                   <div v-if="fetchModelsError" class="text-error text-caption mt-2">
                     {{ fetchModelsError }}
                   </div>
@@ -1246,11 +1253,29 @@ const getStringValue = (val: string | { title: string; value: string } | null | 
   return val.value || ''
 }
 
+// 源模型名验证错误
+const sourceMappingError = ref('')
+
+// 判断是否为内置源模型（内置选项允许更长名称）
+const isPresetSourceModel = (val: string): boolean => {
+  return allSourceModelOptions.value.some(opt => opt.value === val)
+}
+
+// 验证源模型名称（仅允许合法的模型名：字母、数字、连字符、下划线、点、斜杠）
+const validateSourceModelName = (val: string): string => {
+  if (!val) return ''
+  if (!isPresetSourceModel(val) && val.length > 50) return '自定义模型名过长（最多 50 字符）'
+  if (/\s/.test(val)) return '模型名不能包含空格'
+  if (!/^[\w.\-/:@+]+$/.test(val)) return '模型名只能包含字母、数字、连字符、下划线、点、斜杠、冒号、@ 和 +'
+  return ''
+}
+
 // 检查映射输入是否有效
 const isMappingInputValid = computed(() => {
   const source = getStringValue(newMapping.source).trim()
   const target = getStringValue(newMapping.target).trim()
-  return source && target
+  if (!source || !target) return false
+  return !validateSourceModelName(source)
 })
 
 // 目标模型列表（从上游获取）
@@ -1379,6 +1404,7 @@ const resetForm = () => {
   newApiKey.value = ''
   newMapping.source = ''
   newMapping.target = ''
+  sourceMappingError.value = ''
   newHeaderKey.value = ''
   newHeaderValue.value = ''
 
@@ -1553,16 +1579,27 @@ const copyApiKey = async (key: string, index: number) => {
   }
 }
 
-const addModelMapping = () => {
-  // 安全地获取字符串值（处理 v-select/v-combobox 可能返回对象的情况）
-  const getStringValue = (val: string | { title: string; value: string } | null | undefined): string => {
-    if (!val) return ''
-    if (typeof val === 'string') return val
-    return val.value || ''
+// 处理源模型名输入变化，实时验证
+const handleSourceModelChange = (val: string | { title: string; value: string } | null) => {
+  const source = getStringValue(val).trim()
+  if (!source) {
+    sourceMappingError.value = ''
+    return
   }
+  sourceMappingError.value = validateSourceModelName(source)
+}
 
+const addModelMapping = () => {
   const source = getStringValue(newMapping.source).trim()
   const target = getStringValue(newMapping.target).trim()
+
+  // 验证源模型名
+  const sourceErr = validateSourceModelName(source)
+  if (sourceErr) {
+    sourceMappingError.value = sourceErr
+    return
+  }
+  sourceMappingError.value = ''
 
   if (source && target && !form.modelMapping[source]) {
     form.modelMapping[source] = target
