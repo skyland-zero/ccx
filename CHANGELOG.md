@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [v2.6.25] - 2026-03-03
+
 ### 修复
 
 - **Gemini 流式响应 cachedContentTokenCount 处理** - 修复 Gemini 流式 usage 聚合逻辑在 `cachedContentTokenCount` 迟到时返回错误 input token 值的问题。当后续 chunk 包含缓存扣除信息时，`input_tokens` 现在会正确更新为扣除后的值（如 100 - 80 = 20），而非保持之前较大的值（100）
