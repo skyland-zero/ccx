@@ -212,14 +212,19 @@
                       />
                     </v-col>
                     <v-col cols="12" md="6">
-                      <v-switch
-                        v-model="form.fastMode"
-                        label="Fast 模式"
-                        color="primary"
-                        hide-details
-                        inset
-                        :disabled="!supportsOpenAIAdvancedOptions"
-                      />
+                      <div class="d-flex align-center justify-space-between h-100 advanced-switch-row">
+                        <div>
+                          <div class="text-body-2 font-weight-medium">Fast 模式</div>
+                          <div class="text-caption text-medium-emphasis">开启后下发 service_tier=priority</div>
+                        </div>
+                        <v-switch
+                          v-model="form.fastMode"
+                          color="primary"
+                          hide-details
+                          inset
+                          :disabled="!supportsOpenAIAdvancedOptions"
+                        />
+                      </div>
                     </v-col>
                   </v-row>
                   <div v-if="supportsOpenAIAdvancedOptions" class="text-caption text-medium-emphasis mb-4">
@@ -1162,6 +1167,7 @@ const targetModelPlaceholder = computed(() => {
 })
 
 const reasoningEffortOptions = [
+  { title: '未设置（默认）', value: '' },
   { title: 'None', value: 'none' },
   { title: 'Low', value: 'low' },
   { title: 'Medium', value: 'medium' },
@@ -1933,14 +1939,14 @@ onUnmounted(() => {
   text-transform: none;
 }
 
-/* 亮色模式下按钮在 primary 背景上显示白色 */
-.bg-primary .mode-toggle-btn {
-  color: white !important;
-  border-color: rgba(255, 255, 255, 0.7) !important;
+/* 高级选项中的右侧开关行 */
+.advanced-switch-row {
+  min-height: 56px;
 }
 
-.bg-primary .mode-toggle-btn:hover {
-  background-color: rgba(255, 255, 255, 0.15) !important;
-  border-color: white !important;
+.advanced-switch-row :deep(.v-selection-control) {
+  justify-content: flex-end;
+  margin-inline-start: 16px;
 }
+
 </style>
