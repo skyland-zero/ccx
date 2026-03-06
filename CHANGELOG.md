@@ -20,6 +20,7 @@
 
 ### 修复
 
+- **互转回归测试补强** - 新增 Gemini ↔ Responses 互转回归测试与前端 URL 预览组合测试，覆盖纯工具调用、多个 function call、usage 迟到扣减，以及 `responses + claude/openai/gemini`、`chat/gemini + responses` 等组合，降低四协议互转后续回归风险
 - **Responses → Gemini 工具项读取错误（P1）** - `parseResponsesInput` 现在对 `function_call` 和 `function_call_output` 类型保留完整的 itemMap 作为 Content，`responsesItemToGeminiContents` 支持从顶层和嵌套 content 字段读取 name/arguments/call_id/output，确保工具调用链不会因字段丢失而断裂
 - **call_id 与函数名映射不一致（P1）** - Gemini → Responses 转换（非流式和流式）现在使用函数名作为 `call_id`，Responses → Gemini 转换中 `function_call_output` 使用 `name` 字段（而非 `call_id`）作为 `FunctionResponse.Name`，确保工具结果可以稳定匹配 Gemini 函数调用
 - **流式完成状态错误（P2）** - `generateCompletedEvent` 现在使用传入的 `finishReason` 调用 `geminiFinishReasonToResponsesStatus` 进行状态映射，不再硬编码 `"completed"`，正确处理 MAX_TOKENS/SAFETY 等场景

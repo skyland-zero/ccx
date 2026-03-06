@@ -225,3 +225,96 @@ func TestConvertGeminiStreamToResponses_PreservesFunctionCallCallID(t *testing.T
 		t.Fatalf("expected call_id get_weather, got %#v", content["call_id"])
 	}
 }
+
+func TestConvertGeminiStreamToResponses_PureToolCallWithoutText(t *testing.T) {
+	ctx := context.Background()
+	var state any
+	line := `data: {"candidates":[{"content":{"parts":[{"functionCall":{"name":"search_docs","args":{"query":"responses api"}}}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":12,"candidatesTokenCount":3}}`
+	events := ConvertGeminiStreamToResponses(ctx, "gemini-2.5-pro", []byte(`{"model":"gpt-4.1"}`), nil, []byte(line), &state)
+
+	var completed string
+	for _, ev := range events {
+		if strings.Contains(ev, "response.completed") {
+			completed = ev
+			break
+		}
+	}
+	if completed == "" {
+		t.Fatalf("expected response.completed event, got %#v", events)
+	}
+	if strings.Contains(completed, `"type":"message"`) {
+		t.Fatalf("expected pure tool call completed event without message item, got %s", completed)
+	}
+	if !strings.Contains(completed, `"type":"function_call"`) {
+		t.Fatalf("expected pure tool call completed event to contain function_call, got %s", completed)
+	}
+}
+
+func TestConvertGeminiStreamToResponses_MultipleFunctionCalls(t *testing.T) {
+	ctx := context.Background()
+	var state any
+	line := `data: {"candidates":[{"content":{"parts":[{"functionCall":{"name":"get_weather","args":{"location":"NYC"}}},{"functionCall":{"name":"get_time","args":{"timezone":"UTC"}}}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":18,"candidatesTokenCount":6}}`
+	events := ConvertGeminiStreamToResponses(ctx, "gemini-2.5-pro", []byte(`{"model":"gpt-4.1"}`), nil, []byte(line), &state)
+
+	var completed string
+	for _, ev := range events {
+		if strings.Contains(ev, "response.completed") {
+			completed = ev
+			break
+		}
+	}
+	if completed == "" {
+		t.Fatalf("expected response.completed event, got %#v", events)
+	}
+	if strings.Count(completed, `"type":"function_call"`) != 2 {
+		t.Fatalf("expected two function_call items, got %s", completed)
+	}
+	if !strings.Contains(completed, `"call_id":"get_weather"`) || !strings.Contains(completed, `"call_id":"get_time"`) {
+		t.Fatalf("expected both function call ids in completed event, got %s", completed)
+	}
+}
+
+func TestConvertGeminiStreamToResponses_UsesLateUsageMetadata(t *testing.T) {
+	ctx := context.Background()
+	var state any
+	originalReq := []byte(`{"model":"gpt-4.1"}`)
+
+	first := `data: {"candidates":[{"content":{"parts":[{"text":"hello"}]}}]}`
+	second := `data: {"candidates":[{"content":{"parts":[]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":20,"candidatesTokenCount":7,"cachedContentTokenCount":5}}`
+
+	_ = ConvertGeminiStreamToResponses(ctx, "gemini-2.5-pro", originalReq, nil, []byte(first), &state)
+	events := ConvertGeminiStreamToResponses(ctx, "gemini-2.5-pro", originalReq, nil, []byte(second), &state)
+
+	var completed string
+	for _, ev := range events {
+		if strings.Contains(ev, "response.completed") {
+			completed = ev
+			break
+		}
+	}
+	if completed == "" {
+		t.Fatalf("expected response.completed event, got %#v", events)
+	}
+
+	var payload map[string]interface{}
+	jsonLine := completed
+	if strings.HasPrefix(jsonLine, "event: ") {
+		parts := strings.Split(completed, "\n")
+		for _, part := range parts {
+			if strings.HasPrefix(part, "data: ") {
+				jsonLine = strings.TrimPrefix(part, "data: ")
+				break
+			}
+		}
+	}
+	if err := json.Unmarshal([]byte(jsonLine), &payload); err != nil {
+		t.Fatalf("unmarshal completed event failed: %v", err)
+	}
+	usage := payload["response"].(map[string]interface{})["usage"].(map[string]interface{})
+	if usage["input_tokens"].(float64) != 15 {
+		t.Fatalf("expected input_tokens 15 after cached deduction, got %#v", usage["input_tokens"])
+	}
+	if usage["output_tokens"].(float64) != 7 {
+		t.Fatalf("expected output_tokens 7, got %#v", usage["output_tokens"])
+	}
+}
