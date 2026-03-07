@@ -1,3 +1,25 @@
+## [Unreleased]
+
+### 新增
+
+- **能力测试结果缓存** - 后端新增内存缓存，避免短时间内重复执行耗时的能力测试请求
+  - 初始 TTL 5 分钟，每次缓存命中自动续期 5 分钟，最大生存期 15 分钟
+  - 缓存 Key 基于渠道类型、ID 和协议列表，并发安全（sync.RWMutex）
+  - 仅缓存有成功结果的测试，惰性淘汰过期条目
+
+### 优化
+
+- **能力测试请求优化** - 降低测试请求的思考强度和超时时间，大幅缩短测试耗时
+  - 默认超时从 15 秒降至 10 秒
+  - Messages 协议明确关闭思考（`thinking.type: disabled`）
+  - Chat 协议设置 `reasoning_effort: "none"`
+  - Responses 协议设置 `reasoning.effort: "none"`
+  - Gemini 协议设置 `thinkingLevel: "low"`
+- **高级选项字段条件渲染** - 提取 `channelAdvancedOptions` 工具模块，统一管理渠道高级选项的支持判断与归一化
+  - 不支持的渠道类型（claude/gemini）表单中隐藏高级选项输入控件，保存时自动清空对应字段
+  - 新增完整单元测试覆盖
+- **服务类型标签修正** - OpenAI → OpenAI Chat，Responses (原生接口) → Responses (Codex)
+
 ## [v2.6.26] - 2026-03-07
 
 ### 新增

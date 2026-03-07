@@ -160,10 +160,10 @@ const errorMessage = ref('')
 // 协议显示名称
 const getProtocolDisplayName = (protocol: string) => {
   const map: Record<string, string> = {
-    messages: 'Messages',
-    chat: 'Chat',
+    messages: 'Claude',
+    chat: 'OpenAI Chat',
     gemini: 'Gemini',
-    responses: 'Responses'
+    responses: 'Codex'
   }
   return map[protocol] || protocol
 }
@@ -171,8 +171,8 @@ const getProtocolDisplayName = (protocol: string) => {
 // 协议颜色
 const getProtocolColor = (protocol: string) => {
   const map: Record<string, string> = {
-    messages: 'success',
-    chat: 'info',
+    messages: 'orange',
+    chat: 'primary',
     gemini: 'deep-purple',
     responses: 'warning'
   }

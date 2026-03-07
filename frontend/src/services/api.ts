@@ -534,7 +534,7 @@ export class ApiService {
       method: 'POST',
       body: JSON.stringify({
         targetProtocols: ['messages', 'chat', 'gemini', 'responses'],
-        timeout: 15000
+        timeout: 10000
       })
     })
   }

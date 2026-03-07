@@ -61,4 +61,32 @@ describe('buildChannelPayload', () => {
     expect(result.baseUrl).toBe('https://api.example.com/v1')
     expect(result.baseUrls).toEqual(['https://api.example.com/v1', 'https://backup.example.com/v1'])
   })
+
+  it('应清空 claude 渠道不支持的高级参数', () => {
+    const result = buildChannelPayload({
+      name: 'claude-channel',
+      serviceType: 'claude',
+      baseUrl: 'https://api.anthropic.com/v1',
+      baseUrls: [],
+      website: '',
+      insecureSkipVerify: false,
+      lowQuality: false,
+      injectDummyThoughtSignature: false,
+      stripThoughtSignature: false,
+      description: '',
+      apiKeys: ['sk-ant'],
+      modelMapping: { opus: 'claude-3-7-sonnet' },
+      reasoningMapping: { opus: 'high' },
+      textVerbosity: 'high',
+      fastMode: true,
+      customHeaders: {},
+      proxyUrl: '',
+      supportedModels: ['opus']
+    })
+
+    expect(result.modelMapping).toEqual({ opus: 'claude-3-7-sonnet' })
+    expect(result.reasoningMapping).toEqual({})
+    expect(result.textVerbosity).toBe('')
+    expect(result.fastMode).toBe(false)
+  })
 })

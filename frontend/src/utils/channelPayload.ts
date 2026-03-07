@@ -1,4 +1,5 @@
 import type { Channel } from '../services/api'
+import { normalizeAdvancedChannelOptions } from './channelAdvancedOptions'
 
 export interface ChannelFormLike {
   name: string
@@ -23,6 +24,11 @@ export interface ChannelFormLike {
 
 export function buildChannelPayload(form: ChannelFormLike): Omit<Channel, 'index' | 'latency' | 'status'> {
   const processedApiKeys = form.apiKeys.filter(key => key.trim())
+  const advancedOptions = normalizeAdvancedChannelOptions(form.serviceType, {
+    reasoningMapping: form.reasoningMapping,
+    textVerbosity: form.textVerbosity,
+    fastMode: form.fastMode
+  })
 
   const seenUrls = new Set<string>()
   const deduplicatedUrls =
@@ -50,9 +56,9 @@ export function buildChannelPayload(form: ChannelFormLike): Omit<Channel, 'index
     description: form.description.trim(),
     apiKeys: processedApiKeys,
     modelMapping: form.modelMapping,
-    reasoningMapping: form.reasoningMapping,
-    textVerbosity: form.textVerbosity,
-    fastMode: form.fastMode,
+    reasoningMapping: advancedOptions.reasoningMapping,
+    textVerbosity: advancedOptions.textVerbosity,
+    fastMode: advancedOptions.fastMode,
     customHeaders: form.customHeaders,
     proxyUrl: form.proxyUrl.trim(),
     supportedModels: form.supportedModels

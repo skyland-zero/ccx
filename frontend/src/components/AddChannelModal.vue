@@ -260,7 +260,7 @@
                             <v-icon size="small" color="primary">mdi-arrow-right</v-icon>
                             <code class="text-caption">{{ target }}</code>
                             <v-chip
-                              v-if="form.reasoningMapping[source]"
+                              v-if="supportsOpenAIAdvancedOptions && form.reasoningMapping[source]"
                               size="x-small"
                               color="secondary"
                               variant="tonal"
@@ -311,6 +311,7 @@
                       @keyup.enter="addModelMapping"
                     />
                     <v-select
+                      v-if="supportsOpenAIAdvancedOptions"
                       v-model="newMapping.reasoningEffort"
                       label="思考深度"
                       :items="reasoningEffortOptions"
@@ -319,7 +320,6 @@
                       hide-details
                       clearable
                       class="flex-1-1"
-                      :disabled="!supportsOpenAIAdvancedOptions"
                     />
                     <v-btn
                       color="secondary"
@@ -765,6 +765,7 @@ import {
   parseQuickInput as parseQuickInputUtil
 } from '../utils/quickInputParser'
 import { buildExpectedRequestUrls } from '../utils/expectedRequestUrls'
+import { supportsAdvancedChannelOptions } from '../utils/channelAdvancedOptions'
 import { buildChannelPayload } from '../utils/channelPayload'
 
 interface Props {
@@ -842,13 +843,13 @@ const parseQuickInput = () => {
 // 获取默认服务类型
 const getDefaultServiceType = (): string => {
   if (props.channelType === 'chat') {
-    return 'OpenAI'
+    return 'OpenAI Chat'
   }
   if (props.channelType === 'gemini') {
     return 'Gemini'
   }
   if (props.channelType === 'responses') {
-    return 'Responses (原生接口)'
+    return 'Responses (Codex)'
   }
   return 'Claude'
 }
@@ -1053,10 +1054,10 @@ const handleQuickSubmit = () => {
 const serviceTypeOptions = computed(() => {
   // 全部4种上游服务类型
   const allOptions = [
-    { title: 'OpenAI', value: 'openai' },
+    { title: 'OpenAI Chat', value: 'openai' },
     { title: 'Claude', value: 'claude' },
     { title: 'Gemini', value: 'gemini' },
-    { title: 'Responses (原生接口)', value: 'responses' }
+    { title: 'Responses (Codex)', value: 'responses' }
   ]
 
   // 根据入口接口类型调整排序（原生/默认类型排第一）
@@ -1190,7 +1191,7 @@ const textVerbosityOptions = [
   { title: 'High', value: 'high' }
 ]
 
-const supportsOpenAIAdvancedOptions = computed(() => form.serviceType === 'openai' || form.serviceType === 'responses')
+const supportsOpenAIAdvancedOptions = computed(() => supportsAdvancedChannelOptions(form.serviceType))
 
 // 表单数据
 const form = reactive({
@@ -1644,7 +1645,7 @@ const addModelMapping = () => {
 
   if (source && target && !form.modelMapping[source]) {
     form.modelMapping[source] = target
-    if (newMapping.reasoningEffort) {
+    if (supportsOpenAIAdvancedOptions.value && newMapping.reasoningEffort) {
       form.reasoningMapping[source] = newMapping.reasoningEffort
     } else {
       delete form.reasoningMapping[source]
