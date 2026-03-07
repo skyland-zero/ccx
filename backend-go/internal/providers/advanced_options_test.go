@@ -14,7 +14,7 @@ func TestOpenAIProvider_InjectsModelLevelReasoningAndChannelLevelOptions(t *test
 	gin.SetMode(gin.TestMode)
 	c := newGinContext(http.MethodPost, "/v1/messages", []byte(`{"model":"gpt-5.1-codex","messages":[{"role":"user","content":"hi"}]}`), context.Background())
 	upstream := &config.UpstreamConfig{
-		BaseURL: "https://api.example.com",
+		BaseURL:     "https://api.example.com",
 		ServiceType: "openai",
 		ModelMapping: map[string]string{
 			"gpt-5.1-codex": "gpt-5.2-codex",
@@ -60,7 +60,7 @@ func TestResponsesProvider_PassthroughInjectsModelLevelReasoningAndChannelLevelO
 	gin.SetMode(gin.TestMode)
 	c := newGinContext(http.MethodPost, "/v1/responses", []byte(`{"model":"gpt-5","input":"hi"}`), context.Background())
 	upstream := &config.UpstreamConfig{
-		BaseURL: "https://api.example.com",
+		BaseURL:     "https://api.example.com",
 		ServiceType: "responses",
 		ModelMapping: map[string]string{
 			"gpt-5": "gpt-5.2",

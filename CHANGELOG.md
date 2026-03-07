@@ -2,6 +2,26 @@
 
 ### 新增
 
+- **渠道能力测试功能** - 新增渠道协议兼容性测试，支持并发测试 Messages/Chat/Gemini/Responses 四种协议，检测流式支持和延迟
+  - 后端：新增 `/api/{type}/channels/{id}/capability-test` 端点，并发测试多协议兼容性，返回详细测试结果（成功/失败、延迟、流式支持、错误分类）
+  - 多模型降级测试：每个协议支持多个候选模型（逗号分隔），按优先级依次尝试，一旦某个模型成功就停止，提高测试成功率
+  - 前端：新增 `CapabilityTestDialog` 组件，展示测试结果和兼容协议列表，显示测试成功的模型名称，支持一键复制渠道到兼容的 Tab
+  - 编辑渠道弹窗：右上角添加"能力测试"按钮，编辑时可直接测试渠道能力
+  - 错误分类：支持 timeout、rate_limited、http_error_XXX 等错误类型，Tooltip 显示详细错误信息
+  - 测试模型配置：
+    - Messages: `claude-opus-4-6,claude-opus-4-5-20251101,claude-sonnet-4-6,claude-sonnet-4-5-20250929`
+    - Chat: `gpt-5.4,gpt-5.3-codex,gpt-5.2`
+    - Gemini: `gemini-3.1-pro-preview,gemini-3-pro-preview,gemini-3-pro,gemini-3-flash-preview,gemini-3-flash`
+    - Responses: `gpt-5.4,gpt-5.3-codex,gpt-5.2`
+  - 影响文件：
+    - `backend-go/internal/handlers/capability_test_handler.go` - 新增能力测试处理器，支持多模型降级
+    - `backend-go/internal/handlers/capability_probe_models.go` - 测试模型统一定义，支持多候选模型
+    - `backend-go/main.go` - 注册能力测试路由
+    - `frontend/src/components/CapabilityTestDialog.vue` - 新增测试结果对话框，显示测试模型
+    - `frontend/src/components/AddChannelModal.vue` - 右上角添加测试按钮
+    - `frontend/src/App.vue` - 测试流程和结果处理
+    - `frontend/src/services/api.ts` - 能力测试 API 调用，新增 testedModel 字段
+
 - **4 协议完整互转支持** - 实现 Claude Messages、OpenAI Chat、Gemini、Responses 四种协议的完整双向转换矩阵（12 条转换路径）
   - 前端：所有渠道类型（messages/chat/responses/gemini）现可选择全部 4 种上游服务类型（claude/openai/gemini/responses）
   - 后端转换器：新增 `GeminiResponsesConverter`、`gemini_to_responses.go`、`responses_to_gemini.go` 实现 Gemini ↔ Responses 双向转换

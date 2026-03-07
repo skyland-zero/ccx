@@ -445,7 +445,7 @@ func (p *ResponsesProvider) HandleStreamResponse(body io.ReadCloser) (<-chan str
 				}
 				if !textBlockStarted {
 					emitJSON("content_block_start", map[string]interface{}{
-						"index": textBlockIndex,
+						"index":         textBlockIndex,
 						"content_block": map[string]interface{}{"type": "text", "text": ""},
 					})
 					textBlockStarted = true

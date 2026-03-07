@@ -29,22 +29,23 @@ type CapabilityTestRequest struct {
 
 // ProtocolTestResult 单个协议测试结果
 type ProtocolTestResult struct {
-	Protocol            string  `json:"protocol"`
-	Success             bool    `json:"success"`
-	Latency             int64   `json:"latency"` // 毫秒
-	StreamingSupported  bool    `json:"streamingSupported"`
-	Error               *string `json:"error"`
-	TestedAt            string  `json:"testedAt"`
+	Protocol           string  `json:"protocol"`
+	Success            bool    `json:"success"`
+	Latency            int64   `json:"latency"` // 毫秒
+	StreamingSupported bool    `json:"streamingSupported"`
+	TestedModel        string  `json:"testedModel"` // 测试成功的模型名称
+	Error              *string `json:"error"`
+	TestedAt           string  `json:"testedAt"`
 }
 
 // CapabilityTestResponse 能力测试响应体
 type CapabilityTestResponse struct {
-	ChannelID            int                  `json:"channelId"`
-	ChannelName          string               `json:"channelName"`
-	SourceType           string               `json:"sourceType"`
-	Tests                []ProtocolTestResult  `json:"tests"`
-	CompatibleProtocols  []string             `json:"compatibleProtocols"`
-	TotalDuration        int64                `json:"totalDuration"` // 毫秒
+	ChannelID           int                  `json:"channelId"`
+	ChannelName         string               `json:"channelName"`
+	SourceType          string               `json:"sourceType"`
+	Tests               []ProtocolTestResult `json:"tests"`
+	CompatibleProtocols []string             `json:"compatibleProtocols"`
+	TotalDuration       int64                `json:"totalDuration"` // 毫秒
 }
 
 // ============== 主处理器 ==============
@@ -165,7 +166,7 @@ func testProtocolCompatibility(ctx context.Context, channel *config.UpstreamConf
 	return results
 }
 
-// testSingleProtocol 测试单个协议的兼容性
+// testSingleProtocol 测试单个协议的兼容性（支持多模型依次尝试）
 func testSingleProtocol(ctx context.Context, channel *config.UpstreamConfig, protocol string, timeout time.Duration) ProtocolTestResult {
 	result := ProtocolTestResult{
 		Protocol: protocol,
@@ -174,45 +175,84 @@ func testSingleProtocol(ctx context.Context, channel *config.UpstreamConfig, pro
 
 	log.Printf("[CapabilityTest] 开始测试渠道 %s 的 %s 协议兼容性", channel.Name, protocol)
 
-	// 构建测试请求
-	req, err := buildTestRequest(protocol, channel)
+	// 获取候选模型列表
+	models, err := getCapabilityProbeModels(protocol)
 	if err != nil {
-		errMsg := "build_request_failed"
+		errMsg := "no_models_configured"
 		result.Error = &errMsg
-		log.Printf("[CapabilityTest] 渠道 %s 构建 %s 测试请求失败: %v", channel.Name, protocol, err)
+		log.Printf("[CapabilityTest] 渠道 %s 获取 %s 协议测试模型失败: %v", channel.Name, protocol, err)
 		return result
 	}
 
-	// 创建带超时的上下文
-	reqCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	req = req.WithContext(reqCtx)
+	// 依次尝试每个模型，直到成功
+	var lastError error
+	var lastStatusCode int
+	totalStart := time.Now()
 
-	// 获取 HTTP 客户端（复用项目的 httpclient 管理器，配置代理和 SSL 跳过）
-	client := httpclient.GetManager().GetStandardClient(timeout, channel.InsecureSkipVerify, channel.ProxyURL)
+	for i, model := range models {
+		log.Printf("[CapabilityTest] 渠道 %s 尝试模型 %s (%d/%d)", channel.Name, model, i+1, len(models))
 
-	// 发送请求并检查流式响应
-	startTime := time.Now()
-	success, streamingSupported, statusCode, sendErr := sendAndCheckStream(reqCtx, client, req)
-	result.Latency = time.Since(startTime).Milliseconds()
-	result.Success = success
-	result.StreamingSupported = streamingSupported
+		// 构建测试请求
+		req, err := buildTestRequestWithModel(protocol, channel, model)
+		if err != nil {
+			lastError = err
+			log.Printf("[CapabilityTest] 渠道 %s 构建 %s 测试请求失败 (模型: %s): %v", channel.Name, protocol, model, err)
+			continue
+		}
 
-	if sendErr != nil {
-		errMsg := classifyError(sendErr, statusCode, reqCtx)
-		result.Error = &errMsg
-		log.Printf("[CapabilityTest] 渠道 %s 的 %s 协议测试失败: %s (耗时: %dms)", channel.Name, protocol, errMsg, result.Latency)
-	} else {
-		log.Printf("[CapabilityTest] 渠道 %s 的 %s 协议测试成功 (流式: %v, 耗时: %dms)", channel.Name, protocol, streamingSupported, result.Latency)
+		// 创建带超时的上下文
+		reqCtx, cancel := context.WithTimeout(ctx, timeout)
+		req = req.WithContext(reqCtx)
+
+		// 获取 HTTP 客户端
+		client := httpclient.GetManager().GetStandardClient(timeout, channel.InsecureSkipVerify, channel.ProxyURL)
+
+		// 发送请求并检查流式响应
+		startTime := time.Now()
+		success, streamingSupported, statusCode, sendErr := sendAndCheckStream(reqCtx, client, req)
+		latency := time.Since(startTime).Milliseconds()
+
+		cancel() // 释放上下文资源
+
+		if success {
+			// 测试成功，记录结果并返回
+			result.Success = true
+			result.StreamingSupported = streamingSupported
+			result.Latency = latency
+			result.TestedModel = model
+			log.Printf("[CapabilityTest] 渠道 %s 的 %s 协议测试成功 (模型: %s, 流式: %v, 耗时: %dms)",
+				channel.Name, protocol, model, streamingSupported, latency)
+			return result
+		}
+
+		// 测试失败，记录错误并尝试下一个模型
+		lastError = sendErr
+		lastStatusCode = statusCode
+		log.Printf("[CapabilityTest] 渠道 %s 的 %s 协议测试失败 (模型: %s, 耗时: %dms): %v",
+			channel.Name, protocol, model, latency, sendErr)
+
+		// 如果不是最后一个模型，等待 2 秒后再尝试下一个（避免触发上游速率限制）
+		if i < len(models)-1 {
+			log.Printf("[CapabilityTest] 等待 2 秒后尝试下一个模型...")
+			time.Sleep(2 * time.Second)
+		}
 	}
+
+	// 所有模型都失败
+	result.Success = false
+	result.Latency = time.Since(totalStart).Milliseconds()
+	errMsg := classifyError(lastError, lastStatusCode, ctx)
+	result.Error = &errMsg
+	log.Printf("[CapabilityTest] 渠道 %s 的 %s 协议所有模型测试均失败 (尝试了 %d 个模型, 总耗时: %dms)",
+		channel.Name, protocol, len(models), result.Latency)
 
 	return result
 }
 
 // ============== 请求构建 ==============
 
-// buildTestRequest 构建最小化测试请求
-func buildTestRequest(protocol string, channel *config.UpstreamConfig) (*http.Request, error) {
+// buildTestRequestWithModel 构建最小化测试请求（指定模型）
+func buildTestRequestWithModel(protocol string, channel *config.UpstreamConfig, model string) (*http.Request, error) {
 	// 获取 BaseURL
 	urls := channel.GetAllBaseURLs()
 	if len(urls) == 0 {
@@ -220,15 +260,15 @@ func buildTestRequest(protocol string, channel *config.UpstreamConfig) (*http.Re
 	}
 	baseURL := urls[0]
 
-	// 处理 BaseURL：去除末尾 /
-	baseURL = strings.TrimSuffix(baseURL, "/")
-
 	// 如果末尾有 #，去掉 # 后不添加版本前缀
 	noVersionPrefix := false
 	if strings.HasSuffix(baseURL, "#") {
 		baseURL = strings.TrimSuffix(baseURL, "#")
 		noVersionPrefix = true
 	}
+
+	// 处理 BaseURL：去除末尾 /
+	baseURL = strings.TrimSuffix(baseURL, "/")
 
 	apiKey := channel.APIKeys[0]
 
@@ -247,9 +287,22 @@ func buildTestRequest(protocol string, channel *config.UpstreamConfig) (*http.Re
 			requestURL = baseURL + "/v1/messages"
 		}
 		body, err = json.Marshal(map[string]interface{}{
-			"model":      "claude-3-5-sonnet-20241022",
-			"messages":   []map[string]string{{"role": "user", "content": "test"}},
-			"max_tokens": 10,
+			"model": model,
+			"system": []map[string]interface{}{
+				{
+					"type": "text",
+					"text": "x-anthropic-billing-header: cc_version=2.1.71.2f9; cc_entrypoint=cli;",
+				},
+				{
+					"type": "text",
+					"text": "You are Claude Code, Anthropic's official CLI for Claude.",
+					"cache_control": map[string]string{
+						"type": "ephemeral",
+					},
+				},
+			},
+			"messages":   []map[string]string{{"role": "user", "content": "What are you best at: code generation, creative writing, or math problem solving?"}},
+			"max_tokens": 20,
 			"stream":     true,
 		})
 
@@ -260,27 +313,33 @@ func buildTestRequest(protocol string, channel *config.UpstreamConfig) (*http.Re
 			requestURL = baseURL + "/v1/chat/completions"
 		}
 		body, err = json.Marshal(map[string]interface{}{
-			"model":      "gpt-4o",
-			"messages":   []map[string]string{{"role": "user", "content": "test"}},
-			"max_tokens": 10,
+			"model": model,
+			"messages": []map[string]string{
+				{"role": "system", "content": "You are a helpful assistant."},
+				{"role": "user", "content": "What are you best at: code generation, creative writing, or math problem solving?"},
+			},
+			"max_tokens": 20,
 			"stream":     true,
 		})
 
 	case "gemini":
 		if noVersionPrefix {
-			requestURL = baseURL + "/models/gemini-2.0-flash:streamGenerateContent?alt=sse"
+			requestURL = baseURL + "/models/" + model + ":streamGenerateContent?alt=sse"
 		} else {
-			requestURL = baseURL + "/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse"
+			requestURL = baseURL + "/v1beta/models/" + model + ":streamGenerateContent?alt=sse"
 		}
 		body, err = json.Marshal(map[string]interface{}{
 			"contents": []map[string]interface{}{
 				{
 					"role":  "user",
-					"parts": []map[string]string{{"text": "test"}},
+					"parts": []map[string]string{{"text": "What are you best at: code generation, creative writing, or math problem solving?"}},
 				},
 			},
+			"systemInstruction": map[string]interface{}{
+				"parts": []map[string]string{{"text": "You are Gemini CLI, an interactive CLI agent specializing in software engineering tasks."}},
+			},
 			"generationConfig": map[string]interface{}{
-				"maxOutputTokens": 10,
+				"maxOutputTokens": 20,
 			},
 		})
 		isGemini = true
@@ -292,10 +351,11 @@ func buildTestRequest(protocol string, channel *config.UpstreamConfig) (*http.Re
 			requestURL = baseURL + "/v1/responses"
 		}
 		body, err = json.Marshal(map[string]interface{}{
-			"model":      "claude-3-5-sonnet-20241022",
-			"input":      "test",
-			"max_tokens": 10,
-			"stream":     true,
+			"model":        model,
+			"input":        "What are you best at: code generation, creative writing, or math problem solving?",
+			"instructions": "You are Codex, a coding agent based on GPT-5.",
+			"max_tokens":   20,
+			"stream":       true,
 		})
 
 	default:
@@ -319,13 +379,37 @@ func buildTestRequest(protocol string, channel *config.UpstreamConfig) (*http.Re
 		utils.SetGeminiAuthenticationHeader(req.Header, apiKey)
 	} else {
 		utils.SetAuthenticationHeader(req.Header, apiKey)
-		// Messages 协议需要 anthropic-version 头部
+		// Messages 协议需要 anthropic-version、anthropic-beta、User-Agent 和 X-App 头部
 		if protocol == "messages" {
 			req.Header.Set("anthropic-version", "2023-06-01")
+			req.Header.Set("anthropic-beta", "claude-code-20250219,adaptive-thinking-2026-01-28,prompt-caching-scope-2026-01-05,effort-2025-11-24")
+			req.Header.Set("User-Agent", "claude-cli/2.1.71 (external, cli)")
+			req.Header.Set("X-App", "cli")
+		}
+		// Responses 协议需要 Originator 和 User-Agent 头部
+		if protocol == "responses" {
+			req.Header.Set("Originator", "codex_cli_rs")
+			req.Header.Set("User-Agent", "codex_cli_rs/0.111.0 (Mac OS 26.3.0; arm64) iTerm.app/3.6.6")
+		}
+	}
+
+	// 应用自定义请求头
+	if channel.CustomHeaders != nil {
+		for key, value := range channel.CustomHeaders {
+			req.Header.Set(key, value)
 		}
 	}
 
 	return req, nil
+}
+
+// buildTestRequest 构建最小化测试请求（使用首选模型，兼容旧接口）
+func buildTestRequest(protocol string, channel *config.UpstreamConfig) (*http.Request, error) {
+	model, err := getCapabilityProbeModel(protocol)
+	if err != nil {
+		return nil, err
+	}
+	return buildTestRequestWithModel(protocol, channel, model)
 }
 
 // ============== 流式响应检测 ==============

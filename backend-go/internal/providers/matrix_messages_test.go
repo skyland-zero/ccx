@@ -89,5 +89,5 @@ func TestMessagesEntry_RequestMatrix_AllFourUpstreams(t *testing.T) {
 				t.Fatalf("expected field %q in request body, got %#v", tt.expectFieldPath, body)
 			}
 		})
-		}
+	}
 }

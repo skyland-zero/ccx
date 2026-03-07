@@ -331,6 +331,7 @@
           @edit="editChannel"
           @delete="deleteChannel"
           @ping="pingChannel"
+          @test-capability="testChannelCapability"
           @refresh="refreshChannels"
           @error="showErrorToast"
           @success="showSuccessToast"
@@ -344,6 +345,16 @@
       :channel="dialogStore.editingChannel"
       :channel-type="channelStore.activeTab"
       @save="saveChannel"
+      @test-capability="testChannelCapability"
+    />
+
+    <!-- 能力测试对话框 -->
+    <CapabilityTestDialog
+      ref="capabilityTestDialogRef"
+      v-model="showCapabilityTestDialog"
+      :channel-name="capabilityTestChannelName"
+      :current-tab="channelStore.activeTab"
+      @copy-to-tab="handleCopyToTab"
     />
 
     <!-- 添加API密钥对话框 -->
@@ -393,7 +404,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch, defineAsyncComponent } from 'vue'
 import { useTheme } from 'vuetify'
-import { api, fetchHealth, ApiError, type Channel } from './services/api'
+import { api, fetchHealth, ApiError, type Channel, type CapabilityTestResult } from './services/api'
 import { versionService } from './services/version'
 import { useAuthStore } from './stores/auth'
 import { useChannelStore } from './stores/channel'
@@ -401,6 +412,7 @@ import { usePreferencesStore } from './stores/preferences'
 import { useDialogStore } from './stores/dialog'
 import { useSystemStore } from './stores/system'
 import AddChannelModal from './components/AddChannelModal.vue'
+import CapabilityTestDialog from './components/CapabilityTestDialog.vue'
 // 异步加载图表组件，减少首屏 JS 体积
 const GlobalStatsChart = defineAsyncComponent(() => import('./components/GlobalStatsChart.vue'))
 import { useAppTheme } from './composables/useTheme'
@@ -590,6 +602,92 @@ const pingChannel = async (channelId: number) => {
     // 不再使用 Toast，延迟结果直接显示在渠道列表中
   } catch (error) {
     showToast(`延迟测试失败: ${error instanceof Error ? error.message : '未知错误'}`, 'error')
+  }
+}
+
+// ============== 能力测试 ==============
+
+const showCapabilityTestDialog = ref(false)
+const capabilityTestChannelName = ref('')
+const capabilityTestChannelId = ref(0)
+const capabilityTestResult = ref<CapabilityTestResult | null>(null)
+const capabilityTestDialogRef = ref<InstanceType<typeof CapabilityTestDialog> | null>(null)
+
+const testChannelCapability = async (channelId: number) => {
+  // 获取渠道信息
+  const channel = channelStore.currentChannelsData.channels?.find(ch => ch.index === channelId)
+  capabilityTestChannelName.value = channel?.name || `渠道 #${channelId}`
+  capabilityTestChannelId.value = channelId
+
+  // 打开对话框并设置加载状态
+  showCapabilityTestDialog.value = true
+  capabilityTestDialogRef.value?.setLoading()
+
+  try {
+    const result = await api.testChannelCapability(channelStore.activeTab, channelId)
+    capabilityTestResult.value = result
+    capabilityTestDialogRef.value?.startTest(result)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '未知错误'
+    capabilityTestDialogRef.value?.setError(`能力测试失败: ${message}`)
+  }
+}
+
+// 复制渠道到目标协议 Tab
+const handleCopyToTab = async (targetProtocol: string) => {
+  const sourceChannel = channelStore.currentChannelsData.channels?.find(ch => ch.index === capabilityTestChannelId.value)
+  if (!sourceChannel) {
+    showToast('找不到源渠道信息', 'error')
+    return
+  }
+
+  // 构造渠道配置（去除运行时字段）
+  const channelConfig: Omit<Channel, 'index' | 'latency' | 'status'> = {
+    name: sourceChannel.name,
+    serviceType: sourceChannel.serviceType,
+    baseUrl: sourceChannel.baseUrl,
+    baseUrls: sourceChannel.baseUrls,
+    apiKeys: [...sourceChannel.apiKeys],
+    description: sourceChannel.description,
+    website: sourceChannel.website,
+    insecureSkipVerify: sourceChannel.insecureSkipVerify,
+    modelMapping: sourceChannel.modelMapping ? { ...sourceChannel.modelMapping } : undefined,
+    reasoningMapping: sourceChannel.reasoningMapping ? { ...sourceChannel.reasoningMapping } : undefined,
+    customHeaders: sourceChannel.customHeaders ? { ...sourceChannel.customHeaders } : undefined,
+    proxyUrl: sourceChannel.proxyUrl,
+    lowQuality: sourceChannel.lowQuality,
+    textVerbosity: sourceChannel.textVerbosity,
+    fastMode: sourceChannel.fastMode,
+    injectDummyThoughtSignature: sourceChannel.injectDummyThoughtSignature,
+    stripThoughtSignature: sourceChannel.stripThoughtSignature,
+    supportedModels: sourceChannel.supportedModels ? [...sourceChannel.supportedModels] : undefined,
+  }
+
+  try {
+    // 根据目标协议调用对应的添加渠道 API
+    switch (targetProtocol) {
+      case 'messages':
+        await api.addChannel(channelConfig)
+        break
+      case 'chat':
+        await api.addChatChannel(channelConfig)
+        break
+      case 'gemini':
+        await api.addGeminiChannel(channelConfig)
+        break
+      case 'responses':
+        await api.addResponsesChannel(channelConfig)
+        break
+      default:
+        showToast(`不支持的目标协议: ${targetProtocol}`, 'error')
+        return
+    }
+
+    showToast(`渠道已复制到 ${targetProtocol} Tab`, 'success')
+    showCapabilityTestDialog.value = false
+    await refreshChannels()
+  } catch (error) {
+    showToast(`复制渠道失败: ${error instanceof Error ? error.message : '未知错误'}`, 'error')
   }
 }
 

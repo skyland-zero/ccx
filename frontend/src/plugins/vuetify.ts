@@ -41,6 +41,9 @@ import { VAvatar } from 'vuetify/components/VAvatar'
 import { VIcon } from 'vuetify/components/VIcon'
 import { VDivider } from 'vuetify/components/VDivider'
 
+// 表格组件
+import { VTable } from 'vuetify/components/VTable'
+
 // 过渡动画
 import { VExpandTransition } from 'vuetify/components/transitions'
 
@@ -151,6 +154,8 @@ import {
   mdiTagOff,
   mdiShieldLockOutline,
   mdiBrain,
+  mdiTestTube,
+  mdiMinusCircle,
 } from '@mdi/js'
 
 // 图标名称到 SVG path 的映射 (使用 kebab-case)
@@ -318,6 +323,10 @@ const iconMap: Record<string, string> = {
 
   // 模型白名单
   'brain': mdiBrain,
+
+  // 能力测试
+  'test-tube': mdiTestTube,
+  'minus-circle': mdiMinusCircle,
 }
 
 // 自定义 SVG iconset - 处理 mdi-xxx 字符串格式
@@ -453,6 +462,8 @@ export default createVuetify({
     VAvatar,
     VIcon,
     VDivider,
+    // 表格
+    VTable,
     // 过渡
     VExpandTransition,
   },

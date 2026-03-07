@@ -172,6 +172,7 @@ func main() {
 		apiGroup.POST("/messages/channels/:id/models", messages.GetChannelModels(cfgManager))
 		apiGroup.GET("/messages/models/stats/history", handlers.GetModelStatsHistory(messagesMetricsManager))
 		apiGroup.GET("/messages/channels/:id/logs", handlers.GetChannelLogs(channelScheduler.GetChannelLogStore(scheduler.ChannelKindMessages)))
+		apiGroup.POST("/messages/channels/:id/capability-test", handlers.TestChannelCapability(cfgManager, "messages"))
 
 		// Responses 渠道管理
 		apiGroup.GET("/responses/channels", responses.GetUpstreams(cfgManager))
@@ -195,6 +196,7 @@ func main() {
 		apiGroup.POST("/responses/channels/:id/models", responses.GetChannelModels(cfgManager))
 		apiGroup.GET("/responses/models/stats/history", handlers.GetModelStatsHistory(responsesMetricsManager))
 		apiGroup.GET("/responses/channels/:id/logs", handlers.GetChannelLogs(channelScheduler.GetChannelLogStore(scheduler.ChannelKindResponses)))
+		apiGroup.POST("/responses/channels/:id/capability-test", handlers.TestChannelCapability(cfgManager, "responses"))
 
 		// Gemini 渠道管理
 		apiGroup.GET("/gemini/channels", gemini.GetUpstreams(cfgManager))
@@ -219,6 +221,7 @@ func main() {
 		apiGroup.POST("/gemini/channels/:id/models", gemini.GetChannelModels(cfgManager))
 		apiGroup.GET("/gemini/models/stats/history", handlers.GetModelStatsHistory(geminiMetricsManager))
 		apiGroup.GET("/gemini/channels/:id/logs", handlers.GetChannelLogs(channelScheduler.GetChannelLogStore(scheduler.ChannelKindGemini)))
+		apiGroup.POST("/gemini/channels/:id/capability-test", handlers.TestChannelCapability(cfgManager, "gemini"))
 
 		// Chat 渠道管理
 		apiGroup.GET("/chat/channels", chat.GetUpstreams(cfgManager))
@@ -244,6 +247,7 @@ func main() {
 		apiGroup.POST("/chat/channels/:id/models", chat.GetChannelModels(cfgManager))
 		apiGroup.GET("/chat/models/stats/history", handlers.GetModelStatsHistory(chatMetricsManager))
 		apiGroup.GET("/chat/channels/:id/logs", handlers.GetChannelLogs(channelScheduler.GetChannelLogStore(scheduler.ChannelKindChat)))
+		apiGroup.POST("/chat/channels/:id/capability-test", handlers.TestChannelCapability(cfgManager, "chat"))
 		apiGroup.GET("/chat/channels/scheduler/stats", handlers.GetSchedulerStats(channelScheduler))
 
 		// Fuzzy 模式设置

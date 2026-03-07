@@ -140,6 +140,27 @@ export interface PingResult {
   error?: string
 }
 
+// ============== 能力测试类型 ==============
+
+export interface ProtocolTestResult {
+  protocol: string
+  success: boolean
+  latency: number
+  streamingSupported: boolean
+  testedModel: string
+  error?: string
+  testedAt: string
+}
+
+export interface CapabilityTestResult {
+  channelId: number
+  channelName: string
+  sourceType: string
+  tests: ProtocolTestResult[]
+  compatibleProtocols: string[]
+  totalDuration: number
+}
+
 // 历史数据点（用于时间序列图表）
 export interface HistoryDataPoint {
   timestamp: string
@@ -503,6 +524,18 @@ export class ApiService {
     return this.request(`/messages/channels/${id}/models`, {
       method: 'POST',
       body: JSON.stringify(body)
+    })
+  }
+
+  // ============== 能力测试 API ==============
+
+  async testChannelCapability(type: 'messages' | 'chat' | 'gemini' | 'responses', id: number): Promise<CapabilityTestResult> {
+    return this.request(`/${type}/channels/${id}/capability-test`, {
+      method: 'POST',
+      body: JSON.stringify({
+        targetProtocols: ['messages', 'chat', 'gemini', 'responses'],
+        timeout: 15000
+      })
     })
   }
 

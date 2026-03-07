@@ -36,9 +36,9 @@ func TestSupportsModel(t *testing.T) {
 func TestResolveReasoningEffort(t *testing.T) {
 	upstream := &UpstreamConfig{
 		ReasoningMapping: map[string]string{
-			"gpt-5":            "high",
-			"gpt-5.1-codex":    "xhigh",
-			"o3":               "medium",
+			"gpt-5":         "high",
+			"gpt-5.1-codex": "xhigh",
+			"o3":            "medium",
 		},
 	}
 

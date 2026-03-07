@@ -13,6 +13,16 @@
             {{ isEditing ? '修改渠道配置信息' : isQuickMode ? '快速批量添加 API 密钥' : '配置API渠道信息和密钥' }}
           </div>
         </div>
+        <!-- 能力测试按钮（仅在编辑模式显示） -->
+        <v-btn
+          v-if="isEditing"
+          color="success"
+          variant="flat"
+          prepend-icon="mdi-test-tube"
+          @click="handleTestCapability"
+        >
+          能力测试
+        </v-btn>
         <!-- 模式切换按钮（仅在添加模式显示） -->
         <v-btn v-if="!isEditing" variant="outlined" size="small" class="mode-toggle-btn" @click="toggleMode">
           <v-icon start size="16">{{ isQuickMode ? 'mdi-form-textbox' : 'mdi-lightning-bolt' }}</v-icon>
@@ -770,6 +780,7 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<{
   'update:show': [value: boolean]
   save: [channel: Omit<Channel, 'index' | 'latency' | 'status'>, options?: { isQuickAdd?: boolean }]
+  testCapability: [channelId: number]
 }>()
 
 // 主题
@@ -1803,6 +1814,12 @@ const handleSubmit = async () => {
 const handleCancel = () => {
   emit('update:show', false)
   resetForm()
+}
+
+const handleTestCapability = () => {
+  if (props.channel?.index !== undefined && props.channel?.index !== null) {
+    emit('testCapability', props.channel.index)
+  }
 }
 
 // 监听props变化

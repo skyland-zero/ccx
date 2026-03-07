@@ -301,6 +301,12 @@
                     </template>
                     <v-list-item-title>测试延迟</v-list-item-title>
                   </v-list-item>
+                  <v-list-item @click="$emit('testCapability', element.index)">
+                    <template #prepend>
+                      <v-icon size="small" color="success">mdi-test-tube</v-icon>
+                    </template>
+                    <v-list-item-title>能力测试</v-list-item-title>
+                  </v-list-item>
                   <v-list-item @click="openLogsDialog(element)">
                     <template #prepend>
                       <v-icon size="small">mdi-history</v-icon>
@@ -462,6 +468,12 @@
                   </template>
                   <v-list-item-title>编辑</v-list-item-title>
                 </v-list-item>
+                <v-list-item @click="$emit('testCapability', channel.index)">
+                  <template #prepend>
+                    <v-icon size="small" color="success">mdi-test-tube</v-icon>
+                  </template>
+                  <v-list-item-title>能力测试</v-list-item-title>
+                </v-list-item>
                 <v-list-item @click="copyChannelInfo(channel)">
                   <template #prepend>
                     <v-icon size="small">mdi-content-copy</v-icon>
@@ -531,6 +543,7 @@ const emit = defineEmits<{
   (_e: 'edit', _channel: Channel): void
   (_e: 'delete', _channelId: number): void
   (_e: 'ping', _channelId: number): void
+  (_e: 'testCapability', _channelId: number): void
   (_e: 'refresh'): void
   (_e: 'error', _message: string): void
   (_e: 'success', _message: string): void

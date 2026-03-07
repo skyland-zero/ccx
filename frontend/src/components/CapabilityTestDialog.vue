@@ -61,6 +61,7 @@
               <tr>
                 <th>协议</th>
                 <th>状态</th>
+                <th>测试模型</th>
                 <th>延迟</th>
                 <th>流式</th>
                 <th>操作</th>
@@ -86,6 +87,10 @@
                       </div>
                     </template>
                   </v-tooltip>
+                </td>
+                <td>
+                  <span v-if="test.success" class="text-body-2 text-medium-emphasis">{{ test.testedModel }}</span>
+                  <span v-else class="text-body-2 text-medium-emphasis">-</span>
                 </td>
                 <td>
                   <span v-if="test.success" class="text-body-2">{{ test.latency }}ms</span>
