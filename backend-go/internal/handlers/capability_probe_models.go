@@ -1,0 +1,56 @@
+package handlers
+
+import (
+	"fmt"
+	"strings"
+)
+
+// 能力测试探测模型统一定义（如需切换顶级模型，仅修改这里）
+// 支持多个候选模型，用逗号分隔，按优先级从高到低排列
+// 测试时会依次尝试，一旦某个模型成功就停止
+const (
+	capabilityProbeModelMessages  = "claude-opus-4-6,claude-opus-4-5-20251101,claude-sonnet-4-6,claude-sonnet-4-5-20250929"
+	capabilityProbeModelChat      = "gpt-5.4,gpt-5.3-codex,gpt-5.2"
+	capabilityProbeModelGemini    = "gemini-3.1-pro-preview,gemini-3-pro-preview,gemini-3-pro,gemini-3-flash-preview,gemini-3-flash"
+	capabilityProbeModelResponses = "gpt-5.4,gpt-5.3-codex,gpt-5.2"
+)
+
+var capabilityProbeModels = map[string]string{
+	"messages":  capabilityProbeModelMessages,
+	"chat":      capabilityProbeModelChat,
+	"gemini":    capabilityProbeModelGemini,
+	"responses": capabilityProbeModelResponses,
+}
+
+// getCapabilityProbeModels 获取协议的候选模型列表（按优先级排序）
+func getCapabilityProbeModels(protocol string) ([]string, error) {
+	modelsStr, ok := capabilityProbeModels[protocol]
+	if !ok {
+		return nil, fmt.Errorf("unsupported protocol: %s", protocol)
+	}
+
+	// 按逗号分隔，去除空白
+	models := strings.Split(modelsStr, ",")
+	result := make([]string, 0, len(models))
+	for _, m := range models {
+		m = strings.TrimSpace(m)
+		if m != "" {
+			result = append(result, m)
+		}
+	}
+
+	if len(result) == 0 {
+		return nil, fmt.Errorf("no models configured for protocol: %s", protocol)
+	}
+
+	return result, nil
+}
+
+// getCapabilityProbeModel 获取协议的首选模型（兼容旧接口）
+func getCapabilityProbeModel(protocol string) (string, error) {
+	models, err := getCapabilityProbeModels(protocol)
+	if err != nil {
+		return "", err
+	}
+	return models[0], nil
+}
