@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-Claude / Codex / Gemini API Proxy - 支持多上游 AI 服务的协议转换代理，提供 Web 管理界面和统一 API 入口。
+Claude / OpenAI Chat / Codex Responses / Gemini API Proxy - 支持多上游 AI 服务的协议转换代理，提供 Web 管理界面和统一 API 入口。
 
 **技术栈**: Go 1.25 (后端) + Vue 3 + Vuetify (前端) + Docker
 
@@ -69,20 +69,25 @@ ccx/
 ## API 端点
 
 **代理端点**:
-- `POST /v1/messages` - Claude Messages API（支持 OpenAI/Gemini 协议转换）
+- `POST /v1/messages` - Claude Messages API（支持 Claude/OpenAI/Gemini/Responses 上游转换）
 - `POST /v1/messages/count_tokens` - Token 计数
 - `POST /v1/responses` - Codex Responses API（支持会话管理）
 - `POST /v1/responses/compact` - 精简版 Responses API
-- `POST /v1/chat/completions` - OpenAI Chat Completions API（支持 Claude/Gemini 协议转换）
+- `POST /v1/chat/completions` - OpenAI Chat Completions API（支持 Claude/Gemini/Responses 上游转换）
+- `GET /v1/models` - 模型列表查询
+- `POST /v1beta/models/{model}:generateContent` - Gemini 原生协议
 - `GET /health` - 健康检查（无需认证）
 
 **管理 API** (`/api/`):
 - `/api/messages/channels` - Messages 渠道 CRUD
 - `/api/responses/channels` - Responses 渠道 CRUD
 - `/api/chat/channels` - Chat 渠道 CRUD
+- `/api/gemini/channels` - Gemini 渠道 CRUD
+- `/api/{type}/channels/:id/models` - 单渠道模型列表查询
+- `/api/{type}/channels/:id/capability-test` - 渠道能力测试
+- `/api/{type}/channels/:id/promotion` - 渠道促销期管理
 - `/api/messages/channels/metrics` - 渠道指标
 - `/api/messages/channels/scheduler/stats` - 调度器统计
-- `/api/messages/ping/:id` - 渠道连通性测试
 
 ## 关键配置
 
@@ -90,7 +95,8 @@ ccx/
 |---------|--------|------|
 | `PORT` | 3000 | 服务器端口 |
 | `ENV` | production | 运行环境 |
-| `PROXY_ACCESS_KEY` | - | **必须设置** 访问密钥 |
+| `PROXY_ACCESS_KEY` | - | **必须设置** 代理访问密钥 |
+| `ADMIN_ACCESS_KEY` | - | 可选管理密钥；未设置时回退到 `PROXY_ACCESS_KEY` |
 | `QUIET_POLLING_LOGS` | true | 静默轮询日志 |
 | `MAX_REQUEST_BODY_SIZE_MB` | 50 | 请求体最大大小 |
 
@@ -120,6 +126,6 @@ ccx/
 ## 重要提示
 
 - **环境变量变更**: 修改 `.env` 后需要重启服务
-- **认证**: 所有端点（除 `/health`）需要 `x-api-key` 头或 `PROXY_ACCESS_KEY`
+- **认证**: 代理端默认使用 `PROXY_ACCESS_KEY`；管理界面和 `/api/*` 在配置 `ADMIN_ACCESS_KEY` 后改用管理密钥
 - **配置热重载**: `.config/config.json` 修改后自动生效
 - **开发服务**: 默认假设用户已通过 `make dev` 或 `make frontend-dev` 启动开发服务，禁止自动杀进程重启

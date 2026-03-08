@@ -1,42 +1,27 @@
-# CCX - Go 版本
+# CCX - Go 后端
 
-> 🚀 高性能的 Claude / Codex / Gemini API Proxy - Go 语言实现，支持多种上游AI服务提供商，内置前端管理界面
+> 高性能的 Claude / OpenAI Chat / Codex Responses / Gemini API Proxy 后端，Go 语言实现，支持多上游协议转换、智能调度、会话管理与嵌入式 Web 管理界面
 
 ## 特性
 
-- ✅ **完整的 TypeScript 后端功能移植**：所有原 TS 后端功能完整实现
+- ✅ **完整后端能力**：覆盖 Messages、Chat Completions、Responses、Gemini 四类 API 入口
 - 🚀 **高性能**：Go 语言实现，性能优于 Node.js 版本
-- 📦 **单文件部署**：前端资源嵌入二进制文件，无需额外配置
-- 🔄 **协议转换**：自动转换 Claude 格式请求到不同上游服务商格式
-- ⚖️ **故障转移**：支持多 API 密钥的智能分配和自动切换
-- 🖥️ **Web 管理界面**：内置的前端管理界面（嵌入式）
-- 🛡️ **高可用性**：健康检查、错误处理和优雅降级
+- 📦 **单文件部署**：前端资源嵌入二进制文件，无需额外静态资源服务
+- 🔄 **四协议互转**：支持 Claude Messages、OpenAI Chat、Gemini、Responses 间的协议转换
+- ⚖️ **智能调度与故障转移**：支持优先级、熔断、Trace 亲和、多密钥自动切换
+- 🧪 **能力测试**：支持对单个渠道测试 Messages / Chat / Gemini / Responses 协议兼容性
+- 🔍 **模型列表代理查询**：后端代查上游模型列表，避免前端 CORS 与密钥暴露问题
+- 🎛️ **模型白名单**：支持 `supportedModels` 精确匹配与通配符前缀过滤
+- 🌐 **渠道级代理 / 自定义请求头**：支持 `proxyUrl`、`customHeaders`
+- 🖥️ **Web 管理界面**：内置前端管理界面（嵌入式）
+- 🛡️ **高可用性**：健康检查、错误处理、超时重试和自动降级
 
 ## 支持的上游服务
 
-- ✅ OpenAI (GPT-4, GPT-3.5 等)
-- ✅ Gemini (Google AI)
 - ✅ Claude (Anthropic)
-- ✅ OpenAI Old (旧版兼容)
-
-## 最新更新 (v2.0.1)
-
-### 🐛 重要修复
-- ✅ 修复前端资源加载问题（Vite base 路径配置）
-- ✅ 修复静态文件 MIME 类型错误（favicon.ico 等）
-- ✅ 修复 API 路由与前端不匹配问题
-- ✅ 修复版本信息未注入问题
-
-### ⚡ 性能优化
-- ✅ 智能前端构建缓存（无变更时 0.07秒启动，提升 142 倍）
-- ✅ 优化代码分割（vue-vendor 独立打包）
-
-### 📝 改进
-- ✅ ENV 环境变量标准化（替代 NODE_ENV，向后兼容）
-- ✅ 添加 favicon 支持（SVG 格式）
-- ✅ 完善文档和开发指南
-
----
+- ✅ OpenAI Chat Completions (OpenAI)
+- ✅ Codex Responses (OpenAI)
+- ✅ Gemini (Google AI)
 
 ## 快速开始
 
@@ -99,33 +84,25 @@ cd backend-go
 PORT=3000
 
 # 运行环境: development | production
-# 影响:
-#   - production: Gin ReleaseMode(高性能)、关闭/admin/dev/info、严格CORS
-#   - development: Gin DebugMode(详细日志)、开启/admin/dev/info、宽松CORS
 ENV=production
 
 # ============ Web UI 配置 ============
 ENABLE_WEB_UI=true
 
 # ============ 访问控制 ============
-# 代理访问密钥（必须修改！）
+# 代理访问密钥（代理 API 使用，必须修改！）
 PROXY_ACCESS_KEY=your-secure-access-key
+# 管理访问密钥（可选；管理界面与 /api/* 使用，未设置时回退到 PROXY_ACCESS_KEY）
+ADMIN_ACCESS_KEY=your-admin-access-key
 
 # ============ 日志配置 ============
-# 日志级别: error | warn | info | debug
 LOG_LEVEL=info
-
-# 是否启用请求/响应日志
 ENABLE_REQUEST_LOGS=true
 ENABLE_RESPONSE_LOGS=true
 
-# ============ 性能配置 ============
-# 请求超时时间（毫秒）
-REQUEST_TIMEOUT=30000
-
-# ============ CORS 配置 ============
-ENABLE_CORS=true
-CORS_ORIGIN=*
+# ============ 运行时配置 ============
+MAX_REQUEST_BODY_SIZE_MB=50
+QUIET_POLLING_LOGS=true
 ```
 
 ### 环境模式详解
@@ -144,23 +121,52 @@ CORS_ORIGIN=*
 
 ### 渠道配置
 
-服务启动后，通过 Web 管理界面 (http://localhost:3000) 配置上游渠道和 API 密钥。
+服务启动后，可通过 Web 管理界面 (`http://localhost:3000`) 配置上游渠道、API 密钥、模型映射、高级选项、代理与请求头。
 
-或者直接编辑配置文件 `.config/config.json`：
+也可以直接编辑配置文件 `.config/config.json`。当前按 API 类型分组管理渠道，例如：
 
 ```json
 {
-  "upstream": [
+  "messagesUpstream": [
     {
-      "name": "OpenAI",
-      "baseUrl": "https://api.openai.com/v1",
+      "name": "OpenAI Messages Proxy",
+      "baseUrl": "https://api.openai.com",
       "apiKeys": ["sk-your-api-key"],
       "serviceType": "openai",
+      "supportedModels": ["gpt-5*"],
+      "customHeaders": {
+        "x-foo": "bar"
+      },
+      "proxyUrl": "",
       "status": "active"
     }
   ]
 }
 ```
+
+## 管理与调度能力
+
+### 模型发现与过滤
+
+- 支持通过 `/api/{type}/channels/:id/models` 由后端代理查询上游模型列表
+- 后端会对 `baseUrl` 做基础校验，默认拦截云元数据地址，降低 SSRF 风险
+- 每个渠道可配置 `supportedModels`
+  - 空列表表示支持全部模型
+  - 支持精确匹配
+  - 支持前缀通配符，如 `claude-*`、`gpt-5*`、`gemini-3*`
+- 调度器选路时会自动跳过不支持当前请求模型的渠道
+
+### 能力测试
+
+- 支持通过 `/api/{type}/channels/:id/capability-test` 测试单个渠道的协议兼容性
+- 覆盖 Messages / Chat / Gemini / Responses 四类协议
+- 返回可用性、延迟、流式支持、成功模型和错误分类
+- 内置短时缓存，避免频繁触发重复测试
+
+### 渠道级代理与自定义请求头
+
+- `proxyUrl`：为单个渠道配置 HTTP / SOCKS5 代理
+- `customHeaders`：为单个渠道附加或覆盖上游请求头
 
 ### 渠道状态自动变化
 
@@ -179,38 +185,39 @@ CORS_ORIGIN=*
 
 ### 渠道促销期（Promotion）
 
-促销期机制用于临时提升某个渠道的优先级，让新渠道能够快速获得流量进行测试。
+促销期机制用于临时提升某个渠道的调度优先级，使其在有限时间内被优先选择。
 
-**促销期特性：**
-- 处于促销期的渠道会被**优先选择**，忽略 trace 亲和性
-- 同一时间**只能有一个渠道**处于促销期（设置新渠道会自动清除旧渠道的促销期）
-- 促销期有**时间限制**，到期后自动失效
-- 促销渠道如果**不健康**（熔断/无可用密钥），会自动跳过
+**核心规则：**
+- 促销期内渠道优先级最高，绕过 Trace 亲和性检查
+- 同一时间只允许一个渠道处于促销期（设置新渠道会自动清除旧渠道）
+- 促销渠道若不健康（熔断/无可用密钥），在本次请求中自动跳过
+- 暂停（suspended）渠道时自动清除其促销期
 
 **自动触发场景：**
 
 | 场景 | 触发条件 | 自动行为 |
 |------|----------|----------|
-| **快速添加渠道** | 通过 Web UI 快速添加新渠道 | 1. 新渠道排序到第一位<br>2. 设置 5 分钟促销期 |
+| **新建渠道** | 通过 Web UI 添加新渠道 | 自动设置 5 分钟促销期 |
 
-**API 使用：**
+**API 用法：**
+
 ```bash
-# 设置渠道促销期（600秒 = 10分钟）
-curl -X POST http://localhost:3000/api/channels/0/promotion \
-  -H "x-api-key: your-proxy-access-key" \
+# 设置促销期（所有渠道类型均支持，路径中 type 可选 messages/responses/chat/gemini）
+curl -X POST http://localhost:3000/api/messages/channels/0/promotion \
+  -H "x-api-key: your-admin-access-key" \
   -H "Content-Type: application/json" \
-  -d '{"duration": 600}'
+  -d '{"duration": 300}'   # 单位：秒，0 表示清除
 
-# 清除渠道促销期
-curl -X POST http://localhost:3000/api/channels/0/promotion \
-  -H "x-api-key: your-proxy-access-key" \
+# 清除促销期
+curl -X POST http://localhost:3000/api/messages/channels/0/promotion \
+  -H "x-api-key: your-admin-access-key" \
   -H "Content-Type: application/json" \
   -d '{"duration": 0}'
 ```
 
 **适用场景：**
-- 新增渠道后，临时提升优先级进行测试
-- 更换 Key 后，验证新 Key 是否正常工作
+- 新增渠道后临时提升优先级进行测试
+- 更换 Key 后验证新 Key 是否正常工作
 - 临时将流量切换到特定渠道
 
 ## 使用方法
@@ -219,9 +226,38 @@ curl -X POST http://localhost:3000/api/channels/0/promotion \
 
 打开浏览器访问: http://localhost:3000
 
-首次访问需要输入 `PROXY_ACCESS_KEY`
+- 管理界面默认使用 `PROXY_ACCESS_KEY`
+- 如果配置了 `ADMIN_ACCESS_KEY`，则管理界面与 `/api/*` 改用独立管理密钥
 
-### API 调用
+### API 入口概览
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/health` | GET | 健康检查（无需认证） |
+| `/v1/messages` | POST | Claude Messages API |
+| `/v1/messages/count_tokens` | POST | Messages Token 计数 |
+| `/v1/chat/completions` | POST | OpenAI Chat Completions API |
+| `/v1/responses` | POST | Codex Responses API |
+| `/v1/responses/compact` | POST | 精简版 Responses API |
+| `/v1/models` | GET | 模型列表查询 |
+| `/v1beta/models/{model}:generateContent` | POST | Gemini 原生协议 |
+
+### 管理 API 概览
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/messages/channels` | CRUD | Messages 渠道管理 |
+| `/api/responses/channels` | CRUD | Responses 渠道管理 |
+| `/api/chat/channels` | CRUD | Chat 渠道管理 |
+| `/api/gemini/channels` | CRUD | Gemini 渠道管理 |
+| `/api/messages/channels/dashboard?type=...` | GET | 统一 dashboard |
+| `/api/{type}/channels/:id/models` | POST | 查询单渠道上游模型列表 |
+| `/api/{type}/channels/:id/capability-test` | POST | 渠道能力测试 |
+| `/api/{type}/channels/:id/promotion` | POST | 渠道促销期管理 |
+
+### API 调用示例
+
+#### Messages
 
 ```bash
 curl -X POST http://localhost:3000/v1/messages \
@@ -234,6 +270,27 @@ curl -X POST http://localhost:3000/v1/messages \
       {"role": "user", "content": "Hello, Claude!"}
     ]
   }'
+```
+
+#### Chat Completions
+
+```bash
+curl -X POST http://localhost:3000/v1/chat/completions \
+  -H "x-api-key: your-proxy-access-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-5.4",
+    "messages": [
+      {"role": "user", "content": "Hello!"}
+    ]
+  }'
+```
+
+#### 管理 API：能力测试
+
+```bash
+curl -X POST http://localhost:3000/api/messages/channels/1/capability-test \
+  -H "x-api-key: your-admin-access-key"
 ```
 
 ## 架构对比

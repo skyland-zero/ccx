@@ -25,10 +25,16 @@ make build        # 构建二进制
 | `/v1/responses` | POST | Codex Responses API |
 | `/v1/responses/compact` | POST | 精简版 Responses API |
 | `/v1/chat/completions` | POST | OpenAI Chat Completions API |
+| `/v1/models` | GET | 模型列表查询 |
+| `/v1/models/:model` | GET | 模型详情 |
+| `/v1beta/models/{model}:generateContent` | POST | Gemini 原生协议 |
 | `/api/messages/channels` | CRUD | Messages 渠道管理 |
 | `/api/responses/channels` | CRUD | Responses 渠道管理 |
 | `/api/chat/channels` | CRUD | Chat 渠道管理 |
-| `/api/messages/ping/:id` | GET | 渠道连通性测试 |
+| `/api/gemini/channels` | CRUD | Gemini 渠道管理 |
+| `/api/{type}/channels/:id/models` | POST | 单渠道模型列表查询 |
+| `/api/{type}/channels/:id/capability-test` | POST | 渠道能力测试 |
+| `/api/{type}/channels/:id/promotion` | POST | 渠道促销期管理 |
 | `/api/messages/channels/metrics` | GET | 渠道指标 |
 | `/api/messages/channels/scheduler/stats` | GET | 调度器统计 |
 
@@ -56,7 +62,7 @@ type Provider interface {
 }
 ```
 
-**实现**: `ClaudeProvider`, `OpenAIProvider`, `GeminiProvider`
+**实现**: `ClaudeProvider`, `OpenAIProvider`, `GeminiProvider`, `ResponsesProvider`
 
 ## 核心模块
 

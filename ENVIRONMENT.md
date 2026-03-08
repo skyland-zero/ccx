@@ -45,7 +45,8 @@ ENV=production                         # 运行环境: development | production
 # NODE_ENV=production                  # 向后兼容 (已弃用，请使用 ENV)
 
 # 访问控制
-PROXY_ACCESS_KEY=your-secret-key       # 访问密钥 (必须设置!)
+PROXY_ACCESS_KEY=your-secret-key       # 代理访问密钥（代理 API 使用，必须设置）
+ADMIN_ACCESS_KEY=your-admin-key        # 可选管理密钥（管理界面和 /api/* 使用；未设置时回退到 PROXY_ACCESS_KEY）
 
 # Web UI
 ENABLE_WEB_UI=true                     # 是否启用 Web 管理界面
@@ -54,7 +55,7 @@ ENABLE_WEB_UI=true                     # 是否启用 Web 管理界面
 LOG_LEVEL=info                         # 日志级别: debug | info | warn | error
 ENABLE_REQUEST_LOGS=true               # 是否记录请求日志
 ENABLE_RESPONSE_LOGS=false             # 是否记录响应日志
-QUIET_POLLING_LOGS=true                # 静默前端轮询端点日志（/api/channels 等）
+QUIET_POLLING_LOGS=true                # 静默前端轮询端点日志（如 /api/messages/channels/dashboard）
 
 # 性能配置
 REQUEST_TIMEOUT=300000                 # 请求超时时间（毫秒）
@@ -369,6 +370,8 @@ VITE_FRONTEND_PORT=3000
 ENV=production
 PORT=3000
 PROXY_ACCESS_KEY=$(openssl rand -base64 32)
+# 可选：管理界面与 /api/* 使用独立管理密钥
+ADMIN_ACCESS_KEY=$(openssl rand -base64 32)
 
 # 最小日志输出
 LOG_LEVEL=warn
@@ -387,6 +390,7 @@ ENABLE_WEB_UI=true
 ENV=production
 PORT=3000
 PROXY_ACCESS_KEY=$(openssl rand -base64 32)
+ADMIN_ACCESS_KEY=$(openssl rand -base64 32)
 
 # 适度日志输出
 LOG_LEVEL=info
@@ -405,6 +409,7 @@ ENABLE_WEB_UI=true
 ENV=production
 PORT=3000
 PROXY_ACCESS_KEY=$(openssl rand -base64 32)
+ADMIN_ACCESS_KEY=$(openssl rand -base64 32)
 
 # 详细日志输出（临时使用）
 LOG_LEVEL=info
@@ -462,13 +467,16 @@ console.log('🔗 API Configuration:', {
 ```bash
 # 生成随机密钥
 PROXY_ACCESS_KEY=$(openssl rand -base64 32)
-echo "生成的密钥: $PROXY_ACCESS_KEY"
+ADMIN_ACCESS_KEY=$(openssl rand -base64 32)
+echo "代理密钥: $PROXY_ACCESS_KEY"
+echo "管理密钥: $ADMIN_ACCESS_KEY"
 ```
 
 ### 生产环境配置清单
 ```bash
 # 1. 强密钥 (必须!)
-PROXY_ACCESS_KEY=<strong-random-key>
+PROXY_ACCESS_KEY=<strong-random-proxy-key>
+ADMIN_ACCESS_KEY=<strong-random-admin-key>  # 可选，建议与代理密钥分离
 
 # 2. 生产模式
 ENV=production
@@ -546,11 +554,15 @@ LOG_LEVEL=debug  # 可能泄露敏感信息
 
 ### 问题：认证失败
 ```bash
-# 检查密钥设置
+# 检查代理密钥设置
 echo $PROXY_ACCESS_KEY
+echo $ADMIN_ACCESS_KEY
 
-# 测试认证
-curl -H "x-api-key: $PROXY_ACCESS_KEY" http://localhost:3000/health
+# 测试代理 API 认证（示例）
+curl -H "x-api-key: $PROXY_ACCESS_KEY" http://localhost:3000/v1/models
+
+# 测试管理 API 认证（若配置了 ADMIN_ACCESS_KEY）
+curl -H "x-api-key: ${ADMIN_ACCESS_KEY:-$PROXY_ACCESS_KEY}" http://localhost:3000/api/messages/channels
 ```
 
 ### 问题：日志输出过多或过少

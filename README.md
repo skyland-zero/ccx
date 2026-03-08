@@ -1,21 +1,26 @@
-# Claude / Codex / Gemini API Proxy - CCX
+# Claude / OpenAI Chat / Codex Responses / Gemini API Proxy - CCX
 
 [![GitHub release](https://img.shields.io/github/v/release/BenedictKing/ccx)](https://github.com/BenedictKing/ccx/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-一个高性能的 Claude API 代理服务器，支持多种上游 AI 服务提供商（Claude、Codex、Gemini），提供故障转移、多 API 密钥管理和统一入口访问。
+一个高性能的 API 协议转换代理服务器，支持 Claude、OpenAI Chat / Codex Responses、Gemini 等多种上游服务，提供故障转移、多密钥管理、统一入口访问与可视化管理界面。
 
 ## 🚀 功能特性
 
 - **🖥️ 一体化架构**: 后端集成前端，单容器部署，完全替代 Nginx
-- **🔐 统一认证**: 一个密钥保护所有入口（前端界面、管理 API、代理 API）
-- **📱 Web 管理面板**: 现代化可视化界面，支持渠道管理、实时监控和配置
-- **三 API 支持**: 同时支持 Claude Messages API (`/v1/messages`)、Codex Responses API (`/v1/responses`) 和 Gemini API
+- **🔐 双密钥认证**: 支持 `PROXY_ACCESS_KEY` 与可选 `ADMIN_ACCESS_KEY`，可将管理界面/管理 API 与代理 API 隔离
+- **📱 Web 管理面板**: 现代化可视化界面，支持渠道管理、能力测试、实时监控和配置
+- **四 API 支持**: 同时支持 Claude Messages API (`/v1/messages`)、OpenAI Chat Completions (`/v1/chat/completions`)、Codex Responses API (`/v1/responses`) 和 Gemini API
 - **统一入口**: 通过统一端点访问不同的 AI 服务
-- **多上游支持**: 支持 Claude、Codex 和 Gemini 等多种上游服务
-- **🔌 协议转换**: Messages API 支持协议自动转换，统一接入不同上游服务
-- **🎯 智能调度**: 多渠道智能调度器，支持优先级排序、健康检查和自动熔断
+- **多上游支持**: 支持 Claude、OpenAI Chat、Codex Responses 和 Gemini 等多种上游服务
+- **🔌 协议转换**: 支持 Claude Messages、OpenAI Chat、Gemini、Responses 四协议互转
+- **🎯 智能调度**: 多渠道智能调度器，支持优先级排序、促销期抢占、健康检查和自动熔断
 - **📊 渠道编排**: 可视化渠道管理，拖拽调整优先级，实时查看健康状态
+- **🧪 能力测试**: 支持对单个渠道并发测试 Messages / Chat / Gemini / Responses 协议兼容性、流式支持与延迟
+- **🔍 模型发现**: 支持通过管理端代理查询上游模型列表，避免前端直连上游带来的 CORS 与密钥泄露问题
+- **🎛️ 模型白名单**: 可为每个渠道配置 `supportedModels`，支持精确匹配与通配符前缀过滤（如 `gpt-5*`）
+- **🔁 模型重定向**: 支持源模型到目标模型的映射、Fast 模式与输出冗长度配置
+- **🌐 渠道级代理 / 自定义请求头**: 每个渠道可单独配置 `proxyUrl`、`customHeaders`
 - **🔄 Trace 亲和**: 同一用户会话自动绑定到同一渠道，提升一致性体验
 - **故障转移**: 自动切换到可用渠道，确保服务高可用
 - **多 API 密钥**: 每个上游可配置多个 API 密钥，自动轮换使用（推荐 failover 策略以最大化利用 Prompt Caching）
@@ -41,7 +46,7 @@
 
 ### 添加渠道
 
-支持多种上游服务类型（Claude/Codex/Gemini），灵活配置 API 密钥、模型映射和请求参数。
+支持多种上游服务类型（Claude / OpenAI Chat / Responses / Gemini），灵活配置 API 密钥、模型映射、高级选项和请求参数。
 
 <img src="docs/screenshots/add-channel-modal.png" width="500" alt="添加渠道">
 
@@ -57,15 +62,18 @@
 
 ```
 用户 → 后端:3000 →
-     ├─ / → 前端界面（需要密钥）
-     ├─ /api/* → 管理API（需要密钥）
-     ├─ /v1/messages → Claude Messages API 代理（需要密钥）
-     ├─ /v1/responses → Codex Responses API 代理（需要密钥）
-     ├─ /v1/models → Models API（需要密钥）
-     └─ /v1beta/models/* → Gemini API 代理（需要密钥）
+     ├─ / → 前端界面（需要管理密钥）
+     ├─ /api/* → 管理API（需要管理密钥）
+     ├─ /v1/messages → Claude Messages API 代理（需要代理密钥）
+     ├─ /v1/messages/count_tokens → Messages Token 计数（需要代理密钥）
+     ├─ /v1/chat/completions → OpenAI Chat Completions 代理（需要代理密钥）
+     ├─ /v1/responses → Codex Responses API 代理（需要代理密钥）
+     ├─ /v1/responses/compact → Responses Compact（需要代理密钥）
+     ├─ /v1/models → Models API（需要代理密钥）
+     └─ /v1beta/models/* → Gemini API 代理（需要代理密钥）
 ```
 
-**核心优势**: 单端口、统一认证、无跨域问题、资源占用低
+**核心优势**: 单端口、双密钥隔离、无跨域问题、资源占用低
 
 > 📚 详细架构设计和技术选型请参考 [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -224,6 +232,8 @@ services:
       - ENV=production
       - ENABLE_WEB_UI=true # true=一体化, false=纯API
       - PROXY_ACCESS_KEY=your-super-strong-secret-key
+      # 可选：为管理界面与 /api/* 单独配置管理密钥
+      # - ADMIN_ACCESS_KEY=your-admin-secret-key
       - LOG_LEVEL=info
     volumes:
       - ./.config:/app/.config # 配置持久化
@@ -288,11 +298,11 @@ fly deploy
 
 ### 统一访问控制
 
-所有访问入口均受 `PROXY_ACCESS_KEY` 保护：
+默认情况下，所有入口均可使用 `PROXY_ACCESS_KEY` 访问；如果额外配置了 `ADMIN_ACCESS_KEY`，则管理界面与管理 API 将改用独立管理密钥认证。
 
-1. **前端管理界面** (`/`) - 通过查询参数或本地存储验证密钥
-2. **管理 API** (`/api/*`) - 需要 `x-api-key` 请求头
-3. **代理 API** (`/v1/messages`) - 需要 `x-api-key` 请求头
+1. **前端管理界面** (`/`) - 使用 `ADMIN_ACCESS_KEY`；未设置时回退到 `PROXY_ACCESS_KEY`
+2. **管理 API** (`/api/*`) - 使用 `ADMIN_ACCESS_KEY`；未设置时回退到 `PROXY_ACCESS_KEY`
+3. **代理 API** (`/v1/messages`、`/v1/chat/completions`、`/v1/responses`、`/v1/responses/compact`、`/v1/models`、`/v1beta/models/*`) - 使用 `PROXY_ACCESS_KEY`
 4. **健康检查** (`/health`) - 公开访问，无需密钥
 
 ### 认证流程
@@ -314,7 +324,10 @@ flowchart LR
 ```bash
 # 1. 生成强密钥 (必须!)
 PROXY_ACCESS_KEY=$(openssl rand -base64 32)
-echo "生成的密钥: $PROXY_ACCESS_KEY"
+ADMIN_ACCESS_KEY=$(openssl rand -base64 32) # 可选：用于隔离管理端访问
+
+echo "代理密钥: $PROXY_ACCESS_KEY"
+echo "管理密钥: $ADMIN_ACCESS_KEY"
 
 # 2. 生产环境配置
 ENV=production
@@ -325,6 +338,7 @@ ENABLE_WEB_UI=true
 
 # 3. 网络安全
 # - 使用 HTTPS (推荐 Cloudflare CDN)
+# - 为管理端和代理端使用不同密钥
 # - 配置防火墙规则
 # - 定期轮换访问密钥
 # - 启用访问日志监控
@@ -334,11 +348,14 @@ ENABLE_WEB_UI=true
 
 ```bash
 # 密钥轮换
-echo "旧密钥: $OLD_PROXY_ACCESS_KEY"
-echo "新密钥: $NEW_PROXY_ACCESS_KEY"
+echo "旧代理密钥: $OLD_PROXY_ACCESS_KEY"
+echo "新代理密钥: $NEW_PROXY_ACCESS_KEY"
+echo "旧管理密钥: $OLD_ADMIN_ACCESS_KEY"
+echo "新管理密钥: $NEW_ADMIN_ACCESS_KEY"
 
 # 更新环境变量
 export PROXY_ACCESS_KEY=$NEW_PROXY_ACCESS_KEY
+export ADMIN_ACCESS_KEY=$NEW_ADMIN_ACCESS_KEY
 
 # 重启服务
 docker-compose restart ccx
@@ -350,10 +367,11 @@ docker-compose restart ccx
 
 1. **Messages API** (`/v1/messages`) - 标准的 Claude API 格式
 2. **Messages Token 计数** (`/v1/messages/count_tokens`) - Token 计数
-3. **Responses API** (`/v1/responses`) - Codex 格式，支持会话管理
-4. **Responses Compact** (`/v1/responses/compact`) - 精简版 Responses API
-5. **Models API** (`/v1/models`) - 模型列表查询
-6. **Gemini API** (`/v1beta/models/{model}:generateContent`) - Gemini 原生协议
+3. **Chat Completions API** (`/v1/chat/completions`) - OpenAI Chat Completions 格式
+4. **Responses API** (`/v1/responses`) - Codex 格式，支持会话管理
+5. **Responses Compact** (`/v1/responses/compact`) - 精简版 Responses API，适合长期代理工作流
+6. **Models API** (`/v1/models`) - 模型列表查询
+7. **Gemini API** (`/v1beta/models/{model}:generateContent`) - Gemini 原生协议
 
 ### Messages API - 标准 Claude API 调用
 
@@ -411,6 +429,21 @@ curl -X POST http://localhost:3000/v1/messages \
     "messages": [
       {"role": "user", "content": "北京今天天气怎么样？"}
     ]
+  }'
+```
+
+### Chat Completions API - OpenAI 格式调用
+
+```bash
+curl -X POST http://localhost:3000/v1/chat/completions \
+  -H "x-api-key: your-proxy-access-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-5.4",
+    "messages": [
+      {"role": "user", "content": "Hello!"}
+    ],
+    "stream": false
   }'
 ```
 
@@ -515,35 +548,52 @@ curl -X POST "http://localhost:3000/v1beta/models/gemini-2.0-flash:streamGenerat
 ### 管理 API
 
 ```bash
-# 获取渠道列表
-curl -H "x-api-key: your-proxy-access-key" \
-  http://localhost:3000/api/channels
+# 获取 messages 渠道列表
+curl -H "x-api-key: your-admin-access-key" \
+  http://localhost:3000/api/messages/channels
 
-# 测试渠道连通性
-curl -H "x-api-key: your-proxy-access-key" \
-  http://localhost:3000/api/ping
+# 统一 dashboard（type 可选：messages / chat / responses / gemini）
+curl -H "x-api-key: your-admin-access-key" \
+  "http://localhost:3000/api/messages/channels/dashboard?type=messages"
+
+# 查询单个渠道可用模型（示例：messages 渠道）
+curl -X POST -H "x-api-key: your-admin-access-key" \
+  -H "Content-Type: application/json" \
+  http://localhost:3000/api/messages/channels/1/models \
+  -d '{"key":"sk-xxx","baseUrl":"https://api.openai.com"}'
+
+# 渠道能力测试（示例：messages 渠道）
+curl -X POST -H "x-api-key: your-admin-access-key" \
+  http://localhost:3000/api/messages/channels/1/capability-test
 ```
 
 ## 🔌 协议转换能力
 
-### Messages API 多协议支持
+### 四协议完整互转
 
-本代理服务器的 Messages API 端点 (`/v1/messages`) 支持多种上游协议转换：
+当前版本支持 Claude Messages、OpenAI Chat、Gemini、Responses 四种协议之间的完整转换矩阵，覆盖 12 条双向转换路径。
 
-**支持的上游服务**:
+**支持的用户侧入口**:
 
-- ✅ **Claude API** (Anthropic) - 原生支持，直接透传
-- ✅ **Codex API** (OpenAI) - 自动转换 Claude 格式 ↔ Codex 格式
-- ✅ **Gemini API** (Google) - 自动转换 Claude 格式 ↔ Gemini 格式
+- ✅ **Claude Messages** (`/v1/messages`)
+- ✅ **OpenAI Chat Completions** (`/v1/chat/completions`)
+- ✅ **Codex Responses** (`/v1/responses`)
+- ✅ **Gemini 原生协议** (`/v1beta/models/{model}:generateContent`)
+
+**支持的上游服务类型**:
+
+- ✅ **Claude API** (Anthropic)
+- ✅ **OpenAI Chat / Codex Responses** (OpenAI)
+- ✅ **Gemini API** (Google)
 
 **核心优势**:
 
-- 🔄 **统一接口**: 客户端只需使用 Claude Messages API 格式
-- 🎯 **自动转换**: 代理自动处理不同上游的协议差异
-- 🔌 **即插即用**: 无需修改客户端代码即可切换上游服务
-- 💰 **成本优化**: 灵活切换不同价格的 AI 服务
+- 🔄 **统一接入**: 可按客户端协议选择最合适的入口
+- 🎯 **自动转换**: 代理自动处理不同上游的请求/响应差异
+- 🔌 **灵活编排**: 同一渠道类型可挂接不同 serviceType 的上游
+- 🛠️ **工具调用兼容**: 四协议互转场景下尽量保持函数调用链与流式事件一致性
 
-**示例**: 使用 Claude API 格式调用 Codex
+**示例**: 使用 Claude Messages 格式调用 Gemini / Responses / OpenAI 等不同上游，或使用 Chat / Responses / Gemini 原生入口接入其他协议，上游转换由后端自动完成。
 
 ```bash
 curl -X POST http://localhost:3000/v1/messages \
@@ -556,8 +606,44 @@ curl -X POST http://localhost:3000/v1/messages \
       {"role": "user", "content": "Hello!"}
     ]
   }'
-# 后端自动转换并发送到配置的 Codex 上游
+# 后端会根据渠道配置自动转换并发送到 Claude / OpenAI / Gemini / Responses 上游
 ```
+
+## 🧪 管理界面能力
+
+### 渠道能力测试
+
+在编辑渠道时，可直接点击右上角“能力测试”按钮，对当前渠道并发测试以下协议能力：
+
+- Messages
+- OpenAI Chat
+- Gemini
+- Responses
+
+测试结果会展示：
+
+- 是否可用
+- 延迟
+- 是否支持流式
+- 实际测试成功的模型
+- 错误分类（如 `timeout`、`rate_limited`、`http_error_XXX`）
+
+同时支持短时结果缓存，避免重复触发高成本测试请求。
+
+### 模型列表查询与模型过滤
+
+管理界面支持通过后端代理拉取上游模型列表：
+
+- 避免浏览器直连上游导致的 CORS 问题
+- 避免在前端暴露真实上游 API Key
+- 对 `baseUrl` 做 SSRF 基础校验，默认拦截云元数据地址 `169.254.169.254`
+
+渠道还支持配置 `supportedModels`：
+
+- 空列表表示支持所有模型
+- 支持精确匹配
+- 支持前缀通配符，如 `claude-*`、`gpt-5*`、`gemini-3*`
+- 调度器会自动跳过不支持当前请求模型的渠道
 
 ## 🧪 测试验证
 
@@ -570,20 +656,21 @@ curl -X POST http://localhost:3000/v1/messages \
 set -e
 
 PROXY_URL="http://localhost:3000"
-API_KEY="your-proxy-access-key"
+PROXY_API_KEY="your-proxy-access-key"
+ADMIN_API_KEY="your-admin-access-key" # 如未设置 ADMIN_ACCESS_KEY，可与 PROXY_API_KEY 相同
 
 echo "🏥 测试健康检查..."
 curl -s "$PROXY_URL/health" | jq .
 
-echo "\n🔒 测试无密钥访问 (应该失败)..."
-curl -s "$PROXY_URL/api/channels" || echo "✅ 正确拒绝无密钥访问"
+echo "\n🔒 测试无密钥访问管理 API (应该失败)..."
+curl -s "$PROXY_URL/api/messages/channels" || echo "✅ 正确拒绝无密钥访问"
 
-echo "\n🔑 测试API访问 (应该成功)..."
-curl -s -H "x-api-key: $API_KEY" "$PROXY_URL/api/channels" | jq .
+echo "\n🔑 测试管理 API 访问 (应该成功)..."
+curl -s -H "x-api-key: $ADMIN_API_KEY" "$PROXY_URL/api/messages/channels" | jq .
 
-echo "\n💬 测试Claude API代理..."
+echo "\n💬 测试 Messages API 代理..."
 curl -s -X POST "$PROXY_URL/v1/messages" \
-  -H "x-api-key: $API_KEY" \
+  -H "x-api-key: $PROXY_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "claude-3-5-sonnet-20241022",

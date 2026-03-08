@@ -4,7 +4,7 @@
 
 ## 模块职责
 
-Vue 3 + Vuetify 3 Web 管理界面：渠道配置、实时监控、拖拽排序、主题切换。
+Vue 3 + Vuetify 3 Web 管理界面：渠道配置、能力测试、模型列表查询、拖拽排序、监控面板、主题切换。
 
 ## 启动命令
 
@@ -18,18 +18,21 @@ bun run preview   # 预览构建
 
 | 组件 | 职责 |
 |------|------|
-| `App.vue` | 根组件，认证和布局 |
+| `App.vue` | 根组件，认证、布局、主题、能力测试入口 |
 | `ChannelOrchestration.vue` | 渠道编排主界面 |
 | `ChannelCard.vue` | 渠道卡片（状态、密钥、指标） |
-| `AddChannelModal.vue` | 添加/编辑渠道对话框 |
+| `AddChannelModal.vue` | 添加/编辑渠道对话框（模型映射、高级选项、模型过滤等） |
+| `CapabilityTestDialog.vue` | 渠道能力测试结果对话框 |
 
 ## API 服务
 
-`src/services/api.ts` 封装后端交互：
+`src/services/api.ts` 封装后端交互，涵盖：
 
-- `fetchChannels()` / `addChannel()` / `updateChannel()` / `deleteChannel()`
-- `pingChannel()` / `pingAllChannels()`
-- `reorderChannels()` / `setChannelStatus()`
+- 渠道 CRUD、排序、状态切换
+- 单渠道模型列表查询
+- 渠道能力测试
+- Dashboard / 指标 / 历史数据查询
+- 认证相关请求头管理
 
 ## 主题配置
 
