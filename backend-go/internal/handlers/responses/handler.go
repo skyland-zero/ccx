@@ -1277,24 +1277,7 @@ func patchResponsesCompletedEventUsage(event string, requestBody []byte, outputT
 
 // parseInputToItems 解析 input 为 ResponsesItem 数组
 func parseInputToItems(input interface{}) ([]types.ResponsesItem, error) {
-	switch v := input.(type) {
-	case string:
-		return []types.ResponsesItem{{Type: "text", Content: v}}, nil
-	case []interface{}:
-		items := []types.ResponsesItem{}
-		for _, item := range v {
-			itemMap, ok := item.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			itemType, _ := itemMap["type"].(string)
-			content := itemMap["content"]
-			items = append(items, types.ResponsesItem{Type: itemType, Content: content})
-		}
-		return items, nil
-	default:
-		return nil, fmt.Errorf("unsupported input type")
-	}
+	return types.ParseResponsesInput(input)
 }
 
 // hasResponsesFunctionCall 检查 Responses 事件中是否包含工具调用

@@ -4,20 +4,23 @@ package types
 
 // ResponsesRequest Responses API 请求
 type ResponsesRequest struct {
-	Model              string      `json:"model"`
-	Instructions       string      `json:"instructions,omitempty"` // 系统指令（映射为 system message）
-	Input              interface{} `json:"input"`                  // string 或 []ResponsesItem
-	PreviousResponseID string      `json:"previous_response_id,omitempty"`
-	Store              *bool       `json:"store,omitempty"`             // 默认 true
-	MaxTokens          int         `json:"max_tokens,omitempty"`        // 最大 tokens
-	Temperature        float64     `json:"temperature,omitempty"`       // 温度参数
-	TopP               float64     `json:"top_p,omitempty"`             // top_p 参数
-	FrequencyPenalty   float64     `json:"frequency_penalty,omitempty"` // 频率惩罚
-	PresencePenalty    float64     `json:"presence_penalty,omitempty"`  // 存在惩罚
-	Stream             bool        `json:"stream,omitempty"`            // 是否流式输出
-	Stop               interface{} `json:"stop,omitempty"`              // 停止序列 (string 或 []string)
-	User               string      `json:"user,omitempty"`              // 用户标识
-	StreamOptions      interface{} `json:"stream_options,omitempty"`    // 流式选项
+	Model              string                   `json:"model"`
+	Instructions       string                   `json:"instructions,omitempty"` // 系统指令（映射为 system message）
+	Input              interface{}              `json:"input"`                  // string 或 []ResponsesItem
+	PreviousResponseID string                   `json:"previous_response_id,omitempty"`
+	Store              *bool                    `json:"store,omitempty"`               // 默认 true
+	MaxTokens          int                      `json:"max_output_tokens,omitempty"`   // 最大 tokens
+	Temperature        float64                  `json:"temperature,omitempty"`         // 温度参数
+	TopP               float64                  `json:"top_p,omitempty"`               // top_p 参数
+	FrequencyPenalty   float64                  `json:"frequency_penalty,omitempty"`   // 频率惩罚
+	PresencePenalty    float64                  `json:"presence_penalty,omitempty"`    // 存在惩罚
+	Stream             bool                     `json:"stream,omitempty"`              // 是否流式输出
+	Stop               interface{}              `json:"stop,omitempty"`                // 停止序列 (string 或 []string)
+	User               string                   `json:"user,omitempty"`                // 用户标识
+	StreamOptions      interface{}              `json:"stream_options,omitempty"`      // 流式选项
+	Tools              []map[string]interface{} `json:"tools,omitempty"`               // function tools
+	ToolChoice         interface{}              `json:"tool_choice,omitempty"`         // string 或 object
+	ParallelToolCalls  *bool                    `json:"parallel_tool_calls,omitempty"` // 是否允许并行工具调用
 
 	// TransformerMetadata 转换器元数据（仅内存使用，不序列化）
 	// 用于在单次请求的转换流程中保留原始格式信息，如 system 数组格式等
@@ -27,10 +30,16 @@ type ResponsesRequest struct {
 
 // ResponsesItem Responses API 消息项
 type ResponsesItem struct {
-	Type    string      `json:"type"`           // message, text, tool_call, tool_result
-	Role    string      `json:"role,omitempty"` // user, assistant (用于 type=message)
-	Content interface{} `json:"content"`        // string 或 []ContentBlock
-	ToolUse *ToolUse    `json:"tool_use,omitempty"`
+	ID        string      `json:"id,omitempty"`
+	Type      string      `json:"type"`           // message, text, function_call, function_call_output（tool_call/tool_result 仅兼容 legacy Claude 输入）
+	Role      string      `json:"role,omitempty"` // user, assistant (用于 type=message)
+	Status    string      `json:"status,omitempty"`
+	Content   interface{} `json:"content,omitempty"` // string 或 []ContentBlock
+	ToolUse   *ToolUse    `json:"tool_use,omitempty"`
+	CallID    string      `json:"call_id,omitempty"`
+	Name      string      `json:"name,omitempty"`
+	Arguments string      `json:"arguments,omitempty"`
+	Output    interface{} `json:"output,omitempty"`
 }
 
 // ContentBlock 内容块（用于嵌套 content 数组）
