@@ -381,6 +381,12 @@ describe('综合解析场景', () => {
     expect(result.detectedBaseUrls).toEqual(['https://ai.qaq.al'])
   })
 
+  it('应剔除 pricing 页面路径', () => {
+    const input = 'https://pay.kxaug.xyz/pricing sk-key1234567890'
+    const result = parseQuickInput(input)
+    expect(result.detectedBaseUrl).toBe('https://pay.kxaug.xyz')
+  })
+
 })
 
 describe('引号内容提取', () => {
