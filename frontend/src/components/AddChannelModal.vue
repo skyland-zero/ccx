@@ -208,6 +208,28 @@
                     <span class="text-caption text-primary">💡 点击目标模型输入框会自动获取上游支持的模型列表,每个 API Key 的检测状态会显示在密钥列表中</span>
                   </div>
 
+                  <div v-if="showModelMappingPresets" class="d-flex align-center flex-wrap ga-2 mb-4">
+                    <div class="text-caption text-medium-emphasis">一键设置</div>
+                    <v-btn
+                      size="small"
+                      variant="tonal"
+                      color="primary"
+                      prepend-icon="mdi-lightning-bolt"
+                      @click="applyModelMappingPreset('gpt-5.4')"
+                    >
+                      gpt-5.4
+                    </v-btn>
+                    <v-btn
+                      size="small"
+                      variant="tonal"
+                      color="secondary"
+                      prepend-icon="mdi-lightning-bolt"
+                      @click="applyModelMappingPreset('gpt-5.2-codex')"
+                    >
+                      gpt-5.2 / gpt-5.2-codex
+                    </v-btn>
+                  </div>
+
                   <!-- 现有映射列表 -->
                   <div v-if="Object.keys(form.modelMapping).length" class="mb-4">
                     <v-list density="compact" class="bg-transparent">
@@ -1191,7 +1213,63 @@ const textVerbosityOptions = [
 
 const supportsOpenAIAdvancedOptions = computed(() => supportsAdvancedChannelOptions(form.serviceType))
 
+const showModelMappingPresets = computed(() => {
+  return props.channelType === 'messages' && (form.serviceType === 'openai' || form.serviceType === 'responses')
+})
+
 const modelNameCollator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' })
+
+const modelMappingPresets: Record<
+  'gpt-5.4' | 'gpt-5.2-codex',
+  {
+    modelMapping: Record<string, string>
+    reasoningMapping: Record<string, 'none' | 'low' | 'medium' | 'high' | 'xhigh'>
+    fastMode: boolean
+    textVerbosity: 'low' | 'medium' | 'high'
+  }
+> = {
+  'gpt-5.4': {
+    modelMapping: {
+      opus: 'gpt-5.4',
+      sonnet: 'gpt-5.4',
+      haiku: 'gpt-5.4'
+    },
+    reasoningMapping: {
+      opus: 'xhigh',
+      sonnet: 'xhigh',
+      haiku: 'high'
+    },
+    fastMode: true,
+    textVerbosity: 'medium'
+  },
+  'gpt-5.2-codex': {
+    modelMapping: {
+      opus: 'gpt-5.2',
+      sonnet: 'gpt-5.2-codex',
+      haiku: 'gpt-5.2-codex'
+    },
+    reasoningMapping: {
+      opus: 'xhigh',
+      sonnet: 'xhigh',
+      haiku: 'high'
+    },
+    fastMode: true,
+    textVerbosity: 'medium'
+  }
+}
+
+const applyModelMappingPreset = (preset: keyof typeof modelMappingPresets) => {
+  const presetConfig = modelMappingPresets[preset]
+  form.modelMapping = { ...presetConfig.modelMapping }
+  form.fastMode = presetConfig.fastMode
+  form.textVerbosity = presetConfig.textVerbosity
+
+  if (supportsOpenAIAdvancedOptions.value) {
+    form.reasoningMapping = { ...presetConfig.reasoningMapping }
+  } else {
+    form.reasoningMapping = {}
+  }
+}
 
 // 模型优先级排序规则（索引越小优先级越高）
 const modelPriorityPatterns: RegExp[] = [
