@@ -77,27 +77,25 @@
                   v-for="modelResult in getModelResults(test)"
                   :key="`${test.protocol}-${modelResult.model}`"
                   location="top"
+                  :content-class="modelResult.success ? 'success-tooltip' : 'failure-tooltip'"
                 >
                   <template #activator="{ props }">
-                    <div v-bind="props" class="model-result-badge">
+                    <div v-bind="props" :class="['model-result-badge', modelResult.success ? 'success-badge' : 'error-badge']">
                       <span class="model-name">{{ modelResult.model }}</span>
-                      <v-icon
-                        :color="modelResult.success ? 'success' : 'error'"
-                        size="16"
-                      >
+                      <v-icon size="16">
                         {{ modelResult.success ? 'mdi-check-circle' : 'mdi-close-circle' }}
                       </v-icon>
                     </div>
                   </template>
                   <div v-if="modelResult.success" class="tooltip-content">
                     <div class="tooltip-title">{{ modelResult.model }}</div>
-                    <div class="tooltip-item">
-                      <v-icon size="14" class="mr-1">mdi-clock-outline</v-icon>
-                      {{ formatLatency(modelResult.latency) }}
+                    <div class="tooltip-row">
+                      <span class="tooltip-label">{{ t('capability.tooltipLatency') }}</span>
+                      <span class="tooltip-value">{{ formatLatency(modelResult.latency) }}</span>
                     </div>
-                    <div class="tooltip-item">
-                      <v-icon size="14" class="mr-1">mdi-waves</v-icon>
-                      {{ formatStreaming(modelResult) }}
+                    <div class="tooltip-row">
+                      <span class="tooltip-label">{{ t('capability.tooltipStreaming') }}</span>
+                      <span class="tooltip-value">{{ formatStreaming(modelResult) }}</span>
                     </div>
                   </div>
                   <div v-else class="tooltip-content">
@@ -115,7 +113,6 @@
               <tr>
                 <th>{{ t('capability.table.protocol') }}</th>
                 <th>{{ t('capability.table.status') }}</th>
-                <th>{{ t('capability.table.testModel') }}</th>
                 <th>{{ t('capability.table.successCount') }}</th>
                 <th>{{ t('capability.table.latency') }}</th>
                 <th>{{ t('capability.table.streaming') }}</th>
@@ -145,13 +142,15 @@
                     </v-tooltip>
                   </td>
                   <td>
-                    <span class="text-body-2 text-medium-emphasis">{{ getRecommendedModel(test) }}</span>
+                    <span :class="['success-ratio-text', getSuccessCount(test) === getAttemptedModels(test) ? 'is-success' : 'is-partial']">
+                      {{ formatSuccessRatio(test) }}
+                    </span>
                   </td>
                   <td>
-                    <span class="text-body-2">{{ formatSuccessRatio(test) }}</span>
-                  </td>
-                  <td>
-                    <span v-if="hasProtocolLatency(test)" class="text-body-2">{{ test.latency }}ms</span>
+                    <span v-if="hasProtocolLatency(test)" class="latency-value">
+                      <span class="latency-number">{{ test.latency }}</span>
+                      <span class="latency-unit">ms</span>
+                    </span>
                     <span v-else class="text-body-2 text-medium-emphasis">-</span>
                   </td>
                   <td>
@@ -185,8 +184,9 @@
                         :key="successProto"
                         size="x-small"
                         :color="getProtocolColor(successProto)"
-                        variant="outlined"
+                        variant="tonal"
                         rounded="lg"
+                        class="convert-btn"
                         @click="$emit('copyToTab', test.protocol)"
                       >
                         {{ t('capability.convert', { protocol: getProtocolDisplayName(successProto) }) }}
@@ -195,7 +195,7 @@
                   </td>
                 </tr>
                 <tr>
-                  <td colspan="7" class="model-results-cell">
+                  <td colspan="6" class="model-results-cell">
                     <div class="model-results-wrapper">
                       <div v-if="getModelResults(test).length === 0" class="text-body-2 text-medium-emphasis py-2">
                         {{ t('capability.modelDetailsUnavailable') }}
@@ -206,14 +206,12 @@
                           v-for="modelResult in getModelResults(test)"
                           :key="`${test.protocol}-${modelResult.model}`"
                           location="top"
+                          :content-class="modelResult.success ? 'success-tooltip' : 'failure-tooltip'"
                         >
                           <template #activator="{ props }">
-                            <div v-bind="props" class="model-result-badge">
+                            <div v-bind="props" :class="['model-result-badge', modelResult.success ? 'success-badge' : 'error-badge']">
                               <span class="model-name">{{ modelResult.model }}</span>
-                              <v-icon
-                                :color="modelResult.success ? 'success' : 'error'"
-                                size="16"
-                              >
+                              <v-icon size="16">
                                 {{ modelResult.success ? 'mdi-check-circle' : 'mdi-close-circle' }}
                               </v-icon>
                             </div>
@@ -389,14 +387,26 @@ defineExpose({ startTest, setLoading, setError })
 </script>
 
 <style scoped>
-:deep(.error-tooltip) {
-  color: rgba(var(--v-theme-on-surface), 0.92);
-  background-color: rgba(var(--v-theme-surface), 0.98);
-  border: 1px solid rgba(var(--v-theme-error), 0.45);
+:deep(.error-tooltip),
+:deep(.failure-tooltip),
+:deep(.success-tooltip) {
   font-weight: 600;
   letter-spacing: 0.2px;
   max-width: 400px;
   word-break: break-word;
+}
+
+:deep(.error-tooltip),
+:deep(.failure-tooltip) {
+  color: #991b1b;
+  background-color: #fff7f7;
+  border: 1px solid #fecaca;
+}
+
+:deep(.success-tooltip) {
+  color: #166534;
+  background-color: #f6fff8;
+  border: 1px solid #bbf7d0;
 }
 
 .capability-table :deep(th) {
@@ -415,8 +425,9 @@ defineExpose({ startTest, setLoading, setError })
   padding: 16px;
   margin-bottom: 12px;
   border-radius: 12px;
-  background: rgba(var(--v-theme-surface-variant), 0.16);
-  border: 1px solid rgba(var(--v-theme-outline), 0.2);
+  background: rgba(var(--v-theme-surface-variant), 0.12);
+  border: 1px solid rgba(var(--v-theme-outline), 0.16);
+  box-shadow: inset 3px 0 0 0 rgba(var(--v-theme-outline), 0.18);
 }
 
 .protocol-header {
@@ -428,11 +439,13 @@ defineExpose({ startTest, setLoading, setError })
 
 .model-results-cell {
   padding: 0 !important;
-  background: rgba(var(--v-theme-surface-variant), 0.16);
+  background: rgba(var(--v-theme-surface-variant), 0.12);
+  border-bottom: 1px solid rgba(var(--v-theme-outline), 0.16);
+  box-shadow: inset 3px 0 0 0 rgba(var(--v-theme-outline), 0.18);
 }
 
 .model-results-wrapper {
-  padding: 12px 16px;
+  padding: 14px 16px;
 }
 
 .model-results-flow {
@@ -444,28 +457,81 @@ defineExpose({ startTest, setLoading, setError })
 .model-result-badge {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
-  border-radius: 10px;
-  background: rgba(var(--v-theme-surface), 1);
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
-  border: 1.5px solid rgba(var(--v-theme-outline), 0.5);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  font-family: ui-monospace, SFMono-Regular, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  border: 1px solid transparent;
+}
+
+.model-result-badge.success-badge {
+  background: #f0fdf4;
+  color: #16a34a;
+  border-color: #dcfce7;
+}
+
+.model-result-badge.error-badge {
+  background: #fef2f2;
+  color: #dc2626;
+  border-color: #fee2e2;
+}
+
+.model-result-badge.success-badge :deep(.v-icon) {
+  color: #16a34a !important;
+}
+
+.model-result-badge.error-badge :deep(.v-icon) {
+  color: #dc2626 !important;
 }
 
 .model-result-badge:hover {
-  background: rgba(var(--v-theme-primary), 0.08);
-  border-color: rgba(var(--v-theme-primary), 0.6);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  transform: translateY(-1px);
+  filter: brightness(0.98);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
 }
 
 .model-name {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: currentColor;
+  letter-spacing: 0;
+}
+
+.latency-value {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
+}
+
+.success-ratio-text {
+  min-width: 2.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.success-ratio-text.is-success {
+  color: rgb(var(--v-theme-success));
+}
+
+.success-ratio-text.is-partial {
+  color: rgba(var(--v-theme-on-surface), 0.82);
+}
+
+.latency-number {
   font-size: 0.875rem;
   font-weight: 600;
   color: rgba(var(--v-theme-on-surface), 0.92);
-  letter-spacing: 0.01em;
+}
+
+.latency-unit {
+  font-size: 0.75rem;
+  color: rgba(var(--v-theme-on-surface), 0.56);
+}
+
+.convert-btn {
+  text-transform: none;
 }
 
 .tooltip-content {
@@ -487,9 +553,28 @@ defineExpose({ startTest, setLoading, setError })
   color: rgba(var(--v-theme-on-surface), 0.75);
 }
 
+.tooltip-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.8125rem;
+  margin: 6px 0;
+}
+
+.tooltip-label {
+  color: currentColor;
+  opacity: 0.72;
+}
+
+.tooltip-value {
+  color: currentColor;
+  font-weight: 600;
+}
+
 .tooltip-error {
   font-size: 0.8125rem;
-  color: rgb(var(--v-theme-error));
+  color: inherit;
   margin-top: 4px;
   max-width: 300px;
   word-break: break-word;

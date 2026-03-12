@@ -44,7 +44,6 @@ export type MessageKey =
   | 'capability.noCompatibleProtocols'
   | 'capability.table.protocol'
   | 'capability.table.status'
-  | 'capability.table.testModel'
   | 'capability.table.successCount'
   | 'capability.table.latency'
   | 'capability.table.streaming'
@@ -57,6 +56,8 @@ export type MessageKey =
   | 'capability.success'
   | 'capability.failed'
   | 'capability.failedTooltip'
+  | 'capability.tooltipLatency'
+  | 'capability.tooltipStreaming'
   | 'capability.supported'
   | 'capability.unsupported'
   | 'capability.copyToTab'
@@ -354,7 +355,6 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'capability.noCompatibleProtocols': 'No compatible protocols',
     'capability.table.protocol': 'Protocol',
     'capability.table.status': 'Status',
-    'capability.table.testModel': 'Test model',
     'capability.table.successCount': 'Success/Total',
     'capability.table.latency': 'Latency',
     'capability.table.streaming': 'Streaming',
@@ -367,6 +367,8 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'capability.success': 'Success',
     'capability.failed': 'Failed',
     'capability.failedTooltip': 'Test failed',
+    'capability.tooltipLatency': 'Latency',
+    'capability.tooltipStreaming': 'Streaming',
     'capability.supported': 'Supported',
     'capability.unsupported': 'Unsupported',
     'capability.copyToTab': 'Copy to this tab',
@@ -663,7 +665,6 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'capability.noCompatibleProtocols': 'Tidak ada protokol kompatibel',
     'capability.table.protocol': 'Protokol',
     'capability.table.status': 'Status',
-    'capability.table.testModel': 'Model uji',
     'capability.table.successCount': 'Berhasil/Total',
     'capability.table.latency': 'Latensi',
     'capability.table.streaming': 'Streaming',
@@ -676,6 +677,8 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'capability.success': 'Berhasil',
     'capability.failed': 'Gagal',
     'capability.failedTooltip': 'Tes gagal',
+    'capability.tooltipLatency': 'Latensi',
+    'capability.tooltipStreaming': 'Streaming',
     'capability.supported': 'Didukung',
     'capability.unsupported': 'Tidak didukung',
     'capability.copyToTab': 'Salin ke tab ini',
@@ -972,7 +975,6 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'capability.noCompatibleProtocols': '无兼容协议',
     'capability.table.protocol': '协议',
     'capability.table.status': '状态',
-    'capability.table.testModel': '测试模型',
     'capability.table.successCount': '成功数/总数',
     'capability.table.latency': '延迟',
     'capability.table.streaming': '流式',
@@ -985,6 +987,8 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'capability.success': '成功',
     'capability.failed': '失败',
     'capability.failedTooltip': '测试失败',
+    'capability.tooltipLatency': '延迟',
+    'capability.tooltipStreaming': '流式',
     'capability.supported': '支持',
     'capability.unsupported': '不支持',
     'capability.copyToTab': '复制到此 Tab',
