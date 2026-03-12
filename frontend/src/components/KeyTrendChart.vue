@@ -8,10 +8,10 @@
       </template>
     </v-snackbar>
 
-    <!-- 头部：时间范围选择（左） + 视图切换（右） -->
+    <!-- Header: duration selector (left) + view switcher (right) -->
     <div class="chart-header d-flex align-center justify-space-between mb-3">
       <div class="d-flex align-center ga-2">
-        <!-- 时间范围选择器 -->
+        <!-- Duration selector -->
         <v-btn-toggle v-model="selectedDuration" mandatory density="compact" variant="outlined" divided :disabled="isLoading">
           <v-btn value="1h" size="x-small">{{ t('chart.1h') }}</v-btn>
           <v-btn value="6h" size="x-small">{{ t('chart.6h') }}</v-btn>
@@ -24,7 +24,7 @@
         </v-btn>
       </div>
 
-      <!-- 视图切换按钮 -->
+      <!-- View switcher -->
       <v-btn-toggle v-model="selectedView" mandatory density="compact" variant="outlined" divided :disabled="isLoading">
         <v-btn value="traffic" size="x-small">
           <v-icon size="small" class="mr-1">mdi-chart-line</v-icon>
@@ -52,7 +52,7 @@
       <div class="text-caption mt-2">{{ t('chart.noKeyUsageInRange') }}</div>
     </div>
 
-    <!-- 图表区域 -->
+    <!-- Chart area -->
     <div v-else class="chart-area">
       <apexchart
         ref="chartRef"
@@ -136,7 +136,7 @@ const savedPrefs = loadSavedPreferences(props.channelType)
 const selectedView = ref<ViewMode>(savedPrefs.view)
 const selectedDuration = ref<Duration>(savedPrefs.duration)
 const isLoading = ref(false)
-const isRefreshing = ref(false) // includes auto refresh (silent) requests
+const isRefreshing = ref(false) // includes auto-refresh (silent) requests
 const historyData = ref<ChannelKeyMetricsHistoryResponse | null>(null)
 const showError = ref(false)
 const errorMessage = ref('')
@@ -168,33 +168,33 @@ const stopAutoRefresh = () => {
   }
 }
 
-// Key colors - 支持最多 10 个 key
+// Key color palette - supports up to 10 keys
 const keyColors = [
-  '#3b82f6', // 蓝色
-  '#f97316', // 橙色
-  '#10b981', // 绿色
-  '#8b5cf6', // 紫色
-  '#ec4899', // 粉色
-  '#eab308', // 黄色
-  '#06b6d4', // 青色
-  '#f43f5e', // 玫红
-  '#84cc16', // 酸橙绿
-  '#6366f1', // 靛蓝
+  '#3b82f6', // Blue
+  '#f97316', // Orange
+  '#10b981', // Green
+  '#8b5cf6', // Purple
+  '#ec4899', // Pink
+  '#eab308', // Yellow
+  '#06b6d4', // Cyan
+  '#f43f5e', // Rose
+  '#84cc16', // Lime
+  '#6366f1', // Indigo
 ]
 
-// 失败率阈值：超过此值显示红色背景
+// Failure rate threshold: show red background when exceeded
 const FAILURE_RATE_THRESHOLD = 0.1 // 10%
 
-// 聚合间隔配置（与后端保持一致）
-// 1h = 1m, 6h = 5m, 24h = 15m, today = 动态计算
+// Aggregation interval settings (kept consistent with the backend)
+// 1h = 1m, 6h = 5m, 24h = 15m, today = dynamically calculated
 const AGGREGATION_INTERVALS: Record<Duration, number> = {
-  '1h': 60000,    // 1 分钟
-  '6h': 300000,   // 5 分钟
-  '24h': 900000,  // 15 分钟
-  'today': 300000 // 5 分钟（今日默认使用 5 分钟间隔）
+  '1h': 60000,    // 1 minute
+  '6h': 300000,   // 5 minutes
+  '24h': 900000,  // 15 minutes
+  'today': 300000 // 5 minutes (today uses 5-minute intervals by default)
 }
 
-// 根据时间范围获取聚合间隔
+// Get the aggregation interval based on the selected duration
 const getAggregationInterval = (duration: Duration): number => {
   const interval = AGGREGATION_INTERVALS[duration]
   if (interval === undefined) {
@@ -204,7 +204,7 @@ const getAggregationInterval = (duration: Duration): number => {
   return interval
 }
 
-// 将时间戳对齐到聚合桶（向下取整）
+// Align the timestamp to the aggregation bucket (round down)
 const alignToBucket = (timestamp: number, interval: number): number => {
   return Math.floor(timestamp / interval) * interval
 }
@@ -217,21 +217,21 @@ const hasData = computed(() => {
     historyData.value.keys.some(k => k.dataPoints && k.dataPoints.length > 0)
 })
 
-// Computed: 计算每个时间点的加权平均成功率，用于背景色带
-// 返回格式: { timestamp: number, failureRate: number }[]
+// Computed: calculate the weighted average failure rate for each time point for background bands
+// Return format: { timestamp: number, failureRate: number }[]
 const timePointFailureRates = computed(() => {
   if (!historyData.value?.keys?.length) return []
 
-  // 获取当前聚合间隔，与 tooltip 保持一致
+  // Get the current aggregation interval to keep it aligned with the tooltip
   const interval = getAggregationInterval(selectedDuration.value)
 
-  // 按对齐后的时间戳聚合所有 key 的数据（与 tooltip 逻辑一致）
+  // Aggregate data for all keys by aligned timestamp (consistent with tooltip logic)
   const timeMap = new Map<number, { totalRequests: number; totalFailures: number }>()
 
   historyData.value.keys.forEach(keyData => {
     keyData.dataPoints?.forEach(dp => {
       const rawTs = new Date(dp.timestamp).getTime()
-      // 使用 alignToBucket 对齐时间戳，确保与 tooltip 数据匹配
+      // Align timestamps with alignToBucket to keep them consistent with tooltip data
       const alignedTs = alignToBucket(rawTs, interval)
       const existing = timeMap.get(alignedTs) || { totalRequests: 0, totalFailures: 0 }
       existing.totalRequests += dp.requestCount
@@ -240,7 +240,7 @@ const timePointFailureRates = computed(() => {
     })
   })
 
-  // 转换为数组并计算失败率
+  // Convert to an array and calculate failure rates
   return Array.from(timeMap.entries())
     .map(([timestamp, data]) => ({
       timestamp,
@@ -249,45 +249,45 @@ const timePointFailureRates = computed(() => {
     .sort((a, b) => a.timestamp - b.timestamp)
 })
 
-// Helper: 根据失败率计算透明度（失败率越高，颜色越深）
+// Helper: calculate opacity based on failure rate (higher failure rate = darker color)
 // 10% -> 0.08, 20% -> 0.15, 30% -> 0.22, 50% -> 0.35, 70% -> 0.48, 100% -> 0.65
 const getFailureOpacity = (failureRate: number): number => {
   const minOpacity = 0.08
   const maxOpacity = 0.65
-  // 从阈值开始计算，到 100% 时达到最大透明度
+  // Start at the threshold and reach maximum opacity at 100%
   const normalizedRate = Math.min((failureRate - FAILURE_RATE_THRESHOLD) / (1 - FAILURE_RATE_THRESHOLD), 1)
   return minOpacity + normalizedRate * (maxOpacity - minOpacity)
 }
 
-// Computed: 生成 ApexCharts annotations（红色背景色带，深浅随失败率变化）
+// Computed: generate ApexCharts annotations (red background bands with depth based on failure rate)
 const failureAnnotations = computed(() => {
-  if (selectedView.value !== 'traffic') return [] // 只在流量模式显示
+  if (selectedView.value !== 'traffic') return [] // Show only in traffic mode
 
   const rates = timePointFailureRates.value
   if (rates.length === 0) return []
 
   const annotations: any[] = []
 
-  // 根据当前时间范围获取聚合间隔（与后端保持一致）
+  // Get the aggregation interval for the current duration (consistent with the backend)
   const DEFAULT_INTERVAL = getAggregationInterval(selectedDuration.value)
-  // 最大间隔限制：默认间隔的 2 倍，防止数据稀疏时色带过大
+  // Maximum interval limit: 2x the default interval to avoid oversized bands for sparse data
   const MAX_INTERVAL = DEFAULT_INTERVAL * 2
 
-  // 为每个超过阈值的点单独创建一个 annotation
+  // Create a separate annotation for each point above the threshold
   rates.forEach((point, index) => {
     if (point.failureRate >= FAILURE_RATE_THRESHOLD) {
-      // 动态计算该点的时间间隔：优先使用与相邻点的实际间隔
+      // Dynamically determine the interval for this point, preferring the actual gap to adjacent points
       let interval = DEFAULT_INTERVAL
       if (rates.length > 1) {
         if (index > 0) {
-          // 使用与前一个点的间隔
+          // Use the interval from the previous point
           interval = point.timestamp - rates[index - 1].timestamp
         } else if (index < rates.length - 1) {
-          // 第一个点：使用与后一个点的间隔
+          // First point: use the interval to the next point
           interval = rates[index + 1].timestamp - point.timestamp
         }
       }
-      // 限制最大间隔，避免数据稀疏时色带过大
+      // Cap the interval to avoid oversized bands when data is sparse
       interval = Math.min(interval, MAX_INTERVAL)
 
       annotations.push({
@@ -315,22 +315,22 @@ const _allDataPoints = computed(() => {
 const chartOptions = computed<ApexOptions>(() => {
   const mode = selectedView.value
 
-  // Token/Cache 模式使用双 Y 轴（左侧 Input/Read，右侧 Output/Write）
-  // 所有 Input series 共享左侧 Y 轴，所有 Output series 共享右侧 Y 轴
+  // Token/cache mode uses dual Y-axes (left for Input/Read, right for Output/Write)
+  // All Input series share the left Y-axis, and all Output series share the right Y-axis
   let yaxisConfig: any
   if (mode === 'tokens' || mode === 'cache') {
     const keyCount = historyData.value?.keys?.length || 1
     const inLabel = mode === 'tokens' ? 'Input' : 'Cache Read'
     const outLabel = mode === 'tokens' ? 'Output' : 'Cache Write'
 
-    // 第一个 Key 的 series 名称作为 Y 轴锚点
+    // Use the first key's series name as the Y-axis anchor
     const firstKey = historyData.value?.keys?.[0]
     const firstDisplayName = firstKey?.model ? `${firstKey.keyMask}/${firstKey.model}` : firstKey?.keyMask
     const anchorInName = firstDisplayName ? `${firstDisplayName} ${inLabel}` : undefined
     const anchorOutName = firstDisplayName ? `${firstDisplayName} ${outLabel}` : undefined
 
     yaxisConfig = [
-      // 左侧 Y 轴（Input/Read）
+      // Left Y-axis (Input/Read)
       {
         seriesName: anchorInName,
         show: true,
@@ -340,7 +340,7 @@ const chartOptions = computed<ApexOptions>(() => {
         },
         min: 0
       },
-      // 右侧 Y 轴（Output/Write）
+      // Right Y-axis (Output/Write)
       {
         seriesName: anchorOutName,
         opposite: true,
@@ -353,7 +353,7 @@ const chartOptions = computed<ApexOptions>(() => {
       }
     ]
 
-    // 后续 Key 的 series 绑定到同一对 Y 轴（seriesName 指向锚点）
+    // Bind later key series to the same Y-axis pair (seriesName points to the anchor)
     for (let i = 1; i < keyCount; i++) {
       yaxisConfig.push({
         seriesName: anchorInName,
@@ -410,7 +410,7 @@ const chartOptions = computed<ApexOptions>(() => {
     stroke: {
       curve: 'smooth' as const,
       width: 2,
-      // traffic 模式全用实线；tokens/cache 模式：Input/Read 实线，Output/Write 虚线
+      // Use a solid line for traffic mode; use solid for Input/Read and dashed for Output/Write in tokens/cache mode
       dashArray: getDashArray()
     },
     grid: {
@@ -458,11 +458,11 @@ const buildChartSeries = (data: ChannelKeyMetricsHistoryResponse | null) => {
   const result: { name: string; data: { x: number; y: number }[] }[] = []
 
   data.keys.forEach((keyData, _keyIndex) => {
-    // 显示名称：有模型时显示 "keyMask/model"，否则只显示 keyMask
+    // Display name: show "keyMask/model" when a model exists; otherwise show only keyMask
     const displayName = keyData.model ? `${keyData.keyMask}/${keyData.model}` : keyData.keyMask
 
     if (mode === 'traffic') {
-      // 单向模式：只显示请求数
+      // One-way mode: show request count only
       result.push({
         name: displayName,
         data: keyData.dataPoints.map(dp => ({
@@ -471,11 +471,11 @@ const buildChartSeries = (data: ChannelKeyMetricsHistoryResponse | null) => {
         }))
       })
     } else {
-      // 双向模式：每个 key 创建两个 series（Input/Output 或 Read/Creation）
+      // Bidirectional mode: create two series per key (Input/Output or Read/Write)
       const inLabel = mode === 'tokens' ? 'Input' : 'Cache Read'
       const outLabel = mode === 'tokens' ? 'Output' : 'Cache Write'
 
-      // 正向（Input/Read）
+      // Forward direction (Input/Read)
       result.push({
         name: `${displayName} ${inLabel}`,
         data: keyData.dataPoints.map(dp => {
@@ -489,7 +489,7 @@ const buildChartSeries = (data: ChannelKeyMetricsHistoryResponse | null) => {
         })
       })
 
-      // Output/Write - 使用虚线区分
+      // Output/Write - distinguish with a dashed line
       result.push({
         name: `${displayName} ${outLabel}`,
         data: keyData.dataPoints.map(dp => {
@@ -557,12 +557,12 @@ const buildTrafficTooltip = ({ seriesIndex, dataPointIndex, w }: any): string =>
     minute: '2-digit'
   })
 
-  // 收集该时间点所有 key 的数据
+  // Collect data for all keys at this time point
   const keyStats: { keyMask: string; success: number; failure: number; total: number; color: string }[] = []
   let grandTotal = 0
   let grandFailure = 0
 
-  // HTML 转义函数，防止 XSS
+  // HTML escaping helper to prevent XSS
   const escapeHtml = (str: string): string => {
     return str
       .replace(/&/g, '&amp;')
@@ -572,19 +572,19 @@ const buildTrafficTooltip = ({ seriesIndex, dataPointIndex, w }: any): string =>
       .replace(/'/g, '&#39;')
   }
 
-  // 获取当前聚合间隔，用于时间戳对齐匹配
+  // Get the current aggregation interval for aligned timestamp matching
   const interval = getAggregationInterval(selectedDuration.value)
   const alignedTimestamp = alignToBucket(timestamp, interval)
 
   historyData.value.keys.forEach((keyData, keyIndex) => {
-    // 使用 filter 累加同一时间桶内的所有数据点（防御性编程）
+    // Use filter to accumulate all data points in the same time bucket (defensive programming)
     const matchingPoints = keyData.dataPoints?.filter(p => {
       const dpTimestamp = new Date(p.timestamp).getTime()
       return alignToBucket(dpTimestamp, interval) === alignedTimestamp
     }) || []
 
     if (matchingPoints.length > 0) {
-      // 累加所有匹配点的统计数据
+      // Aggregate statistics from all matching points
       const aggregated = matchingPoints.reduce(
         (acc, dp) => ({
           success: acc.success + dp.successCount,
@@ -595,7 +595,7 @@ const buildTrafficTooltip = ({ seriesIndex, dataPointIndex, w }: any): string =>
       )
 
       if (aggregated.total > 0) {
-        // 显示名称：有模型时显示 "keyMask/model"
+        // Display name: show "keyMask/model" when a model exists
         const displayName = keyData.model ? `${keyData.keyMask}/${keyData.model}` : keyData.keyMask
         keyStats.push({
           keyMask: escapeHtml(displayName),
@@ -615,11 +615,11 @@ const buildTrafficTooltip = ({ seriesIndex, dataPointIndex, w }: any): string =>
   const grandFailureRate = grandTotal > 0 ? (grandFailure / grandTotal * 100).toFixed(1) : '0'
   const hasFailure = grandFailure > 0
 
-  // 构建 HTML
+  // Build HTML
   let html = `<div style="padding: 8px 12px; font-size: 12px;">`
   html += `<div style="font-weight: 600; margin-bottom: 6px; color: ${hasFailure ? '#ef4444' : 'inherit'};">${timeStr}</div>`
 
-  // 每个 key 的详情
+  // Details for each key
   keyStats.forEach(stat => {
     const failureRate = stat.total > 0 ? (stat.failure / stat.total * 100).toFixed(0) : '0'
     const hasKeyFailure = stat.failure > 0
@@ -633,7 +633,7 @@ const buildTrafficTooltip = ({ seriesIndex, dataPointIndex, w }: any): string =>
     html += `</div>`
   })
 
-  // 汇总行（如果有多个 key）
+  // Summary row (when multiple keys exist)
   if (keyStats.length > 1) {
     html += `<div style="border-top: 1px solid rgba(128,128,128,0.3); margin-top: 6px; padding-top: 6px; font-weight: 600;">`
     html += `<span>${t('chart.total')}: ${grandTotal} ${t('chart.requestUnit')}</span>`
@@ -654,7 +654,7 @@ const _getDurationMs = (duration: Duration): number => {
     case '6h': return 6 * 60 * 60 * 1000
     case '24h': return 24 * 60 * 60 * 1000
     case 'today': {
-      // 计算从今日 0 点到现在的毫秒数
+      // Calculate milliseconds from the start of today to now
       const now = new Date()
       const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate())
       return now.getTime() - startOfDay.getTime()
@@ -664,39 +664,39 @@ const _getDurationMs = (duration: Duration): number => {
 }
 
 // Helper: get dash array for stroke style
-// traffic 模式：全部实线
-// tokens/cache 模式：每个 key 有两个 series（正向实线、负向虚线）
+// traffic mode: all solid lines
+// tokens/cache mode: each key has two series (solid forward line, dashed reverse line)
 const getDashArray = (): number | number[] => {
   if (selectedView.value === 'traffic') {
-    return 0 // 全部实线
+    return 0 // All solid lines
   }
-  // 双向模式：每个 key 产生 2 个 series [正向实线, 负向虚线]
+  // Bidirectional mode: each key produces 2 series [solid forward line, dashed reverse line]
   const keyCount = historyData.value?.keys?.length || 0
   const dashArray: number[] = []
   for (let i = 0; i < keyCount; i++) {
-    dashArray.push(0)  // 正向（Input/Read）- 实线
-    dashArray.push(5)  // 负向（Output/Write）- 虚线
+    dashArray.push(0)  // Forward direction (Input/Read) - solid
+    dashArray.push(5)  // Reverse direction (Output/Write) - dashed
   }
   return dashArray.length > 0 ? dashArray : 0
 }
 
 // Helper: get chart colors aligned with series count
-// traffic 模式：每个 key 一个 series，一种颜色
-// tokens/cache 模式：每个 key 两个 series（Input/Output），使用相同颜色
+// traffic mode: one series and one color per key
+// tokens/cache mode: each key has two series (Input/Output) using the same color
 const getChartColors = (): string[] => {
   const keyCount = historyData.value?.keys?.length || 0
   if (keyCount === 0) return keyColors
 
   if (selectedView.value === 'traffic') {
-    // 流量模式：每个 key 一种颜色
+    // Traffic mode: one color per key
     return historyData.value!.keys.map((_, i) => keyColors[i % keyColors.length])
   }
-  // 双向模式：每个 key 复制颜色（Input 和 Output 同色）
+  // Bidirectional mode: duplicate the color for each key (same color for Input and Output)
   const colors: string[] = []
   for (let i = 0; i < keyCount; i++) {
     const color = keyColors[i % keyColors.length]
-    colors.push(color)  // 正向
-    colors.push(color)  // 负向（同色）
+    colors.push(color)  // Forward direction
+    colors.push(color)  // Reverse direction (same color)
   }
   return colors
 }

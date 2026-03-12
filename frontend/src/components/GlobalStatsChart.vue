@@ -197,13 +197,13 @@ const chartColors = {
   }
 }
 
-// 模型颜色数组
+// Model color palette
 const modelColors = [
   '#3b82f6', '#10b981', '#f97316', '#8b5cf6', '#ef4444',
   '#06b6d4', '#ec4899', '#84cc16', '#f59e0b', '#6366f1'
 ]
 
-// 按总请求量排序的模型列表
+// Model list sorted by total request count
 const sortedModels = computed(() => {
   const models = historyData.value?.modelDataPoints
   if (!models) return []
@@ -212,25 +212,25 @@ const sortedModels = computed(() => {
     .sort((a, b) => b.total - a.total)
 })
 
-// 是否有多模型数据（用于判断是否启用堆叠模式）
+// Whether multi-model data exists (used to determine stacked mode)
 const hasMultiModel = computed(() => sortedModels.value.length > 0)
 
-// 失败率阈值：超过此值显示红色背景
+// Failure rate threshold: show red background when exceeded
 const FAILURE_RATE_THRESHOLD = 0.1 // 10%
 
-// 聚合间隔配置（与后端保持一致）
+// Aggregation interval settings (kept consistent with the backend)
 const AGGREGATION_INTERVALS: Record<Duration, number> = {
-  '1h': 60000,    // 1 分钟
-  '6h': 300000,   // 5 分钟
-  '24h': 900000,  // 15 分钟
-  'today': 300000 // 5 分钟
+  '1h': 60000,    // 1 minute
+  '6h': 300000,   // 5 minutes
+  '24h': 900000,  // 15 minutes
+  'today': 300000 // 5 minutes
 }
 
 const getAggregationInterval = (duration: Duration): number => {
   return AGGREGATION_INTERVALS[duration] || 60000
 }
 
-// 计算每个时间点的失败率
+// Calculate the failure rate for each time point
 const timePointFailureRates = computed(() => {
   if (!historyData.value?.dataPoints?.length) return []
   return historyData.value.dataPoints
@@ -241,7 +241,7 @@ const timePointFailureRates = computed(() => {
     }))
 })
 
-// 根据失败率计算透明度
+// Calculate opacity based on failure rate
 const getFailureOpacity = (failureRate: number): number => {
   const minOpacity = 0.08
   const maxOpacity = 0.65
@@ -249,7 +249,7 @@ const getFailureOpacity = (failureRate: number): number => {
   return minOpacity + normalizedRate * (maxOpacity - minOpacity)
 }
 
-// 生成失败率背景色带 annotations
+// Generate failure-rate background band annotations
 const failureAnnotations = computed(() => {
   if (selectedView.value !== 'traffic') return []
   const rates = timePointFailureRates.value
@@ -295,7 +295,7 @@ const chartOptions = computed<ApexOptions>(() => {
   const mode = selectedView.value
   const isTrafficMultiModel = mode === 'traffic' && hasMultiModel.value
 
-  // 流量模式颜色：多模型时按模型分配，否则单色
+  // Traffic mode colors: assign by model in multi-model mode, otherwise use a single color
   const trafficColors = isTrafficMultiModel
     ? sortedModels.value.map((_, i) => modelColors[i % modelColors.length])
     : [chartColors.traffic.primary]
@@ -400,7 +400,7 @@ const chartOptions = computed<ApexOptions>(() => {
   }
 })
 
-// 构建流量模式的自定义 tooltip
+// Build a custom tooltip for traffic mode
 const buildTrafficTooltip = ({ dataPointIndex }: any): string => {
   if (!historyData.value?.dataPoints) return ''
   const dp = historyData.value.dataPoints[dataPointIndex]
@@ -410,7 +410,7 @@ const buildTrafficTooltip = ({ dataPointIndex }: any): string => {
   const timeStr = date.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
   const hasFailure = dp.failureCount > 0
 
-  // HTML 转义函数
+  // HTML escaping helper
   const escapeHtml = (str: string): string => {
     return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
   }
@@ -420,7 +420,7 @@ const buildTrafficTooltip = ({ dataPointIndex }: any): string => {
 
   const models = sortedModels.value
   if (models.length > 0) {
-    // 多模型模式：显示每个模型的请求数和失败数
+    // Multi-model mode: show request and failure counts for each model
     models.forEach((model, idx) => {
       const mdp = model.points[dataPointIndex]
       if (!mdp || mdp.requestCount === 0) return
@@ -436,7 +436,7 @@ const buildTrafficTooltip = ({ dataPointIndex }: any): string => {
       }
       html += `</div>`
     })
-    // 合计行
+    // Totals row
     const grandFailureRate = dp.requestCount > 0 ? (dp.failureCount / dp.requestCount * 100).toFixed(1) : '0'
     html += `<div style="border-top: 1px solid rgba(128,128,128,0.3); margin-top: 6px; padding-top: 6px; font-weight: 600;">`
     html += `<span>${t('chart.total')}: ${dp.requestCount} ${t('chart.requestUnit')}</span>`
@@ -445,7 +445,7 @@ const buildTrafficTooltip = ({ dataPointIndex }: any): string => {
     }
     html += `</div>`
   } else {
-    // 单曲线降级模式
+    // Single-series fallback mode
     const failureRate = dp.requestCount > 0 ? (dp.failureCount / dp.requestCount * 100).toFixed(1) : '0'
     html += `<div style="display: flex; align-items: center; margin: 4px 0;">`
     html += `<span style="width: 10px; height: 10px; border-radius: 50%; background: #3b82f6; margin-right: 6px;"></span>`
@@ -469,7 +469,7 @@ const chartSeries = computed(() => {
   const mode = selectedView.value
 
   if (mode === 'traffic') {
-    // 有模型数据时按模型生成多 series，否则降级为单曲线
+    // Generate multiple series by model when model data exists; otherwise fall back to a single series
     const models = sortedModels.value
     if (models.length > 0) {
       return models.map(model => ({
@@ -528,7 +528,7 @@ const refreshData = async (isAutoRefresh = false) => {
       newData = await api.getResponsesGlobalStats(selectedDuration.value)
     }
 
-    // Check if we can use updateSeries for smooth update
+    // Check whether updateSeries can be used for a smooth update
     const oldModels = historyData.value?.modelDataPoints ? Object.keys(historyData.value.modelDataPoints).sort().join(',') : ''
     const newModels = newData.modelDataPoints ? Object.keys(newData.modelDataPoints).sort().join(',') : ''
     const canUpdateInPlace = isAutoRefresh &&

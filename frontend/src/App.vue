@@ -153,6 +153,31 @@
         </template>
       </div>
 
+      <!-- 桌面端语言切换 -->
+      <v-menu v-if="!$vuetify.display.xs" location="bottom end">
+        <template #activator="{ props: menuProps }">
+          <v-btn
+            v-bind="menuProps"
+            icon
+            variant="text"
+            size="small"
+            class="header-btn language-switch-btn"
+          >
+            <span class="language-switch-label">{{ currentLanguageShortLabel }}</span>
+          </v-btn>
+        </template>
+        <v-list density="compact" nav>
+          <v-list-item
+            v-for="option in languageOptions"
+            :key="option.value"
+            :active="currentLocale === option.value"
+            @click="setLocale(option.value)"
+          >
+            <v-list-item-title>{{ option.label }}</v-list-item-title>
+          </v-list-item>
+        </v-list>
+      </v-menu>
+
       <!-- 暗色模式切换 -->
       <v-btn icon variant="text" size="small" class="header-btn" @click="toggleDarkMode">
         <v-icon size="20">{{
@@ -410,6 +435,7 @@ import { usePreferencesStore } from './stores/preferences'
 import { useDialogStore } from './stores/dialog'
 import { useSystemStore } from './stores/system'
 import { useI18n } from './i18n'
+import type { SupportedLocale } from './i18n'
 import AddChannelModal from './components/AddChannelModal.vue'
 import CapabilityTestDialog from './components/CapabilityTestDialog.vue'
 // 异步加载图表组件，减少首屏 JS 体积
@@ -436,7 +462,18 @@ const dialogStore = useDialogStore()
 
 // 系统状态 Store
 const systemStore = useSystemStore()
-const { t } = useI18n()
+const { locale, t, setLocale } = useI18n()
+
+const languageOptions: Array<{ value: SupportedLocale, label: string, shortLabel: string }> = [
+  { value: 'en', label: 'English', shortLabel: 'EN' },
+  { value: 'id', label: 'Bahasa Indonesia', shortLabel: 'ID' },
+  { value: 'zh-CN', label: '简体中文', shortLabel: 'ZH' },
+]
+
+const currentLocale = computed(() => locale.value)
+const currentLanguageShortLabel = computed(() => {
+  return languageOptions.find(option => option.value === currentLocale.value)?.shortLabel ?? currentLocale.value.slice(0, 2).toUpperCase()
+})
 
 // API 类型 Tab 选项（移动端下拉菜单使用）
 const apiTabOptions = [
@@ -1217,6 +1254,21 @@ a.api-type-text {
   box-shadow: 2px 2px 0 0 rgb(var(--v-theme-on-surface)) !important;
   margin-left: 4px;
   transition: all 0.1s ease !important;
+}
+
+.language-switch-btn {
+  border-radius: 999px !important;
+}
+
+.language-switch-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2ch;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1;
 }
 
 .v-theme--dark .header-btn {

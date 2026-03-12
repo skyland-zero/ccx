@@ -32,7 +32,7 @@
       </v-btn-toggle>
     </div>
 
-    <!-- 紧凑摘要 -->
+    <!-- Compact summary -->
     <div v-if="topModels.length" class="compact-summary d-flex align-center ga-3 mb-2 text-caption flex-wrap">
       <span v-for="(m, i) in topModels" :key="m.name">
         <span :style="{ color: modelColors[i % modelColors.length] }">●</span>
@@ -79,7 +79,7 @@ const theme = useTheme()
 const isDark = computed(() => theme.global.current.value.dark)
 const { t } = useI18n()
 
-// 持久化偏好
+// Persisted preferences
 const storageKey = (key: string) => `modelStats:${props.apiType}:${key}`
 const loadPref = (apiType: string) => ({
   duration: (localStorage.getItem(`modelStats:${apiType}:duration`) as Duration) || '6h',
@@ -94,7 +94,7 @@ const historyData = ref<ModelStatsHistoryResponse | null>(null)
 const showError = ref(false)
 const errorMessage = ref('')
 
-// 模型配色
+// Model color palette
 const modelColors = [
   '#3b82f6', '#10b981', '#f97316', '#8b5cf6', '#ef4444',
   '#06b6d4', '#ec4899', '#84cc16', '#f59e0b', '#6366f1'
@@ -106,7 +106,7 @@ const formatNumber = (num: number): string => {
   return num.toFixed(0)
 }
 
-// 按请求量排序的模型列表
+// Model list sorted by request count
 const sortedModels = computed(() => {
   if (!historyData.value?.models) return []
   return Object.entries(historyData.value.models)
@@ -212,11 +212,11 @@ const refreshData = async (silent = false) => {
   }
 }
 
-// 自动刷新
+// Auto refresh
 let timer: ReturnType<typeof setInterval> | null = null
 const startAutoRefresh = () => {
   stopAutoRefresh()
-  timer = setInterval(() => refreshData(true), 5000) // 5s 轮询，降低锁竞争
+  timer = setInterval(() => refreshData(true), 5000) // Poll every 5s to reduce lock contention
 }
 const stopAutoRefresh = () => { if (timer) { clearInterval(timer); timer = null } }
 

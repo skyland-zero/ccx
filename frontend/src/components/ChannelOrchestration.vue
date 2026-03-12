@@ -1,6 +1,6 @@
 <template>
   <v-card elevation="0" rounded="lg" class="channel-orchestration" variant="flat">
-    <!-- 调度器统计信息 -->
+    <!-- Scheduler statistics -->
     <v-card-title class="d-flex align-center justify-space-between py-3 px-0">
       <div class="d-flex align-center" style="flex-shrink: 1; min-width: 0;">
         <v-icon class="mr-2" color="primary">mdi-swap-vertical-bold</v-icon>
@@ -28,7 +28,7 @@
 
     <v-divider />
 
-    <!-- 故障转移序列 (active + suspended) -->
+    <!-- Failover sequence (active + suspended) -->
     <div class="pt-3 pb-2">
       <div class="d-flex align-center justify-space-between mb-2">
         <div class="text-subtitle-2 text-medium-emphasis d-flex align-center">
@@ -42,7 +42,7 @@
         </div>
       </div>
 
-      <!-- 拖拽列表 -->
+      <!-- Draggable list -->
       <draggable
         v-model="activeChannels"
         item-key="index"
@@ -59,9 +59,9 @@
               :class="{ 'is-suspended': element.status === 'suspended' }"
               @click="toggleChannelChart(element.index)"
             >
-              <!-- SVG 活跃度波形柱状图背景 -->
+              <!-- SVG activity waveform bar chart background -->
               <svg class="activity-chart-bg" preserveAspectRatio="none" viewBox="0 0 150 100">
-                <!-- 渐变定义（为每个柱子单独定义渐变） -->
+                <!-- Gradient definitions (define a separate gradient for each bar) -->
                 <defs>
                   <linearGradient
                     v-for="(bar, i) in getActivityBars(element.index)"
@@ -76,7 +76,7 @@
                     <stop offset="100%" :stop-color="bar.color" stop-opacity="0.3" />
                   </linearGradient>
                 </defs>
-                <!-- 波形柱状图 -->
+                <!-- Waveform bar chart -->
                 <g v-for="(bar, i) in getActivityBars(element.index)" :key="i">
                   <rect
                     :x="bar.x"
@@ -91,24 +91,24 @@
                 </g>
               </svg>
 
-              <!-- Grid 内容容器 -->
+              <!-- Grid content container -->
               <div class="channel-row-content">
-                <!-- 拖拽手柄 -->
+                <!-- Drag handle -->
                 <div class="drag-handle" @click.stop>
                   <v-icon size="small" color="grey">mdi-drag-vertical</v-icon>
                 </div>
 
-            <!-- 优先级序号 -->
+            <!-- Priority index -->
             <div class="priority-number" @click.stop>
               <span class="text-caption font-weight-bold">{{ index + 1 }}</span>
             </div>
 
-            <!-- 状态指示器 -->
+            <!-- Status indicator -->
             <div @click.stop>
               <ChannelStatusBadge :status="element.status || 'active'" :metrics="getChannelMetrics(element.index)" />
             </div>
 
-            <!-- 渠道名称和描述 -->
+            <!-- Channel name and description -->
             <div class="channel-name">
               <span
                 class="font-weight-medium channel-name-link"
@@ -118,7 +118,7 @@
                 @keydown.enter.stop="$emit('edit', element)"
                 @keydown.space.stop="$emit('edit', element)"
               >{{ element.name }}</span>
-              <!-- 促销期标识 -->
+              <!-- Promotion period badge -->
               <v-chip
                 v-if="isInPromotion(element)"
                 size="x-small"
@@ -129,7 +129,7 @@
                 <v-icon start size="12">mdi-rocket-launch</v-icon>
                 {{ formatPromotionRemaining(element.promotionUntil) }}
               </v-chip>
-              <!-- 官网链接按钮 -->
+              <!-- Official website link button -->
               <v-btn
                 :href="getWebsiteUrl(element)"
                 target="_blank"
@@ -146,7 +146,7 @@
               </v-btn>
               <span class="text-caption text-medium-emphasis ml-2">{{ element.serviceType }}</span>
               <span v-if="element.description" class="text-caption text-disabled ml-3 channel-description">{{ element.description }}</span>
-              <!-- 展开图标 -->
+              <!-- Expand icon -->
               <v-icon
                 size="x-small"
                 class="ml-auto expand-icon"
@@ -154,13 +154,13 @@
               >{{ expandedChannelIndex === element.index ? 'mdi-chevron-up' : 'mdi-chevron-down' }}</v-icon>
             </div>
 
-            <!-- 指标显示 -->
+            <!-- Metrics display -->
             <div class="channel-metrics" @click.stop>
               <template v-if="getChannelMetrics(element.index)">
                 <v-tooltip location="top" :open-delay="200">
                   <template #activator="{ props: tooltipProps }">
                     <div v-bind="tooltipProps" class="d-flex align-center metrics-display">
-                      <!-- 15分钟有请求时显示成功率，否则显示 -- -->
+                      <!-- Show success rate when there are requests in the last 15 minutes; otherwise show -- -->
                       <template v-if="get15mStats(element.index)?.requestCount">
                         <v-chip
                           size="x-small"
@@ -227,7 +227,7 @@
               <span v-else class="text-caption text-medium-emphasis">--</span>
             </div>
 
-            <!-- RPM/TPM 显示 -->
+            <!-- RPM/TPM display -->
             <div class="channel-rpm-tpm" @click.stop>
               <div class="rpm-tpm-values">
                 <span class="rpm-value" :class="{ 'has-data': hasActivityData(element.index) }">{{ formatRPM(element.index) }}</span>
@@ -241,7 +241,7 @@
               </div>
             </div>
 
-            <!-- 延迟显示 -->
+            <!-- Latency display -->
             <div class="channel-latency" @click.stop>
               <v-chip
                 v-if="isLatencyValid(element)"
@@ -253,7 +253,7 @@
               </v-chip>
             </div>
 
-            <!-- API密钥数量 -->
+            <!-- API key count -->
             <div class="channel-keys" @click.stop>
               <v-chip size="x-small" variant="outlined" class="keys-chip" @click="$emit('edit', element)">
                 <v-icon start size="x-small">mdi-key</v-icon>
@@ -261,9 +261,9 @@
               </v-chip>
             </div>
 
-            <!-- 操作按钮 -->
+            <!-- Action buttons -->
             <div class="channel-actions" @click.stop>
-              <!-- suspended 状态显示恢复按钮 -->
+              <!-- Show resume button for suspended status -->
               <v-btn
                 v-if="element.status === 'suspended'"
                 icon
@@ -388,7 +388,7 @@
               </div><!-- .channel-row-content -->
           </div><!-- .channel-row -->
 
-          <!-- 展开的图表区域 -->
+          <!-- Expanded chart area -->
           <v-expand-transition>
             <div v-if="expandedChannelIndex === element.index" class="channel-chart-wrapper">
               <KeyTrendChart
@@ -403,7 +403,7 @@
         </template>
       </draggable>
 
-      <!-- 空状态 -->
+      <!-- Empty state -->
       <div v-if="activeChannels.length === 0" class="text-center py-6 text-medium-emphasis">
         <v-icon size="48" color="grey-lighten-1">mdi-playlist-remove</v-icon>
         <div class="mt-2">{{ t('orchestration.noActiveChannels') }}</div>
@@ -413,7 +413,7 @@
 
     <v-divider class="my-2" />
 
-    <!-- 备用资源池 (disabled only) -->
+    <!-- Standby resource pool (disabled only) -->
     <div class="pt-2 pb-3">
       <div class="inactive-pool-header">
         <div class="text-subtitle-2 text-medium-emphasis d-flex align-center">
@@ -426,7 +426,7 @@
 
       <div v-if="filteredInactiveChannels.length > 0" class="inactive-pool">
         <div v-for="channel in filteredInactiveChannels" :key="channel.index" class="inactive-channel-row">
-          <!-- 渠道信息 -->
+          <!-- Channel information -->
           <div class="channel-info">
             <div class="channel-info-main">
               <span
@@ -444,7 +444,7 @@
             </div>
           </div>
 
-          <!-- API密钥数量 -->
+          <!-- API key count -->
           <div class="channel-keys">
             <v-chip size="x-small" variant="outlined" color="grey" class="keys-chip" @click="$emit('edit', channel)">
               <v-icon start size="x-small">mdi-key</v-icon>
@@ -452,7 +452,7 @@
             </v-chip>
           </div>
 
-          <!-- 操作按钮 -->
+          <!-- Action buttons -->
           <div class="channel-actions">
             <v-btn size="small" color="success" variant="tonal" @click="enableChannel(channel.index)">
               <v-icon start size="small">mdi-play-circle</v-icon>
@@ -514,7 +514,7 @@
       <div v-else-if="isSearchActive && inactiveChannels.length > 0" class="text-center py-4 text-medium-emphasis text-caption">{{ t('orchestration.noMatchingStandby') }}</div>
       <div v-else class="text-center py-4 text-medium-emphasis text-caption">{{ t('orchestration.allActive') }}</div>
     </div>
-    <!-- 渠道日志对话框 -->
+    <!-- Channel logs dialog -->
     <ChannelLogsDialog
       v-model="showLogsDialog"
       :channel-index="logsChannelIndex"
@@ -530,7 +530,7 @@ import draggable from 'vuedraggable'
 import { api, type Channel, type ChannelMetrics, type ChannelStatus, type TimeWindowStats, type ChannelRecentActivity, expandSparseSegments } from '../services/api'
 import { useI18n } from '../i18n'
 import ChannelStatusBadge from './ChannelStatusBadge.vue'
-// 异步加载图表组件，减少首屏 JS 体积
+// Lazy-load chart components to reduce initial JS bundle size
 const KeyTrendChart = defineAsyncComponent(() => import('./KeyTrendChart.vue'))
 import ChannelLogsDialog from './ChannelLogsDialog.vue'
 
@@ -538,7 +538,7 @@ const props = defineProps<{
   channels: Channel[]
   currentChannelIndex: number
   channelType: 'messages' | 'chat' | 'responses' | 'gemini'
-  // 可选：从父组件传入的 metrics 和 stats（使用 dashboard 接口时）
+  // Optional: metrics and stats passed from the parent component (when using the dashboard API)
   dashboardMetrics?: ChannelMetrics[]
   dashboardStats?: {
     multiChannelMode: boolean
@@ -549,7 +549,7 @@ const props = defineProps<{
     windowSize: number
     circuitRecoveryTime?: string
   }
-  // 可选：从父组件传入的实时活跃度数据
+  // Optional: realtime activity data passed from the parent component
   dashboardRecentActivity?: ChannelRecentActivity[]
 }>()
 
@@ -564,11 +564,11 @@ const emit = defineEmits<{
 }>()
 const { t } = useI18n()
 
-// 状态
+// State
 const metrics = ref<ChannelMetrics[]>([])
 const recentActivity = ref<ChannelRecentActivity[]>([])
 
-// 搜索过滤
+// Search filtering
 const searchQuery = ref('')
 const isSearchActive = computed(() => !!searchQuery.value?.trim())
 const matchesSearch = (channel: Channel) => {
@@ -593,7 +593,7 @@ const schedulerStats = ref<{
 const isLoadingMetrics = ref(false)
 const isSavingOrder = ref(false)
 
-// 渠道日志对话框状态
+// Channel logs dialog state
 const showLogsDialog = ref(false)
 const logsChannelIndex = ref(0)
 const logsChannelName = ref('')
@@ -603,38 +603,38 @@ const openLogsDialog = (ch: Channel) => {
   showLogsDialog.value = true
 }
 
-// 延迟测试结果有效期（5 分钟）
+// Validity period for latency test results (5 minutes)
 const LATENCY_VALID_DURATION = 5 * 60 * 1000
-// 用于触发响应式更新的时间戳
+// Timestamp used to trigger reactive updates
 const currentTime = ref(Date.now())
 let latencyCheckTimer: ReturnType<typeof setInterval> | null = null
 
-// 用于触发活跃度视图更新的时间戳（每 2 秒更新）
+// Timestamp used to trigger activity view updates (updated every 2 seconds)
 const activityUpdateTick = ref(0)
 let activityUpdateTimer: ReturnType<typeof setInterval> | null = null
 
-// 图表展开状态
+// Chart expansion state
 const expandedChannelIndex = ref<number | null>(null)
 
-// 复制渠道配置状态
+// Channel config copy state
 const copiedChannelIndex = ref<number | null>(null)
 let copyTimeoutId: ReturnType<typeof setTimeout> | null = null
 
-// 切换渠道图表展开/收起
+// Toggle channel chart expansion/collapse
 const toggleChannelChart = (channelIndex: number) => {
   expandedChannelIndex.value = expandedChannelIndex.value === channelIndex ? null : channelIndex
 }
 
-// 复制渠道配置到剪贴板（BaseURL + API Keys，按行分隔）
-// 注意：复制内容包含 API Key（敏感信息），请谨慎分享
+// Copy channel configuration to the clipboard (BaseURL + API keys, one per line)
+// Note: copied content includes API keys (sensitive information), so share with caution
 const copyChannelInfo = async (channel: Channel) => {
-  // 清除之前的 timeout，避免竞态
+  // Clear the previous timeout to avoid race conditions
   if (copyTimeoutId) {
     clearTimeout(copyTimeoutId)
     copyTimeoutId = null
   }
 
-  // 收集所有 BaseURL
+  // Collect all BaseURLs
   const baseUrls: string[] = []
   if (channel.baseUrls && channel.baseUrls.length > 0) {
     baseUrls.push(...channel.baseUrls)
@@ -642,14 +642,14 @@ const copyChannelInfo = async (channel: Channel) => {
     baseUrls.push(channel.baseUrl)
   }
 
-  // 构建复制内容：BaseURL 和 API Keys 按行分隔，过滤空值并 trim
+  // Build the copied content: BaseURLs and API keys separated by lines, filtering empty values and trimming
   const lines = [...baseUrls, ...(channel.apiKeys ?? [])]
     .map(s => s?.trim())
     .filter(Boolean)
 
   const content = lines.join('\n')
 
-  // 设置成功状态并启动 timeout
+  // Set success state and start the timeout
   const setSuccessState = () => {
     copiedChannelIndex.value = channel.index
     copyTimeoutId = setTimeout(() => {
@@ -663,7 +663,7 @@ const copyChannelInfo = async (channel: Channel) => {
     setSuccessState()
   } catch (err) {
     console.error(t('orchestration.copyFailed'), err)
-    // 降级方案：使用传统的复制方法
+    // Fallback: use the traditional copy approach
     const textArea = document.createElement('textarea')
     textArea.value = content
     textArea.style.position = 'fixed'
@@ -684,24 +684,24 @@ const copyChannelInfo = async (channel: Channel) => {
   }
 }
 
-// 活跃渠道（可拖拽排序）- 包含 active 和 suspended 状态
+// Active channels (draggable and sortable) - includes active and suspended statuses
 const activeChannels = ref<Channel[]>([])
 
-// 计算属性：非活跃渠道 - 仅 disabled 状态
+// Computed: inactive channels - disabled status only
 const inactiveChannels = computed(() => {
   return props.channels.filter(ch => ch.status === 'disabled')
 })
 
-// 计算属性：搜索过滤后的非活跃渠道
+// Computed: inactive channels after search filtering
 const filteredInactiveChannels = computed(() => {
   return inactiveChannels.value.filter(matchesSearch)
 })
 
-// 计算属性：是否为多渠道模式
-// 多渠道模式判断逻辑：
-// 1. 只有一个启用的渠道 → 单渠道模式
-// 2. 有一个 active + 几个 suspended → 单渠道模式
-// 3. 有多个 active 渠道 → 多渠道模式
+// Computed: whether multi-channel mode is enabled
+// Multi-channel mode detection logic:
+// 1. Only one enabled channel → single-channel mode
+// 2. One active channel + several suspended channels → single-channel mode
+// 3. Multiple active channels → multi-channel mode
 const isMultiChannelMode = computed(() => {
   const activeCount = props.channels.filter(
     ch => ch.status === 'active' || ch.status === undefined || ch.status === ''
@@ -709,32 +709,32 @@ const isMultiChannelMode = computed(() => {
   return activeCount > 1
 })
 
-// 初始化活跃渠道列表 - active + suspended 都参与故障转移序列
-// 优化：只在结构变化时更新，避免频繁重建导致子组件销毁
+// Initialize the active channel list - both active and suspended channels participate in the failover sequence
+// Optimization: update only when the structure changes to avoid frequent rebuilds that destroy child components
 const initActiveChannels = () => {
   const newActive = props.channels
     .filter(ch => ch.status !== 'disabled')
     .sort((a, b) => (a.priority ?? a.index) - (b.priority ?? b.index))
 
-  // 检查是否需要更新：比较 index 列表是否变化
+  // Check whether an update is needed by comparing index lists
   const currentIndexes = activeChannels.value.map(ch => ch.index).join(',')
   const newIndexes = newActive.map(ch => ch.index).join(',')
 
   if (currentIndexes !== newIndexes) {
-    // 结构变化（新增/删除/重排），需要重建数组
+    // Structure changed (added/removed/reordered), array must be rebuilt
     activeChannels.value = [...newActive]
   } else {
-    // 结构未变，只更新现有对象的属性（保持引用不变）
+    // Structure unchanged, update properties on existing objects only (preserve references)
     activeChannels.value.forEach((ch, i) => {
       Object.assign(ch, newActive[i])
     })
   }
 }
 
-// 监听 channels 变化
+// Watch channel changes
 watch(() => props.channels, initActiveChannels, { immediate: true, deep: true })
 
-// 监听 dashboard props 变化（从父组件传入的合并数据）
+// Watch dashboard prop changes (merged data passed from the parent component)
 watch(() => props.dashboardMetrics, (newMetrics) => {
   if (newMetrics) {
     metrics.value = newMetrics
@@ -747,27 +747,27 @@ watch(() => props.dashboardStats, (newStats) => {
   }
 }, { immediate: true })
 
-// 监听 recentActivity props 变化
+// Watch recentActivity prop changes
 watch(() => props.dashboardRecentActivity, (newActivity) => {
   recentActivity.value = newActivity ?? []
 }, { immediate: true })
 
-// 监听 channelType 变化 - 切换时刷新指标并收起图表
+// Watch channelType changes - refresh metrics and collapse charts on switch
 watch(() => props.channelType, () => {
-  searchQuery.value = '' // 切换 tab 时清空搜索
-  expandedChannelIndex.value = null // 收起展开的图表
-  // 如果没有使用 dashboard props，则自己刷新
+  searchQuery.value = '' // Clear the search when switching tabs
+  expandedChannelIndex.value = null // Collapse the expanded chart
+  // Refresh locally if dashboard props are not being used
   if (!props.dashboardMetrics) {
     refreshMetrics()
   }
 })
 
-// 获取渠道指标
+// Fetch channel metrics
 const getChannelMetrics = (channelIndex: number): ChannelMetrics | undefined => {
   return metrics.value.find(m => m.channelIndex === channelIndex)
 }
 
-// 获取分时段统计的辅助方法
+// Helper method for fetching time-sliced statistics
 const get15mStats = (channelIndex: number) => {
   return getChannelMetrics(channelIndex)?.timeWindows?.['15m']
 }
@@ -784,7 +784,7 @@ const get24hStats = (channelIndex: number) => {
   return getChannelMetrics(channelIndex)?.timeWindows?.['24h']
 }
 
-// 获取成功率颜色
+// Get success-rate color
 const getSuccessRateColor = (rate?: number): string => {
   if (rate === undefined) return 'grey'
   if (rate >= 90) return 'success'
@@ -807,30 +807,30 @@ const shouldShowCacheHitRate = (stats?: TimeWindowStats): boolean => {
   return (inputTokens + cacheReadTokens) > 0
 }
 
-// 获取延迟颜色
+// Get latency color
 const getLatencyColor = (latency: number): string => {
   if (latency < 500) return 'success'
   if (latency < 1000) return 'warning'
   return 'error'
 }
 
-// 判断延迟测试结果是否仍然有效（5 分钟内）
+// Check whether the latency test result is still valid (within 5 minutes)
 const isLatencyValid = (channel: Channel): boolean => {
-  // 没有延迟值，不显示
+  // Do not display when there is no latency value
   if (channel.latency === undefined || channel.latency === null) return false
-  // 没有测试时间戳（兼容旧数据），不显示
+  // Do not display when there is no test timestamp (for compatibility with old data)
   if (!channel.latencyTestTime) return false
-  // 检查是否在有效期内（使用 currentTime.value 触发响应式更新）
+  // Check whether it is within the validity period (use currentTime.value to trigger reactive updates)
   return (currentTime.value - channel.latencyTestTime) < LATENCY_VALID_DURATION
 }
 
-// 判断渠道是否处于促销期
+// Check whether the channel is in a promotion period
 const isInPromotion = (channel: Channel): boolean => {
   if (!channel.promotionUntil) return false
   return new Date(channel.promotionUntil) > new Date()
 }
 
-// 格式化促销期剩余时间
+// Format the remaining promotion period
 const formatPromotionRemaining = (until?: string): string => {
   if (!until) return ''
   const remaining = Math.max(0, new Date(until).getTime() - Date.now())
@@ -839,7 +839,7 @@ const formatPromotionRemaining = (until?: string): string => {
   return t('orchestration.minutesRemaining', { count: minutes })
 }
 
-// 格式化统计数据：有请求显示"N 请求 (X%)"，无请求显示"--"
+// Format stats: show "N requests (X%)" when requests exist, otherwise show "--"
 const formatStats = (stats?: TimeWindowStats): string => {
   if (!stats || !stats.requestCount) return '--'
   return `${stats.requestCount} ${t('orchestration.requests')} (${stats.successRate?.toFixed(0)}%)`
@@ -866,7 +866,7 @@ const formatCacheStats = (stats?: TimeWindowStats): string => {
   return `${t('orchestration.hitRate')} ${hitRate.toFixed(0)}% · ${t('orchestration.read')} ${formatTokens(cacheReadTokens)} · ${t('orchestration.write')} ${formatTokens(cacheCreationTokens)}`
 }
 
-// 获取官网 URL（优先使用 website，否则从 baseUrl 提取域名）
+// Get the official website URL (prefer website; otherwise extract the domain from baseUrl)
 const getWebsiteUrl = (channel: Channel): string => {
   if (channel.website) return channel.website
   try {
@@ -877,9 +877,9 @@ const getWebsiteUrl = (channel: Channel): string => {
   }
 }
 
-// ============== 渠道实时活跃度相关函数 ==============
+// ============== Realtime channel activity helpers ==============
 
-// 活跃度数据 Map 缓存（避免线性查找）
+// Activity data Map cache (avoids linear lookup)
 const activityMap = computed(() => {
   const map = new Map<number, ChannelRecentActivity>()
   for (const a of recentActivity.value) {
@@ -888,28 +888,28 @@ const activityMap = computed(() => {
   return map
 })
 
-// 每个渠道的历史最大请求数（用于固定柱状图高度比例）
-// 结构：{ max: number, updatedAt: number }
+// Historical maximum request count per channel (used to stabilize bar height scaling)
+// Structure: { max: number, updatedAt: number }
 const maxRequestsHistory = ref(new Map<number, { max: number; updatedAt: number }>())
 
-// 指数衰减参数
-const DECAY_HALF_LIFE = 5 * 60 * 1000  // 半衰期 5 分钟
-const MIN_MAX_REQUESTS = 1  // 最小基准值，避免除零
+// Exponential decay parameters
+const DECAY_HALF_LIFE = 5 * 60 * 1000  // Half-life: 5 minutes
+const MIN_MAX_REQUESTS = 1  // Minimum baseline value to avoid division by zero
 
-// 计算衰减后的历史最大值
+// Calculate the decayed historical maximum
 const getDecayedMax = (record: { max: number; updatedAt: number }, now: number): number => {
   const elapsed = now - record.updatedAt
-  // 指数衰减：max * 0.5^(elapsed / halfLife)
+  // Exponential decay: max * 0.5^(elapsed / halfLife)
   const decayFactor = Math.pow(0.5, elapsed / DECAY_HALF_LIFE)
   return Math.max(record.max * decayFactor, MIN_MAX_REQUESTS)
 }
 
-// 更新历史最大值（带指数衰减）
+// Update the historical maximum (with exponential decay)
 watch(activityMap, (newMap) => {
   const now = Date.now()
 
   for (const [channelIndex, activity] of newMap.entries()) {
-    // 展开稀疏 segments 为数组
+    // Expand sparse segments into an array
     const segments = expandSparseSegments(activity)
     if (segments.length === 0) continue
 
@@ -917,36 +917,36 @@ watch(activityMap, (newMap) => {
     const record = maxRequestsHistory.value.get(channelIndex)
 
     if (!record) {
-      // 首次记录
+      // First record
       if (currentMax > 0) {
         maxRequestsHistory.value.set(channelIndex, { max: currentMax, updatedAt: now })
       }
       continue
     }
 
-    // 计算衰减后的历史最大值
+    // Calculate the decayed historical maximum
     const decayedMax = getDecayedMax(record, now)
 
     if (currentMax >= decayedMax) {
-      // 当前值超过衰减后的历史值，更新为当前值
+      // If the current value exceeds the decayed historical value, update it to the current value
       maxRequestsHistory.value.set(channelIndex, { max: currentMax, updatedAt: now })
     } else {
-      // 当前值较小，保持衰减后的值（更新时间戳以继续衰减）
+      // If the current value is smaller, keep the decayed value (update the timestamp so decay can continue)
       maxRequestsHistory.value.set(channelIndex, { max: decayedMax, updatedAt: now })
     }
   }
 })
 
-// 获取渠道的活跃度数据
+// Get channel activity data
 const getChannelActivity = (channelIndex: number): ChannelRecentActivity | undefined => {
   return activityMap.value.get(channelIndex)
 }
 
-// 缓存所有渠道的柱状图数据（避免在模板中重复计算）
+// Cache bar chart data for all channels (avoid repeated computation in the template)
 const activityBarsCache = computed(() => {
   const cache = new Map<number, Array<{ x: number; y: number; width: number; height: number; radius: number; color: string }>>()
 
-  // 使用 activityUpdateTick 触发响应式更新
+  // Use activityUpdateTick to trigger reactive updates
   const _ = activityUpdateTick.value
 
   for (const [channelIndex, activity] of activityMap.value.entries()) {
@@ -955,21 +955,21 @@ const activityBarsCache = computed(() => {
       continue
     }
 
-    // 展开稀疏 segments 为数组
+    // Expand sparse segments into an array
     const segments = expandSparseSegments(activity)
-    const numSegments = segments.length  // 150（后端已聚合为每 6 秒一段）
+    const numSegments = segments.length  // 150 (the backend has already aggregated data into 6-second segments)
 
     if (numSegments === 0) {
       cache.set(channelIndex, [])
       continue
     }
 
-    // 每个段一个柱子
+    // One bar per segment
     const barWidth = 150 / numSegments
-    const barGap = barWidth * 0.2  // 20% 间隙
+    const barGap = barWidth * 0.2  // 20% gap
     const actualBarWidth = barWidth - barGap
 
-    // 使用衰减后的历史最大值作为归一化基准
+    // Use the decayed historical maximum as the normalization baseline
     const now = Date.now()
     const record = maxRequestsHistory.value.get(channelIndex)
     const currentMax = Math.max(...segments.map(s => s.requestCount), 1)
@@ -981,32 +981,32 @@ const activityBarsCache = computed(() => {
       const segment = segments[i]
       const requests = segment.requestCount
 
-      // 计算柱子高度（最小高度 2，避免完全消失）
+      // Calculate bar height (minimum height 2 to avoid disappearing completely)
       const heightPercent = requests / maxRequests
       const height = Math.max(heightPercent * 85, requests > 0 ? 2 : 0)
       const y = 100 - height
 
-      // 根据该 6 秒段的成功率计算颜色（7 档分级：极端档位 + 整数档位）
-      let color = 'rgb(74, 222, 128)'  // 默认绿色（无请求或 100% 成功）
+      // Calculate color based on the success rate of this 6-second segment (7 levels: extreme bands + integer bands)
+      let color = 'rgb(74, 222, 128)'  // Default green (no requests or 100% success)
 
       if (requests > 0) {
         const successCount = requests - segment.failureCount
         const successRate = (successCount / requests) * 100
 
         if (successRate < 5) {
-          color = 'rgb(220, 38, 38)'       // 0-5%：深红色（极端故障）
+          color = 'rgb(220, 38, 38)'       // 0-5%: dark red (extreme failure)
         } else if (successRate < 20) {
-          color = 'rgb(239, 68, 68)'       // 5-20%：红色（严重失败）
+          color = 'rgb(239, 68, 68)'       // 5-20%: red (severe failure)
         } else if (successRate < 40) {
-          color = 'rgb(249, 115, 22)'      // 20-40%：深橙色（高失败率）
+          color = 'rgb(249, 115, 22)'      // 20-40%: dark orange (high failure rate)
         } else if (successRate < 60) {
-          color = 'rgb(251, 146, 60)'      // 40-60%：橙色（中等失败率）
+          color = 'rgb(251, 146, 60)'      // 40-60%: orange (moderate failure rate)
         } else if (successRate < 80) {
-          color = 'rgb(250, 204, 21)'      // 60-80%：黄色（轻微失败）
+          color = 'rgb(250, 204, 21)'      // 60-80%: yellow (minor failure)
         } else if (successRate < 95) {
-          color = 'rgb(132, 204, 22)'      // 80-95%：黄绿色（良好）
+          color = 'rgb(132, 204, 22)'      // 80-95%: yellow-green (good)
         } else {
-          color = 'rgb(34, 197, 94)'       // 95-100%：绿色（优秀）
+          color = 'rgb(34, 197, 94)'       // 95-100%: green (excellent)
         }
       }
 
@@ -1015,7 +1015,7 @@ const activityBarsCache = computed(() => {
         y,
         width: actualBarWidth,
         height,
-        radius: Math.min(actualBarWidth / 2, 1.5),  // 圆角半径
+        radius: Math.min(actualBarWidth / 2, 1.5),  // Corner radius
         color
       })
     }
@@ -1026,30 +1026,30 @@ const activityBarsCache = computed(() => {
   return cache
 })
 
-// 生成波形柱状图数据（从缓存中读取）
+// Generate waveform bar chart data (read from cache)
 const getActivityBars = (channelIndex: number): Array<{ x: number; y: number; width: number; height: number; radius: number; color: string }> => {
   return activityBarsCache.value.get(channelIndex) ?? []
 }
 
-// 生成平滑曲线路径（使用移动平均 + Catmull-Rom 样条）
+// Generate a smoothed curve path (using moving average + Catmull-Rom spline)
 const getActivityPath = (channelIndex: number): string => {
   const activity = getChannelActivity(channelIndex)
   if (!activity) return ''
 
-  // 使用 activityUpdateTick 触发响应式更新
+  // Use activityUpdateTick to trigger reactive updates
 
   const _ = activityUpdateTick.value
 
-  // 展开稀疏 segments 为数组
+  // Expand sparse segments into an array
   const segments = expandSparseSegments(activity)
-  const numSegments = segments.length  // 150（后端已聚合为每 6 秒一段）
+  const numSegments = segments.length  // 150 (the backend has already aggregated data into 6-second segments)
 
   if (numSegments === 0) return ''
 
-  // 找到最大请求数用于归一化
+  // Find the maximum request count for normalization
   const maxRequests = Math.max(...segments.map(s => s.requestCount), 1)
 
-  // 应用移动平均平滑数据（窗口大小 5 = 10 秒）
+  // Apply a moving average to smooth data (window size 5 = 10 seconds)
   const windowSize = 5
   const smoothedData: number[] = []
 
@@ -1067,7 +1067,7 @@ const getActivityPath = (channelIndex: number): string => {
     smoothedData.push(count > 0 ? sum / count : 0)
   }
 
-  // 生成平滑后的点
+  // Generate the smoothed points
   const points: { x: number; y: number }[] = []
   for (let i = 0; i < numSegments; i++) {
     const x = i
@@ -1077,18 +1077,18 @@ const getActivityPath = (channelIndex: number): string => {
 
   if (points.length < 2) return ''
 
-  // 使用 Catmull-Rom 样条生成平滑曲线
+  // Generate a smooth curve with a Catmull-Rom spline
   return catmullRomToPath(points)
 }
 
-// Catmull-Rom 样条转 SVG 贝塞尔路径
+// Convert a Catmull-Rom spline to an SVG Bézier path
 function catmullRomToPath(points: { x: number; y: number }[]): string {
   if (points.length < 2) return ''
 
   const path: string[] = []
   path.push(`M ${points[0].x} ${points[0].y}`)
 
-  // 张力参数（0.3 = 较低张力，曲线更贴近原始点）
+  // Tension parameter (0.3 = lower tension, curve stays closer to the original points)
   const tension = 0.3
 
   for (let i = 0; i < points.length - 1; i++) {
@@ -1097,7 +1097,7 @@ function catmullRomToPath(points: { x: number; y: number }[]): string {
     const p2 = points[i + 1]
     const p3 = points[Math.min(points.length - 1, i + 2)]
 
-    // 计算控制点
+    // Calculate control points
     const cp1x = p1.x + (p2.x - p0.x) / 6 * tension
     const cp1y = p1.y + (p2.y - p0.y) / 6 * tension
     const cp2x = p2.x - (p3.x - p1.x) / 6 * tension
@@ -1109,7 +1109,7 @@ function catmullRomToPath(points: { x: number; y: number }[]): string {
   return path.join(' ')
 }
 
-// 生成平滑曲线填充区域路径
+// Generate the filled area path for the smoothed curve
 const _getActivityAreaPath = (channelIndex: number): string => {
   const linePath = getActivityPath(channelIndex)
   if (!linePath) return ''
@@ -1117,45 +1117,45 @@ const _getActivityAreaPath = (channelIndex: number): string => {
   const activity = getChannelActivity(channelIndex)
   if (!activity) return ''
 
-  // 展开稀疏 segments 为数组
+  // Expand sparse segments into an array
   const segments = expandSparseSegments(activity)
   const numSegments = segments.length
 
   if (numSegments === 0) return ''
 
-  // 在曲线路径后添加闭合到底部
+  // Add a closing segment to the bottom after the curve path
   return `${linePath} L ${numSegments - 1} 100 L 0 100 Z`
 }
 
-// 获取渠道的活跃度渐变背景（已废弃，改用 SVG 曲线）
+// Get the channel activity gradient background (deprecated; replaced with SVG curves)
 const _getActivityGradient = (channelIndex: number): string => {
   const activity = getChannelActivity(channelIndex)
   if (!activity) return 'transparent'
 
-  // 展开稀疏 segments 为数组
+  // Expand sparse segments into an array
   const segments = expandSparseSegments(activity)
   const numSegments = segments.length
 
   if (numSegments === 0) return 'transparent'
 
-  // 检查是否有任何活动
+  // Check whether there is any activity
   const hasActivity = segments.some(seg => seg.requestCount > 0)
   if (!hasActivity) return 'transparent'
 
-  // 使用 activityUpdateTick 触发响应式更新
+  // Use activityUpdateTick to trigger reactive updates
 
   const _ = activityUpdateTick.value
 
-  // 后端返回 150 段（每段 6 秒）
-  // 直接使用原始数据，不做加权平均，确保用户调用 API 后立即看到反馈
+  // The backend returns 150 segments (6 seconds per segment)
+  // Use raw data directly without weighted averaging so users see feedback immediately after calling the API
 
-  // 生成每个 6 秒段的颜色（基于原始请求数）
+  // Generate a color for each 6-second segment (based on raw request count)
   const segmentColors: string[] = []
 
   for (let i = 0; i < numSegments; i++) {
     const seg = segments[i]
 
-    // 无请求则透明
+    // Make it transparent when there are no requests
     if (seg.requestCount === 0) {
       segmentColors.push('transparent')
       continue
@@ -1166,26 +1166,26 @@ const _getActivityGradient = (channelIndex: number): string => {
     if (hasFailure) {
       const failureRatio = seg.failureCount / seg.requestCount
       if (failureRatio >= 0.5) {
-        // 高失败率：红色
+        // High failure rate: red
         const intensity = Math.min(0.5, 0.2 + seg.requestCount * 0.01)
         segmentColors.push(`rgba(239, 68, 68, ${intensity})`)
       } else {
-        // 部分失败：橙色
+        // Partial failures: orange
         const intensity = Math.min(0.4, 0.15 + seg.requestCount * 0.008)
         segmentColors.push(`rgba(251, 146, 60, ${intensity})`)
       }
     } else {
-      // 纯成功：绿色，6 级深浅按请求量
-      if (seg.requestCount >= 20) segmentColors.push('rgba(22, 163, 74, 0.65)')       // 极深绿
-      else if (seg.requestCount >= 15) segmentColors.push('rgba(22, 163, 74, 0.55)')  // 深绿
-      else if (seg.requestCount >= 10) segmentColors.push('rgba(34, 197, 94, 0.50)')  // 中深绿
-      else if (seg.requestCount >= 6) segmentColors.push('rgba(34, 197, 94, 0.42)')   // 中绿
-      else if (seg.requestCount >= 3) segmentColors.push('rgba(74, 222, 128, 0.38)')  // 浅绿
-      else segmentColors.push('rgba(74, 222, 128, 0.30)')                              // 极浅绿
+      // Pure success: green, with 6 intensity levels based on request count
+      if (seg.requestCount >= 20) segmentColors.push('rgba(22, 163, 74, 0.65)')       // Very dark green
+      else if (seg.requestCount >= 15) segmentColors.push('rgba(22, 163, 74, 0.55)')  // Dark green
+      else if (seg.requestCount >= 10) segmentColors.push('rgba(34, 197, 94, 0.50)')  // Medium-dark green
+      else if (seg.requestCount >= 6) segmentColors.push('rgba(34, 197, 94, 0.42)')   // Medium green
+      else if (seg.requestCount >= 3) segmentColors.push('rgba(74, 222, 128, 0.38)')  // Light green
+      else segmentColors.push('rgba(74, 222, 128, 0.30)')                              // Very light green
     }
   }
 
-  // 生成渐变：每段占 100/150 %
+  // Generate the gradient: each segment takes 100/150%
   const stops = segmentColors.map((color, i) => {
     const start = (i / numSegments * 100).toFixed(3)
     const end = ((i + 1) / numSegments * 100).toFixed(3)
@@ -1195,7 +1195,7 @@ const _getActivityGradient = (channelIndex: number): string => {
   return `linear-gradient(to right, ${stops})`
 }
 
-// 格式化 RPM 显示
+// Format RPM display
 const formatRPM = (channelIndex: number): string => {
   const activity = getChannelActivity(channelIndex)
   if (!activity || !activity.rpm) return '--'
@@ -1203,7 +1203,7 @@ const formatRPM = (channelIndex: number): string => {
   return activity.rpm.toFixed(1)
 }
 
-// 格式化 TPM 显示
+// Format TPM display
 const formatTPM = (channelIndex: number): string => {
   const activity = getChannelActivity(channelIndex)
   if (!activity || !activity.tpm) return '--'
@@ -1212,14 +1212,14 @@ const formatTPM = (channelIndex: number): string => {
   return activity.tpm.toFixed(0)
 }
 
-// 判断渠道是否有活跃度数据
+// Check whether the channel has activity data
 const hasActivityData = (channelIndex: number): boolean => {
   const activity = getChannelActivity(channelIndex)
   if (!activity) return false
   return activity.rpm > 0 || activity.tpm > 0
 }
 
-// 刷新指标
+// Refresh metrics
 const refreshMetrics = async () => {
   isLoadingMetrics.value = true
   try {
@@ -1242,13 +1242,13 @@ const refreshMetrics = async () => {
   }
 }
 
-// 拖拽变更事件 - 自动保存顺序
+// Drag change event - auto-save order
 const onDragChange = () => {
-  // 拖拽后自动保存顺序到后端
+  // Auto-save the order to the backend after dragging
   saveOrder()
 }
 
-// 保存顺序
+// Save order
 const saveOrder = async () => {
   isSavingOrder.value = true
   try {
@@ -1262,19 +1262,19 @@ const saveOrder = async () => {
     } else {
       await api.reorderChannels(order)
     }
-    // 不调用 emit('refresh')，避免触发父组件刷新导致列表闪烁
+    // Do not call emit('refresh') to avoid list flicker caused by parent refresh
   } catch (error) {
     console.error('Failed to save order:', error)
     const errorMessage = error instanceof Error ? error.message : t('addChannel.unknownError')
     emit('error', t('toast.operationFailed', { message: errorMessage }))
-    // 保存失败时重新初始化列表，恢复原始顺序
+    // Reinitialize the list when save fails to restore the original order
     initActiveChannels()
   } finally {
     isSavingOrder.value = false
   }
 }
 
-// 置顶渠道
+// Move channel to top
 const moveChannelToTop = async (channelIndex: number) => {
   if (isSavingOrder.value) return
   const idx = activeChannels.value.findIndex(ch => ch.index === channelIndex)
@@ -1285,7 +1285,7 @@ const moveChannelToTop = async (channelIndex: number) => {
   await saveOrder()
 }
 
-// 置底渠道
+// Move channel to bottom
 const moveChannelToBottom = async (channelIndex: number) => {
   if (isSavingOrder.value) return
   const idx = activeChannels.value.findIndex(ch => ch.index === channelIndex)
@@ -1296,7 +1296,7 @@ const moveChannelToBottom = async (channelIndex: number) => {
   await saveOrder()
 }
 
-// 设置渠道状态
+// Set channel status
 const setChannelStatus = async (channelId: number, status: ChannelStatus) => {
   try {
     if (props.channelType === 'chat') {
@@ -1316,12 +1316,12 @@ const setChannelStatus = async (channelId: number, status: ChannelStatus) => {
   }
 }
 
-// 启用渠道（从备用池移到活跃序列）
+// Enable channel (move it from the standby pool to the active sequence)
 const enableChannel = async (channelId: number) => {
   await setChannelStatus(channelId, 'active')
 }
 
-// 恢复渠道（重置指标并设为 active）
+// Resume channel (reset metrics and set it to active)
 const resumeChannel = async (channelId: number) => {
   try {
     if (props.channelType === 'chat') {
@@ -1339,12 +1339,12 @@ const resumeChannel = async (channelId: number) => {
   }
 }
 
-// 设置渠道促销期（抢优先级）
+// Set the channel promotion period (boost priority)
 const setPromotion = async (channel: Channel) => {
   try {
-    const PROMOTION_DURATION = 300 // 5分钟
+    const PROMOTION_DURATION = 300 // 5 minutes
 
-    // 如果渠道是熔断状态，先恢复它
+    // If the channel is in a tripped state, resume it first
     if (channel.status === 'suspended') {
       if (props.channelType === 'chat') {
         await api.resumeChatChannel(channel.index)
@@ -1368,7 +1368,7 @@ const setPromotion = async (channel: Channel) => {
       await api.setChannelPromotion(channel.index, PROMOTION_DURATION)
     }
     emit('refresh')
-    // 通知用户
+    // Notify the user
     emit('success', t('orchestration.promotionSuccess', { name: channel.name }))
   } catch (error) {
     console.error('Failed to set promotion:', error)
@@ -1377,15 +1377,15 @@ const setPromotion = async (channel: Channel) => {
   }
 }
 
-// 判断渠道是否可以删除
-// 规则：故障转移序列中至少要保留一个 active 状态的渠道
+// Check whether the channel can be deleted
+// Rule: keep at least one active channel in the failover sequence
 const canDeleteChannel = (channel: Channel): boolean => {
-  // 统计当前 active 状态的渠道数量
+  // Count the number of currently active channels
   const activeCount = activeChannels.value.filter(
     ch => ch.status === 'active' || ch.status === undefined || ch.status === ''
   ).length
 
-  // 如果要删除的是 active 渠道，且只剩一个 active，则不允许删除
+  // Do not allow deletion if the target is an active channel and it is the last active one
   const isActive = channel.status === 'active' || channel.status === undefined || channel.status === ''
   if (isActive && activeCount <= 1) {
     return false
@@ -1394,7 +1394,7 @@ const canDeleteChannel = (channel: Channel): boolean => {
   return true
 }
 
-// 处理删除渠道
+// Handle channel deletion
 const handleDeleteChannel = (channel: Channel) => {
   if (!canDeleteChannel(channel)) {
     emit('error', t('orchestration.deleteActiveGuard'))
@@ -1403,20 +1403,20 @@ const handleDeleteChannel = (channel: Channel) => {
   emit('delete', channel.index)
 }
 
-// 组件挂载时加载指标并启动延迟过期检查定时器
+// Load metrics and start the latency expiry check timer when the component mounts
 onMounted(() => {
   refreshMetrics()
-  // 每 30 秒更新一次 currentTime，触发延迟显示的响应式更新
+  // Update currentTime every 30 seconds to trigger reactive latency display updates
   latencyCheckTimer = setInterval(() => {
     currentTime.value = Date.now()
   }, 30000)
-  // 每 2 秒更新一次 activityUpdateTick，触发活跃度视图更新
+  // Update activityUpdateTick every 2 seconds to trigger activity view updates
   activityUpdateTimer = setInterval(() => {
     activityUpdateTick.value++
   }, 2000)
 })
 
-// 组件卸载时清理定时器
+// Clear timers when the component unmounts
 onUnmounted(() => {
   if (latencyCheckTimer) {
     clearInterval(latencyCheckTimer)
@@ -1432,7 +1432,7 @@ onUnmounted(() => {
   }
 })
 
-// 暴露方法给父组件
+// Expose methods to the parent component
 defineExpose({
   refreshMetrics
 })
@@ -1440,8 +1440,8 @@ defineExpose({
 
 <style scoped>
 /* =====================================================
-   🎮 渠道编排 - 复古像素主题样式
-   Neo-Brutalism: 直角、粗黑边框、硬阴影
+   Channel orchestration - retro pixel theme styles
+   Neo-Brutalism: sharp corners, bold black borders, hard shadows
    ===================================================== */
 
 .channel-orchestration {
@@ -1480,7 +1480,7 @@ defineExpose({
   overflow: hidden;
 }
 
-/* Grid 内容容器 */
+/* Grid content container */
 .channel-row-content {
   display: grid;
   grid-template-columns: 28px 28px 90px minmax(120px, 1fr) auto 50px 50px 50px auto;
@@ -1490,7 +1490,7 @@ defineExpose({
   z-index: 1;
 }
 
-/* SVG 活跃度波形柱状图背景 */
+/* SVG activity waveform bar chart background */
 .activity-chart-bg {
   position: absolute;
   top: 0;
@@ -1501,12 +1501,12 @@ defineExpose({
   z-index: 0;
 }
 
-/* 柱状图无动画：避免数据更新时的缩小-增长抖动效果 */
+/* Disable bar chart animation to avoid shrink-grow jitter during data updates */
 .activity-bar {
   transition: none;
 }
 
-/* 图表展开区域 */
+/* Expanded chart area */
 .channel-chart-wrapper {
   margin: 0 2px 8px 2px;
 }
@@ -1534,7 +1534,7 @@ defineExpose({
   border-color: rgba(255, 255, 255, 0.7);
 }
 
-/* suspended 状态的视觉区分 */
+/* Visual distinction for suspended status */
 .channel-row.is-suspended {
   background: rgba(var(--v-theme-warning), 0.1);
   border-color: rgb(var(--v-theme-warning));
@@ -1612,7 +1612,7 @@ defineExpose({
   flex-shrink: 0;
 }
 
-/* 描述文本限制最多两行 */
+/* Limit description text to at most two lines */
 .channel-description {
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -1656,7 +1656,7 @@ defineExpose({
   min-width: 60px;
 }
 
-/* RPM/TPM 显示样式 */
+/* RPM/TPM display styles */
 .channel-rpm-tpm {
   display: flex;
   flex-direction: column;
@@ -1718,7 +1718,7 @@ defineExpose({
   min-width: 50px;
 }
 
-/* 备用资源池样式 */
+/* Standby resource pool styles */
 .inactive-pool-header {
   display: flex;
   align-items: center;
@@ -1803,7 +1803,7 @@ defineExpose({
   gap: 4px;
 }
 
-/* 响应式调整 */
+/* Responsive adjustments */
 @media (max-width: 1400px) {
   .channel-row-content {
     grid-template-columns: 28px 28px 85px minmax(100px, 1fr) auto 45px 45px 45px auto;
@@ -1869,12 +1869,12 @@ defineExpose({
   }
 }
 
-/* 指标显示样式 */
+/* Metrics display styles */
 .metrics-display {
   cursor: help;
 }
 
-/* 指标 tooltip 样式 */
+/* Metrics tooltip styles */
 .metrics-tooltip {
   font-size: 12px;
   line-height: 1.5;

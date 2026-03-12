@@ -8,7 +8,7 @@
       </template>
     </v-snackbar>
 
-    <!-- 时间范围选择器 -->
+    <!-- Duration selector -->
     <div class="chart-header d-flex align-center justify-space-between mb-3">
       <div class="d-flex align-center ga-2">
         <v-btn-toggle v-model="selectedDuration" mandatory density="compact" variant="outlined" divided :disabled="isLoading">
@@ -78,8 +78,8 @@ const apexchart = VueApexCharts
 
 const props = defineProps<{
   channelType: 'messages' | 'responses'
-  channelIndex: number  // 单渠道模式：指定渠道索引
-  channelName: string   // 渠道名称（用于图例）
+  channelIndex: number  // Single-channel mode: specified channel index
+  channelName: string   // Channel name (used for the legend)
 }>()
 
 const _emit = defineEmits<{
@@ -241,7 +241,7 @@ const refreshData = async () => {
     } else {
       allData = await api.getResponsesChannelMetricsHistory(selectedDuration.value)
     }
-    // Find the specific channel data
+    // Find the matching channel data
     historyData.value = allData.find(ch => ch.channelIndex === props.channelIndex) || null
   } catch (error) {
     console.error('Failed to fetch metrics history:', error)
