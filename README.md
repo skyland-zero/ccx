@@ -18,6 +18,26 @@ CCX is a high-performance AI API proxy and protocol translation gateway for Clau
 - Streaming and non-streaming support
 - Responses session tracking for multi-turn workflows
 
+## Screenshots
+
+### Channel Orchestration
+
+Visual channel management with drag-and-drop priority adjustment and real-time health monitoring.
+
+![Channel Orchestration](docs/screenshots/channel-orchestration.png)
+
+### Add Channel
+
+Supports multiple upstream service types (Claude/Codex/Gemini) with flexible API key, model mapping, and request parameter configuration.
+
+<img src="docs/screenshots/add-channel-modal.png" width="500" alt="Add Channel">
+
+### Traffic Stats
+
+Real-time monitoring of request traffic, success rate, and response latency per channel.
+
+![Traffic Stats](docs/screenshots/traffic-stats.png)
+
 ## Architecture
 
 CCX exposes one backend entrypoint:
@@ -155,6 +175,12 @@ make dev
 - [DEVELOPMENT.md](DEVELOPMENT.md)
 - [ENVIRONMENT.md](ENVIRONMENT.md)
 - [RELEASE.md](RELEASE.md)
+
+## Community
+
+Join the QQ group for discussion: **642217364**
+
+<img src="docs/qrcode_1769645166806.png" width="300" alt="QQ Group QR Code">
 
 ## License
 

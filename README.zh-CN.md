@@ -18,6 +18,26 @@ CCX 是一个高性能的 AI API 代理与协议转换网关，支持 Claude、O
 - 支持流式与非流式响应
 - Responses API 支持多轮会话跟踪
 
+## 界面预览
+
+### 渠道编排
+
+可视化渠道管理，支持拖拽调整优先级，实时查看渠道健康状态和调度统计。
+
+![渠道编排](docs/screenshots/channel-orchestration.png)
+
+### 添加渠道
+
+支持多种上游服务类型（Claude/Codex/Gemini），灵活配置 API 密钥、模型映射和请求参数。
+
+<img src="docs/screenshots/add-channel-modal.png" width="500" alt="添加渠道">
+
+### 流量统计
+
+实时监控各渠道的请求流量、成功率和响应延迟，帮助优化调度策略。
+
+![流量统计](docs/screenshots/traffic-stats.png)
+
 ## 架构概览
 
 CCX 对外提供一个统一后端入口：
@@ -155,6 +175,12 @@ make dev
 - [DEVELOPMENT.md](DEVELOPMENT.md)
 - [ENVIRONMENT.md](ENVIRONMENT.md)
 - [RELEASE.md](RELEASE.md)
+
+## 社区交流
+
+欢迎加入 QQ 群交流讨论：**642217364**
+
+<img src="docs/qrcode_1769645166806.png" width="300" alt="QQ群二维码">
 
 ## 许可证
 
