@@ -32,9 +32,8 @@
         </div>
 
         <div v-else-if="(state === 'running' || state === 'completed') && job">
-          <div class="mb-4">
-            <div class="text-body-2 font-weight-medium mb-2">{{ t('capability.compatibleProtocols') }}</div>
-            <div class="d-flex flex-wrap ga-2">
+          <div class="capability-status-bar mb-4">
+            <div class="d-flex align-center flex-wrap ga-2">
               <v-chip
                 v-for="proto in (job?.compatibleProtocols ?? [])"
                 :key="proto"
@@ -52,11 +51,23 @@
                 <v-progress-circular indeterminate size="12" width="2" color="primary" />
                 <span>{{ job?.status === 'queued' ? t('capability.modelQueued') : t('capability.protocolRunning') }}</span>
               </v-chip>
-            </div>
-          </div>
 
-          <div v-if="job?.progress?.totalModels" class="mb-4 text-caption text-medium-emphasis">
-            {{ t('capability.progressSummary', { done: job.progress.completedModels, total: job.progress.totalModels }) }}
+              <span v-if="job?.progress?.totalModels && state === 'running'" class="text-caption text-medium-emphasis">
+                {{ t('capability.progressSummary', { done: job.progress.completedModels, total: job.progress.totalModels }) }}
+              </span>
+            </div>
+
+            <v-btn
+              v-if="state === 'running'"
+              color="error"
+              variant="tonal"
+              size="small"
+              :loading="cancelling"
+              @click="handleCancel"
+            >
+              <v-icon start size="small">mdi-stop-circle</v-icon>
+              {{ cancelling ? t('capability.cancelling') : t('capability.cancel') }}
+            </v-btn>
           </div>
 
           <!-- 移动端卡片布局 -->
@@ -319,19 +330,6 @@
           </div>
         </div>
       </v-card-text>
-
-      <v-card-actions v-if="state === 'running'" class="px-4 pb-4">
-        <v-spacer />
-        <v-btn
-          color="error"
-          variant="tonal"
-          :loading="cancelling"
-          @click="handleCancel"
-        >
-          <v-icon start>mdi-stop-circle</v-icon>
-          {{ cancelling ? t('capability.cancelling') : t('capability.cancel') }}
-        </v-btn>
-      </v-card-actions>
     </v-card>
   </v-dialog>
 </template>
@@ -559,6 +557,14 @@ defineExpose({ setError })
   color: #166534;
   background-color: #f6fff8;
   border: 1px solid #bbf7d0;
+}
+
+.capability-status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .queued-badge {
