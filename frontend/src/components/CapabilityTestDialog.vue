@@ -36,7 +36,7 @@
             <div class="text-body-2 font-weight-medium mb-2">{{ t('capability.compatibleProtocols') }}</div>
             <div class="d-flex flex-wrap ga-2">
               <v-chip
-                v-for="proto in (job.compatibleProtocols ?? [])"
+                v-for="proto in (job?.compatibleProtocols ?? [])"
                 :key="proto"
                 :color="getProtocolColor(proto)"
                 size="small"
@@ -45,17 +45,17 @@
                 <v-icon start size="small">{{ getProtocolIcon(proto) }}</v-icon>
                 {{ getProtocolDisplayName(proto) }}
               </v-chip>
-              <v-chip v-if="(job.compatibleProtocols ?? []).length === 0 && state === 'completed'" color="grey" size="small" variant="tonal">
+              <v-chip v-if="(job?.compatibleProtocols ?? []).length === 0 && state === 'completed'" color="grey" size="small" variant="tonal">
                 {{ t('capability.noCompatibleProtocols') }}
               </v-chip>
-              <v-chip v-else-if="(job.compatibleProtocols ?? []).length === 0" color="grey" size="small" variant="tonal" class="d-flex align-center ga-2">
+              <v-chip v-else-if="(job?.compatibleProtocols ?? []).length === 0" color="grey" size="small" variant="tonal" class="d-flex align-center ga-2">
                 <v-progress-circular indeterminate size="12" width="2" color="primary" />
-                <span>{{ job.status === 'queued' ? t('capability.modelQueued') : t('capability.protocolRunning') }}</span>
+                <span>{{ job?.status === 'queued' ? t('capability.modelQueued') : t('capability.protocolRunning') }}</span>
               </v-chip>
             </div>
           </div>
 
-          <div v-if="job.progress.totalModels" class="mb-4 text-caption text-medium-emphasis">
+          <div v-if="job?.progress?.totalModels" class="mb-4 text-caption text-medium-emphasis">
             {{ t('capability.progressSummary', { done: job.progress.completedModels, total: job.progress.totalModels }) }}
           </div>
 
@@ -311,7 +311,7 @@
           </v-table>
 
           <div class="text-caption text-medium-emphasis mt-3 text-right" v-if="state === 'completed'">
-            {{ t('capability.totalDuration', { duration: job.totalDuration }) }}
+            {{ t('capability.totalDuration', { duration: job?.totalDuration }) }}
           </div>
         </div>
       </v-card-text>
