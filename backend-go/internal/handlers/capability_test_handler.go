@@ -224,14 +224,68 @@ func TestChannelCapability(cfgManager *config.ConfigManager, channelKind string)
 		job, reused := capabilityJobs.getOrCreateByLookupKey(lookupKey, func() *CapabilityTestJob {
 			return newCapabilityTestJob(id, channel.Name, channelKind, channel.ServiceType, protocols, timeout)
 		})
+
+		// 检测到 cancelled job，恢复进度
+		if reused && job.Status == CapabilityJobStatusCancelled {
+			log.Printf("[CapabilityTest-Job] 恢复已取消的任务 %s，渠道 %s (ID:%d)", job.JobID, channel.Name, id)
+
+			// 提取已成功的模型作为 previousResults
+			previousResults := make(map[string]map[string]ModelTestResult)
+			for _, test := range job.Tests {
+				modelMap := make(map[string]ModelTestResult)
+				for _, mr := range test.ModelResults {
+					if mr.Status == CapabilityModelStatusSuccess {
+						modelMap[mr.Model] = ModelTestResult{
+							Model:              mr.Model,
+							Success:            mr.Success,
+							Latency:            mr.Latency,
+							StreamingSupported: mr.StreamingSupported,
+							Error:              mr.Error,
+							StartedAt:          mr.StartedAt,
+							TestedAt:           mr.TestedAt,
+						}
+					}
+				}
+				if len(modelMap) > 0 {
+					previousResults[test.Protocol] = modelMap
+				}
+			}
+
+			// 重置 failed/skipped 模型为 queued，准备重测
+			capabilityJobs.update(job.JobID, func(j *CapabilityTestJob) {
+				j.Status = CapabilityJobStatusQueued
+				j.FinishedAt = ""
+				for i := range j.Tests {
+					if j.Tests[i].Status == CapabilityProtocolStatusFailed {
+						j.Tests[i].Status = CapabilityProtocolStatusQueued
+					}
+					for k := range j.Tests[i].ModelResults {
+						if j.Tests[i].ModelResults[k].Status == CapabilityModelStatusFailed ||
+							j.Tests[i].ModelResults[k].Status == CapabilityModelStatusSkipped {
+							j.Tests[i].ModelResults[k].Status = CapabilityModelStatusQueued
+							j.Tests[i].ModelResults[k].Error = nil
+						}
+					}
+				}
+			})
+
+			go runCapabilityTestJob(job.JobID, channelKind, id, *channel, protocols, timeout, cacheKey, lookupKey, previousResults)
+
+			c.JSON(http.StatusOK, gin.H{"jobId": job.JobID, "resumed": true, "job": job})
+			return
+		}
+
+		// 复用正在运行的 job
 		if reused {
 			log.Printf("[CapabilityTest-Job] 复用能力测试任务 %s，渠道 %s (ID:%d, 类型:%s)", job.JobID, channel.Name, id, channel.ServiceType)
 			c.JSON(http.StatusOK, gin.H{"jobId": job.JobID, "resumed": true, "job": job})
 			return
 		}
+
+		// 创建新 job
 		log.Printf("[CapabilityTest-Job] 创建能力测试任务 %s，渠道 %s (ID:%d, 类型:%s)，协议: %v", job.JobID, channel.Name, id, channel.ServiceType, protocols)
 
-		// 提取上次成功的结果用于复用
+		// 提取上次成功的结果用于复用（从 previousJobID）
 		var previousResults map[string]map[string]ModelTestResult
 		if req.PreviousJobID != "" {
 			if prevJob, ok := capabilityJobs.get(req.PreviousJobID); ok && prevJob.ChannelID == id && prevJob.ChannelKind == channelKind {
@@ -382,7 +436,8 @@ func runCapabilityTestJob(jobID, channelKind string, channelID int, channel conf
 		log.Printf("[CapabilityTest-Cache] 渠道 %s (ID:%d) 写入缓存，兼容协议: %v", channel.Name, channelID, compatible)
 	}
 
-	if lookupKey != "" {
+	// 取消时保留 lookupKey，允许后续恢复进度
+	if lookupKey != "" && ctx.Err() == nil {
 		capabilityJobs.clearLookupKey(lookupKey)
 	}
 

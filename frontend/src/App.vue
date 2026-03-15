@@ -732,7 +732,7 @@ const testChannelCapability = async (channelId: number) => {
   // 记录上一次的 jobId 用于复用成功结果
   capabilityTestPreviousJobId.value = capabilityTestJobId.value
   capabilityTestJobId.value = ''
-  capabilityTestJob.value = null
+  // 不清空 capabilityTestJob，保留旧数据，后端返回后自动更新
 
   try {
     const startResp: CapabilityTestJobStartResponse = await api.startChannelCapabilityTest(
