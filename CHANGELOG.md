@@ -1,3 +1,9 @@
+## [v2.6.41] - 2026-03-18
+
+### Changed
+
+- **messages->responses system 指令过滤** - `/v1/messages` 转发到 responses 上游时，若 `system` 数组首项为 Claude Code 注入的 `x-anthropic-billing-header` 计费头，则不再映射到 `instructions`，仅保留真实 system 指令，避免协议元信息污染上游提示词
+
 ## [v2.6.40] - 2026-03-18
 
 ### Changed

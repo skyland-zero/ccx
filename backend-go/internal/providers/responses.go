@@ -202,7 +202,7 @@ func (p *ResponsesProvider) buildResponsesRequestFromClaude(bodyBytes []byte, up
 		"input":  input,
 		"stream": claudeReq.Stream,
 	}
-	if instructions := extractSystemText(claudeReq.System); instructions != "" {
+	if instructions := extractResponsesInstructions(claudeReq.System); instructions != "" {
 		responsesReq["instructions"] = instructions
 	}
 	if claudeReq.MaxTokens > 0 {
@@ -227,6 +227,25 @@ func (p *ResponsesProvider) buildResponsesRequestFromClaude(bodyBytes []byte, up
 		responsesReq["tools"] = tools
 	}
 	return responsesReq, nil
+}
+
+func extractResponsesInstructions(system interface{}) string {
+	arr, ok := system.([]interface{})
+	if !ok || len(arr) == 0 {
+		return extractSystemText(system)
+	}
+
+	first, ok := arr[0].(map[string]interface{})
+	if !ok || first["type"] != "text" {
+		return extractSystemText(system)
+	}
+
+	text, ok := first["text"].(string)
+	if !ok || !strings.HasPrefix(text, "x-anthropic-billing-header:") {
+		return extractSystemText(system)
+	}
+
+	return extractSystemTextBlocks(system, 1)
 }
 
 func responsesTextContentType(role string) string {

@@ -183,6 +183,78 @@ func TestResponsesProvider_BuildResponsesRequestFromClaude_AssistantTextUsesOutp
 	assertMessageBlockType(5, "user", "input_text", "继续总结")
 }
 
+func TestExtractResponsesInstructions_SkipsLeadingBillingHeader(t *testing.T) {
+	instructions := extractResponsesInstructions([]interface{}{
+		map[string]interface{}{"type": "text", "text": "x-anthropic-billing-header: cc_version=2.1.78"},
+		map[string]interface{}{"type": "text", "text": "你是一个有帮助的助手"},
+		map[string]interface{}{"type": "text", "text": "回答时简洁"},
+	})
+
+	want := "你是一个有帮助的助手\n回答时简洁"
+	if instructions != want {
+		t.Fatalf("instructions = %q, want %q", instructions, want)
+	}
+}
+
+func TestExtractResponsesInstructions_PreservesNonBillingSystem(t *testing.T) {
+	instructions := extractResponsesInstructions([]interface{}{
+		map[string]interface{}{"type": "text", "text": "正常 system 指令"},
+		map[string]interface{}{"type": "text", "text": "继续执行"},
+	})
+
+	want := "正常 system 指令\n继续执行"
+	if instructions != want {
+		t.Fatalf("instructions = %q, want %q", instructions, want)
+	}
+}
+
+func TestResponsesProvider_BuildResponsesRequestFromClaude_OmitsInstructionsWhenOnlyBillingHeader(t *testing.T) {
+	provider := &ResponsesProvider{}
+	upstream := &config.UpstreamConfig{ServiceType: "responses"}
+
+	body := []byte(`{
+		"model":"gpt-5",
+		"system":[
+			{"type":"text","text":"x-anthropic-billing-header: cc_version=2.1.78.a43"}
+		],
+		"messages":[
+			{"role":"user","content":"hello"}
+		]
+	}`)
+
+	result, err := provider.buildResponsesRequestFromClaude(body, upstream)
+	if err != nil {
+		t.Fatalf("buildResponsesRequestFromClaude() err = %v", err)
+	}
+	if _, exists := result["instructions"]; exists {
+		t.Fatalf("instructions exists = true, want false; value = %v", result["instructions"])
+	}
+}
+
+func TestResponsesProvider_BuildResponsesRequestFromClaude_FiltersBillingHeaderFromInstructions(t *testing.T) {
+	provider := &ResponsesProvider{}
+	upstream := &config.UpstreamConfig{ServiceType: "responses"}
+
+	body := []byte(`{
+		"model":"gpt-5",
+		"system":[
+			{"type":"text","text":"x-anthropic-billing-header: cc_version=2.1.78.a43"},
+			{"type":"text","text":"只保留真正的 system 指令"}
+		],
+		"messages":[
+			{"role":"user","content":"hello"}
+		]
+	}`)
+
+	result, err := provider.buildResponsesRequestFromClaude(body, upstream)
+	if err != nil {
+		t.Fatalf("buildResponsesRequestFromClaude() err = %v", err)
+	}
+	if result["instructions"] != "只保留真正的 system 指令" {
+		t.Fatalf("instructions = %v, want 只保留真正的 system 指令", result["instructions"])
+	}
+}
+
 func TestResponsesProvider_ConvertToClaudeResponse(t *testing.T) {
 	provider := &ResponsesProvider{}
 	providerResp := &types.ProviderResponse{

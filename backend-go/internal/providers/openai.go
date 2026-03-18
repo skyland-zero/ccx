@@ -694,27 +694,34 @@ func processToolUsePart(id, name string, input interface{}, index int) []string 
 // 辅助函数
 
 func extractSystemText(system interface{}) string {
+	return extractSystemTextBlocks(system, 0)
+}
+
+func extractSystemTextBlocks(system interface{}, skipLeadingTextBlocks int) string {
 	if str, ok := system.(string); ok {
 		return str
 	}
 
-	// 可能是数组
 	arr, ok := system.([]interface{})
 	if !ok {
 		return ""
 	}
 
 	parts := []string{}
-	for _, item := range arr {
+	for index, item := range arr {
 		obj, ok := item.(map[string]interface{})
 		if !ok {
 			continue
 		}
 
-		if obj["type"] == "text" {
-			if text, ok := obj["text"].(string); ok {
-				parts = append(parts, text)
-			}
+		if obj["type"] != "text" {
+			continue
+		}
+		if index < skipLeadingTextBlocks {
+			continue
+		}
+		if text, ok := obj["text"].(string); ok {
+			parts = append(parts, text)
 		}
 	}
 
