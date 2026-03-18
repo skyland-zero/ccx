@@ -1,3 +1,10 @@
+## [v2.6.39] - 2026-03-18
+
+### Fixed
+
+- **metadata.user_id JSON 对象兼容** - Claude Code v2.1.78 将 `metadata.user_id` 从扁平字符串改为 JSON 对象字符串，部分上游（如 anyrouter）严格校验导致请求失败；代理层自动检测并动态拼接为扁平格式（仅包含非空字段，如 `user_{device_id}` 或 `user_{device_id}_session_{sid}`）
+- **schema/参数错误不再触发 failover** - 上游返回 `invalid_request_error`、`schema_validation_error` 等不可恢复的 4xx 错误时，不再切换渠道重试，避免同一份坏请求打挂所有同类渠道
+
 ## [v2.6.38] - 2026-03-15
 
 ### Added
