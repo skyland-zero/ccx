@@ -389,8 +389,20 @@ func (p *ResponsesProvider) ConvertToClaudeResponse(providerResp *types.Provider
 		if v, ok := usageRaw["output_tokens"].(float64); ok {
 			claudeResp.Usage.OutputTokens = int(v)
 		}
+		if cacheCreation, ok := usageRaw["cache_creation_input_tokens"].(float64); ok {
+			claudeResp.Usage.CacheCreationInputTokens = int(cacheCreation)
+		}
 		if cacheRead, ok := usageRaw["cache_read_input_tokens"].(float64); ok {
 			claudeResp.Usage.CacheReadInputTokens = int(cacheRead)
+		}
+		if cacheCreation5m, ok := usageRaw["cache_creation_5m_input_tokens"].(float64); ok {
+			claudeResp.Usage.CacheCreation5mInputTokens = int(cacheCreation5m)
+		}
+		if cacheCreation1h, ok := usageRaw["cache_creation_1h_input_tokens"].(float64); ok {
+			claudeResp.Usage.CacheCreation1hInputTokens = int(cacheCreation1h)
+		}
+		if cacheTTL, ok := usageRaw["cache_ttl"].(string); ok {
+			claudeResp.Usage.CacheTTL = cacheTTL
 		}
 	}
 
@@ -447,6 +459,11 @@ func (p *ResponsesProvider) HandleStreamResponse(body io.ReadCloser) (<-chan str
 		var currentToolArgs strings.Builder
 		latestInputTokens := 0
 		latestOutputTokens := 0
+		latestCacheCreationTokens := 0
+		latestCacheReadTokens := 0
+		latestCacheCreation5mTokens := 0
+		latestCacheCreation1hTokens := 0
+		latestCacheTTL := ""
 		stopReason := "end_turn"
 
 		emitJSON := func(eventName string, payload map[string]interface{}) {
@@ -565,6 +582,21 @@ func (p *ResponsesProvider) HandleStreamResponse(body io.ReadCloser) (<-chan str
 				if v, ok := usage["output_tokens"].(float64); ok {
 					latestOutputTokens = int(v)
 				}
+				if v, ok := usage["cache_creation_input_tokens"].(float64); ok {
+					latestCacheCreationTokens = int(v)
+				}
+				if v, ok := usage["cache_read_input_tokens"].(float64); ok {
+					latestCacheReadTokens = int(v)
+				}
+				if v, ok := usage["cache_creation_5m_input_tokens"].(float64); ok {
+					latestCacheCreation5mTokens = int(v)
+				}
+				if v, ok := usage["cache_creation_1h_input_tokens"].(float64); ok {
+					latestCacheCreation1hTokens = int(v)
+				}
+				if v, ok := usage["cache_ttl"].(string); ok {
+					latestCacheTTL = v
+				}
 				status := toString(response["status"])
 				if status == "incomplete" {
 					stopReason = "max_tokens"
@@ -577,9 +609,28 @@ func (p *ResponsesProvider) HandleStreamResponse(body io.ReadCloser) (<-chan str
 					eventChan <- buildMessageStartEvent("responses")
 					messageStartSent = true
 				}
+				usagePayload := map[string]interface{}{
+					"input_tokens":  latestInputTokens,
+					"output_tokens": latestOutputTokens,
+				}
+				if latestCacheCreationTokens > 0 {
+					usagePayload["cache_creation_input_tokens"] = latestCacheCreationTokens
+				}
+				if latestCacheReadTokens > 0 {
+					usagePayload["cache_read_input_tokens"] = latestCacheReadTokens
+				}
+				if latestCacheCreation5mTokens > 0 {
+					usagePayload["cache_creation_5m_input_tokens"] = latestCacheCreation5mTokens
+				}
+				if latestCacheCreation1hTokens > 0 {
+					usagePayload["cache_creation_1h_input_tokens"] = latestCacheCreation1hTokens
+				}
+				if latestCacheTTL != "" {
+					usagePayload["cache_ttl"] = latestCacheTTL
+				}
 				emitJSON("message_delta", map[string]interface{}{
 					"delta": map[string]interface{}{"stop_reason": stopReason, "stop_sequence": nil},
-					"usage": map[string]interface{}{"input_tokens": latestInputTokens, "output_tokens": latestOutputTokens},
+					"usage": usagePayload,
 				})
 				emitJSON("message_stop", map[string]interface{}{})
 			}

@@ -51,6 +51,17 @@ func emitResponsesEvent(event string, payload string) string {
 	return fmt.Sprintf("event: %s\ndata: %s\n\n", event, payload)
 }
 
+func effectiveCacheCreationTokens(cacheCreation, cacheCreation5m, cacheCreation1h int64) int64 {
+	if cacheCreation > 0 {
+		return cacheCreation
+	}
+	return cacheCreation5m + cacheCreation1h
+}
+
+func calculateClaudeTotalTokens(inputTokens, outputTokens, cacheReadTokens, cacheCreation, cacheCreation5m, cacheCreation1h int64) int64 {
+	return inputTokens + outputTokens + cacheReadTokens + effectiveCacheCreationTokens(cacheCreation, cacheCreation5m, cacheCreation1h)
+}
+
 // ConvertOpenAIChatToResponses 将 OpenAI Chat Completions SSE 转换为 Responses SSE 事件
 // ctx: 上下文
 // modelName: 模型名称
@@ -682,7 +693,14 @@ func (st *chatToResponsesState) generateCompletedEvents(originalRequestRawJSON [
 	// 参见 handler.go 中的 patchResponsesCompletedEventUsage 和 injectResponsesUsageToCompletedEvent
 	completed, _ = sjson.Set(completed, "response.usage.input_tokens", st.InputTokens)
 	completed, _ = sjson.Set(completed, "response.usage.output_tokens", st.OutputTokens)
-	total := st.InputTokens + st.OutputTokens
+	total := calculateClaudeTotalTokens(
+		st.InputTokens,
+		st.OutputTokens,
+		st.CachedTokens,
+		st.CacheCreationTokens,
+		st.CacheCreation5mTokens,
+		st.CacheCreation1hTokens,
+	)
 	completed, _ = sjson.Set(completed, "response.usage.total_tokens", total)
 
 	// 可选的详情字段，仅在有值时添加
@@ -883,6 +901,7 @@ func ConvertOpenAIChatToResponsesNonStream(_ context.Context, _ string, original
 		var inputTokens, outputTokens, totalTokens, cachedTokens int64
 		var cacheCreation, cacheCreation5m, cacheCreation1h int64
 		var cacheTTL string
+		hasClaudeCacheFields := false
 
 		// OpenAI 格式
 		if v := usage.Get("prompt_tokens"); v.Exists() {
@@ -907,15 +926,19 @@ func ConvertOpenAIChatToResponsesNonStream(_ context.Context, _ string, original
 			outputTokens = v.Int()
 		}
 		if v := usage.Get("cache_read_input_tokens"); v.Exists() {
+			hasClaudeCacheFields = true
 			cachedTokens = v.Int()
 		}
 		if v := usage.Get("cache_creation_input_tokens"); v.Exists() {
+			hasClaudeCacheFields = true
 			cacheCreation = v.Int()
 		}
 		if v := usage.Get("cache_creation_5m_input_tokens"); v.Exists() {
+			hasClaudeCacheFields = true
 			cacheCreation5m = v.Int()
 		}
 		if v := usage.Get("cache_creation_1h_input_tokens"); v.Exists() {
+			hasClaudeCacheFields = true
 			cacheCreation1h = v.Int()
 		}
 
@@ -947,6 +970,16 @@ func ConvertOpenAIChatToResponsesNonStream(_ context.Context, _ string, original
 		// 计算总量
 		if totalTokens == 0 {
 			totalTokens = inputTokens + outputTokens
+			if hasClaudeCacheFields {
+				totalTokens = calculateClaudeTotalTokens(
+					inputTokens,
+					outputTokens,
+					cachedTokens,
+					cacheCreation,
+					cacheCreation5m,
+					cacheCreation1h,
+				)
+			}
 		}
 
 		// 写入基础字段

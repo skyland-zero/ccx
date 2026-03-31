@@ -40,6 +40,31 @@ func extractInputJSONDelta(t *testing.T, events []string) string {
 	return ""
 }
 
+func extractMessageDeltaUsage(t *testing.T, events []string) map[string]interface{} {
+	t.Helper()
+	for _, event := range events {
+		for _, line := range strings.Split(event, "\n") {
+			if !strings.HasPrefix(line, "data: ") {
+				continue
+			}
+			jsonStr := strings.TrimPrefix(line, "data: ")
+
+			var data map[string]interface{}
+			if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
+				continue
+			}
+			if data["type"] != "message_delta" {
+				continue
+			}
+			if usage, ok := data["usage"].(map[string]interface{}); ok {
+				return usage
+			}
+		}
+	}
+	t.Fatalf("message_delta usage not found, events=%v", events)
+	return nil
+}
+
 func TestResponsesProvider_HandleStreamResponse_StripsEmptyReadPages(t *testing.T) {
 	body := `event: response.output_item.added
 data: {"type":"response.output_item.added","item":{"type":"function_call","call_id":"call_1","name":"Read"}}
@@ -80,5 +105,50 @@ data: {"type":"response.completed","response":{"status":"completed","usage":{"in
 	}
 	if input["file_path"] != "/tmp/x" {
 		t.Fatalf("file_path = %v, want /tmp/x", input["file_path"])
+	}
+}
+
+func TestResponsesProvider_HandleStreamResponse_PropagatesCacheUsage(t *testing.T) {
+	body := `event: response.output_text.delta
+data: {"type":"response.output_text.delta","delta":"hello"}
+
+event: response.completed
+data: {"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":10,"output_tokens":5,"cache_creation_input_tokens":3,"cache_read_input_tokens":7,"cache_creation_5m_input_tokens":2,"cache_creation_1h_input_tokens":1,"cache_ttl":"mixed"}}}
+
+`
+
+	provider := &ResponsesProvider{}
+	eventChan, errChan, err := provider.HandleStreamResponse(io.NopCloser(strings.NewReader(body)))
+	if err != nil {
+		t.Fatalf("HandleStreamResponse returned error: %v", err)
+	}
+
+	events := collectStreamEvents(eventChan)
+	select {
+	case streamErr := <-errChan:
+		if streamErr != nil {
+			t.Fatalf("unexpected stream error: %v", streamErr)
+		}
+	default:
+	}
+
+	usage := extractMessageDeltaUsage(t, events)
+	if int(usage["input_tokens"].(float64)) != 10 || int(usage["output_tokens"].(float64)) != 5 {
+		t.Fatalf("basic usage mismatch: %#v", usage)
+	}
+	if int(usage["cache_creation_input_tokens"].(float64)) != 3 {
+		t.Fatalf("cache_creation_input_tokens mismatch: %#v", usage)
+	}
+	if int(usage["cache_read_input_tokens"].(float64)) != 7 {
+		t.Fatalf("cache_read_input_tokens mismatch: %#v", usage)
+	}
+	if int(usage["cache_creation_5m_input_tokens"].(float64)) != 2 {
+		t.Fatalf("cache_creation_5m_input_tokens mismatch: %#v", usage)
+	}
+	if int(usage["cache_creation_1h_input_tokens"].(float64)) != 1 {
+		t.Fatalf("cache_creation_1h_input_tokens mismatch: %#v", usage)
+	}
+	if usage["cache_ttl"] != "mixed" {
+		t.Fatalf("cache_ttl mismatch: %#v", usage)
 	}
 }

@@ -541,6 +541,17 @@ func getIntFromMap(m map[string]interface{}, key string) (int, bool) {
 	}
 }
 
+func effectiveCacheCreationTokensInt(cacheCreation, cacheCreation5m, cacheCreation1h int) int {
+	if cacheCreation > 0 {
+		return cacheCreation
+	}
+	return cacheCreation5m + cacheCreation1h
+}
+
+func calculateClaudeTotalTokensInt(inputTokens, outputTokens, cacheRead, cacheCreation, cacheCreation5m, cacheCreation1h int) int {
+	return inputTokens + outputTokens + cacheRead + effectiveCacheCreationTokensInt(cacheCreation, cacheCreation5m, cacheCreation1h)
+}
+
 // parseResponsesUsage 解析 Responses API 的 usage 字段
 // 完整支持 OpenAI Responses API 的详细 usage 结构
 func parseResponsesUsage(usageRaw interface{}) types.ResponsesUsage {
@@ -617,7 +628,6 @@ func parseClaudeUsage(usageRaw interface{}) types.ResponsesUsage {
 	if v, ok := getIntFromMap(usageMap, "output_tokens"); ok {
 		usage.OutputTokens = v
 	}
-	usage.TotalTokens = usage.InputTokens + usage.OutputTokens
 
 	// Claude 缓存创建统计（区分 TTL）
 	var cacheCreation, cacheCreation5m, cacheCreation1h int
@@ -667,6 +677,15 @@ func parseClaudeUsage(usageRaw interface{}) types.ResponsesUsage {
 			CachedTokens: cacheRead,
 		}
 	}
+
+	usage.TotalTokens = calculateClaudeTotalTokensInt(
+		usage.InputTokens,
+		usage.OutputTokens,
+		cacheRead,
+		cacheCreation,
+		cacheCreation5m,
+		cacheCreation1h,
+	)
 
 	return usage
 }
@@ -731,6 +750,12 @@ func ExtractUsageMetrics(usageRaw interface{}) types.ResponsesUsage {
 		return parseClaudeUsage(usageRaw)
 	}
 	if _, hasCacheRead := usageMap["cache_read_input_tokens"]; hasCacheRead {
+		return parseClaudeUsage(usageRaw)
+	}
+	if _, hasCacheCreation5m := usageMap["cache_creation_5m_input_tokens"]; hasCacheCreation5m {
+		return parseClaudeUsage(usageRaw)
+	}
+	if _, hasCacheCreation1h := usageMap["cache_creation_1h_input_tokens"]; hasCacheCreation1h {
 		return parseClaudeUsage(usageRaw)
 	}
 

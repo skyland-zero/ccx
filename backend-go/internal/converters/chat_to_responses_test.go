@@ -9,6 +9,35 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+func extractResponseCompletedUsage(t *testing.T, events []string) map[string]interface{} {
+	t.Helper()
+	for _, event := range events {
+		if !strings.Contains(event, "event: response.completed") {
+			continue
+		}
+		for _, line := range strings.Split(event, "\n") {
+			if !strings.HasPrefix(line, "data: ") {
+				continue
+			}
+			jsonStr := strings.TrimPrefix(line, "data: ")
+			var payload map[string]interface{}
+			if err := json.Unmarshal([]byte(jsonStr), &payload); err != nil {
+				continue
+			}
+			response, ok := payload["response"].(map[string]interface{})
+			if !ok {
+				continue
+			}
+			usage, ok := response["usage"].(map[string]interface{})
+			if ok {
+				return usage
+			}
+		}
+	}
+	t.Fatalf("未找到 response.completed usage 事件: %v", events)
+	return nil
+}
+
 func TestConvertResponsesToOpenAIChatRequest(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -393,5 +422,55 @@ func TestConvertOpenAIChatToResponsesNonStream_ToolCalls(t *testing.T) {
 	}
 	if funcItem["call_id"] != "call_xyz" {
 		t.Errorf("call_id should be call_xyz, got %v", funcItem["call_id"])
+	}
+}
+
+func TestConvertOpenAIChatToResponses_Stream_ClaudeCacheTotalTokens(t *testing.T) {
+	ctx := context.Background()
+	sseLines := []string{
+		`data: {"id":"msg-claude-cache","object":"chat.completion.chunk","created":1234567890,"model":"claude","choices":[{"index":0,"delta":{"role":"assistant","content":"ok"},"finish_reason":null}]}`,
+		`data: {"id":"msg-claude-cache","object":"chat.completion.chunk","created":1234567890,"model":"claude","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"input_tokens":100,"output_tokens":20,"cache_creation_input_tokens":10,"cache_read_input_tokens":30}}`,
+		`data: [DONE]`,
+	}
+
+	originalReq := []byte(`{"model":"claude","input":"hi"}`)
+	var state any
+	var allEvents []string
+	for _, line := range sseLines {
+		allEvents = append(allEvents, ConvertOpenAIChatToResponses(ctx, "claude", originalReq, nil, []byte(line), &state)...)
+	}
+
+	usage := extractResponseCompletedUsage(t, allEvents)
+	if got := int(usage["total_tokens"].(float64)); got != 160 {
+		t.Fatalf("total_tokens = %d, want 160", got)
+	}
+	if got := int(usage["cache_creation_input_tokens"].(float64)); got != 10 {
+		t.Fatalf("cache_creation_input_tokens = %d, want 10", got)
+	}
+	if got := int(usage["cache_read_input_tokens"].(float64)); got != 30 {
+		t.Fatalf("cache_read_input_tokens = %d, want 30", got)
+	}
+}
+
+func TestConvertOpenAIChatToResponsesNonStream_ClaudeCacheTTLTotalFallback(t *testing.T) {
+	ctx := context.Background()
+	chatResponse := `{
+		"id":"chatcmpl-claude-cache",
+		"object":"chat.completion",
+		"created":1234567890,
+		"model":"claude",
+		"choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],
+		"usage":{
+			"input_tokens":100,
+			"output_tokens":20,
+			"cache_read_input_tokens":30,
+			"cache_creation_5m_input_tokens":7,
+			"cache_creation_1h_input_tokens":3
+		}
+	}`
+
+	result := ConvertOpenAIChatToResponsesNonStream(ctx, "claude", []byte(`{"model":"claude","input":"hi"}`), nil, []byte(chatResponse), nil)
+	if got := gjson.Get(result, "usage.total_tokens").Int(); got != 160 {
+		t.Fatalf("usage.total_tokens = %d, want 160", got)
 	}
 }

@@ -267,7 +267,15 @@ func TestResponsesProvider_ConvertToClaudeResponse(t *testing.T) {
 				{"type":"message","content":[{"type":"output_text","text":"hello world"}]},
 				{"type":"function_call","call_id":"call_1","name":"weather","arguments":"{\"city\":\"shanghai\"}"}
 			],
-			"usage":{"input_tokens":12,"output_tokens":34}
+			"usage":{
+				"input_tokens":12,
+				"output_tokens":34,
+				"cache_creation_input_tokens":5,
+				"cache_read_input_tokens":7,
+				"cache_creation_5m_input_tokens":3,
+				"cache_creation_1h_input_tokens":2,
+				"cache_ttl":"mixed"
+			}
 		}`),
 	}
 
@@ -290,8 +298,15 @@ func TestResponsesProvider_ConvertToClaudeResponse(t *testing.T) {
 	if claudeResp.Content[1].Type != "tool_use" || claudeResp.Content[1].Name != "weather" {
 		t.Fatalf("content[1] = %#v, want tool_use weather", claudeResp.Content[1])
 	}
-	if claudeResp.Usage == nil || claudeResp.Usage.InputTokens != 12 || claudeResp.Usage.OutputTokens != 34 {
-		t.Fatalf("usage = %#v, want input=12 output=34", claudeResp.Usage)
+	if claudeResp.Usage == nil ||
+		claudeResp.Usage.InputTokens != 12 ||
+		claudeResp.Usage.OutputTokens != 34 ||
+		claudeResp.Usage.CacheCreationInputTokens != 5 ||
+		claudeResp.Usage.CacheReadInputTokens != 7 ||
+		claudeResp.Usage.CacheCreation5mInputTokens != 3 ||
+		claudeResp.Usage.CacheCreation1hInputTokens != 2 ||
+		claudeResp.Usage.CacheTTL != "mixed" {
+		t.Fatalf("usage = %#v, want full cache fields mapped", claudeResp.Usage)
 	}
 }
 

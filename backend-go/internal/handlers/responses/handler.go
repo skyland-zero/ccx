@@ -371,7 +371,14 @@ func patchResponsesUsage(resp *types.ResponsesResponse, requestBody []byte, envC
 		estimatedOutput := estimateResponsesOutputFromItems(resp.Output)
 		resp.Usage.InputTokens = estimatedInput
 		resp.Usage.OutputTokens = estimatedOutput
-		resp.Usage.TotalTokens = estimatedInput + estimatedOutput
+		resp.Usage.TotalTokens = calculateTotalTokensWithCache(
+			estimatedInput,
+			estimatedOutput,
+			resp.Usage.CacheReadInputTokens,
+			resp.Usage.CacheCreationInputTokens,
+			resp.Usage.CacheCreation5mInputTokens,
+			resp.Usage.CacheCreation1hInputTokens,
+		)
 		if envCfg.EnableResponseLogs {
 			log.Printf("[Responses-Token] 上游无Usage, 本地估算: input=%d, output=%d", estimatedInput, estimatedOutput)
 		}
@@ -394,7 +401,14 @@ func patchResponsesUsage(resp *types.ResponsesResponse, requestBody []byte, envC
 
 	// 重新计算 TotalTokens（修补时或 total_tokens 为 0 但 input/output 有效时）
 	if patched || (resp.Usage.TotalTokens == 0 && (resp.Usage.InputTokens > 0 || resp.Usage.OutputTokens > 0)) {
-		resp.Usage.TotalTokens = resp.Usage.InputTokens + resp.Usage.OutputTokens
+		resp.Usage.TotalTokens = calculateTotalTokensWithCache(
+			resp.Usage.InputTokens,
+			resp.Usage.OutputTokens,
+			resp.Usage.CacheReadInputTokens,
+			resp.Usage.CacheCreationInputTokens,
+			resp.Usage.CacheCreation5mInputTokens,
+			resp.Usage.CacheCreation1hInputTokens,
+		)
 	}
 
 	if envCfg.EnableResponseLogs {
@@ -699,7 +713,14 @@ func handleStreamSuccess(
 					// 更新 collectedUsage 以便最终日志输出
 					collectedUsage.InputTokens = injectedInput
 					collectedUsage.OutputTokens = injectedOutput
-					collectedUsage.TotalTokens = injectedInput + injectedOutput
+					collectedUsage.TotalTokens = calculateTotalTokensWithCache(
+						injectedInput,
+						injectedOutput,
+						collectedUsage.CacheReadInputTokens,
+						collectedUsage.CacheCreationInputTokens,
+						collectedUsage.CacheCreation5mInputTokens,
+						collectedUsage.CacheCreation1hInputTokens,
+					)
 					if envCfg.EnableResponseLogs && envCfg.ShouldLog("debug") {
 						log.Printf("[Responses-Stream-Token] 上游无usage, 注入本地估算: input=%d, output=%d", injectedInput, injectedOutput)
 					}
@@ -1016,12 +1037,23 @@ func isClientDisconnectError(err error) bool {
 	return strings.Contains(msg, "broken pipe") || strings.Contains(msg, "connection reset")
 }
 
+func effectiveCacheCreationTokens(cacheCreation, cacheCreation5m, cacheCreation1h int) int {
+	if cacheCreation > 0 {
+		return cacheCreation
+	}
+	return cacheCreation5m + cacheCreation1h
+}
+
+func calculateTotalTokensWithCache(inputTokens, outputTokens, cacheRead, cacheCreation, cacheCreation5m, cacheCreation1h int) int {
+	return inputTokens + outputTokens + cacheRead + effectiveCacheCreationTokens(cacheCreation, cacheCreation5m, cacheCreation1h)
+}
+
 // injectResponsesUsageToCompletedEvent 向 response.completed 事件注入 usage
 // 返回: 修改后的事件字符串, 估算的 inputTokens, 估算的 outputTokens
 func injectResponsesUsageToCompletedEvent(event string, requestBody []byte, outputText string, envCfg *config.EnvConfig) (string, int, int) {
 	inputTokens := utils.EstimateResponsesRequestTokens(requestBody)
 	outputTokens := utils.EstimateTokens(outputText)
-	totalTokens := inputTokens + outputTokens
+	totalTokens := calculateTotalTokensWithCache(inputTokens, outputTokens, 0, 0, 0, 0)
 
 	// 调试日志：记录估算开始
 	if envCfg.EnableResponseLogs && envCfg.ShouldLog("debug") {
@@ -1249,7 +1281,14 @@ func patchResponsesCompletedEventUsage(event string, requestBody []byte, outputT
 						currentTotal = int(t)
 					}
 					if patched || (currentTotal == 0 && (collected.InputTokens > 0 || collected.OutputTokens > 0)) {
-						usage["total_tokens"] = collected.InputTokens + collected.OutputTokens
+						usage["total_tokens"] = calculateTotalTokensWithCache(
+							collected.InputTokens,
+							collected.OutputTokens,
+							collected.CacheReadInputTokens,
+							collected.CacheCreationInputTokens,
+							collected.CacheCreation5mInputTokens,
+							collected.CacheCreation1hInputTokens,
+						)
 					}
 
 					if envCfg.EnableResponseLogs && envCfg.ShouldLog("debug") && patched {

@@ -1,3 +1,10 @@
+## [Unreleased]
+
+### Fixed
+
+- **补全 Claude cache usage 统计** - 修复 Claude/Responses 协议转换与 `/v1/responses` handler 对 `cache_creation_input_tokens`、`cache_creation_5m_input_tokens`、`cache_creation_1h_input_tokens`、`cache_read_input_tokens` 的透传与 `total_tokens` 计算，确保流式与非流式场景下 usage 总量包含缓存读写成本
+- **新增 usage 回归测试覆盖** - 为 converters、responses handler 与 provider bridge/stream 补充缓存 usage 断言，防止后续协议转换再次遗漏 TTL 维度缓存字段
+
 ## [v2.6.43] - 2026-03-29
 
 ### Fixed
