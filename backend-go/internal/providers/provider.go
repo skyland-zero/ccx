@@ -3,6 +3,7 @@ package providers
 import (
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/BenedictKing/ccx/internal/config"
@@ -21,6 +22,19 @@ type Provider interface {
 
 	// HandleStreamResponse 处理流式响应
 	HandleStreamResponse(body io.ReadCloser) (<-chan string, <-chan error, error)
+}
+
+// normalizeSSEFieldLine 标准化 SSE 字段行的格式
+// SSE 规范允许 "data:value" 和 "data: value" 两种格式，
+// 但下游解析统一使用 "data: " 前缀，因此需要标准化。
+// 例如: "data:{...}" → "data: {...}", "event:message_start" → "event: message_start"
+func normalizeSSEFieldLine(line string) string {
+	for _, prefix := range []string{"data:", "event:", "id:", "retry:"} {
+		if strings.HasPrefix(line, prefix) && !strings.HasPrefix(line, prefix+" ") {
+			return prefix + " " + line[len(prefix):]
+		}
+	}
+	return line
 }
 
 func newDefaultSessionManager() *session.SessionManager {
