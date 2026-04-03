@@ -122,6 +122,7 @@ func (s *ChannelScheduler) SelectChannel(
 
 	// 按路由前缀过滤渠道
 	if routePrefix != "" {
+		// 有前缀：仅选择匹配的渠道
 		var filtered []ChannelInfo
 		for _, ch := range activeChannels {
 			upstream := s.getUpstreamByIndex(ch.Index, kind)
@@ -133,6 +134,19 @@ func (s *ChannelScheduler) SelectChannel(
 			return nil, fmt.Errorf("no channels with route prefix: %s", routePrefix)
 		}
 		activeChannels = filtered
+	} else {
+		// 无前缀：排除设了路由前缀的渠道（它们只能通过前缀访问）
+		var filtered []ChannelInfo
+		for _, ch := range activeChannels {
+			upstream := s.getUpstreamByIndex(ch.Index, kind)
+			if upstream != nil && upstream.RoutePrefix == "" {
+				filtered = append(filtered, ch)
+			}
+		}
+		if len(filtered) > 0 {
+			activeChannels = filtered
+		}
+		// 如果过滤后为空（所有渠道都有前缀），则保留全部渠道作为 fallback
 	}
 
 	// 获取对应类型的指标管理器
