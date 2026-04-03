@@ -27,12 +27,25 @@ var ErrEmptyStreamResponse = errors.New("upstream returned empty stream response
 // Header 未发送，可安全 failover 到下一个 Key/BaseURL/渠道
 var ErrInvalidResponseBody = errors.New("upstream returned invalid response body")
 
+// ErrBlacklistKey 上游在 SSE 流中返回了应拉黑 Key 的错误（认证/余额）
+// Header 未发送，可安全 failover 到下一个 Key/BaseURL/渠道
+type ErrBlacklistKey struct {
+	Reason  string // "authentication_error" / "permission_error" / "insufficient_balance"
+	Message string
+}
+
+func (e *ErrBlacklistKey) Error() string {
+	return fmt.Sprintf("upstream stream error requires key blacklist: %s", e.Reason)
+}
+
 // StreamPreflightResult 流式预检测结果
 type StreamPreflightResult struct {
-	BufferedEvents []string // 缓冲的事件（需要回放）
-	IsEmpty        bool     // 是否为空响应
-	HasError       bool     // 是否有流错误
-	Error          error    // 流错误
+	BufferedEvents   []string // 缓冲的事件（需要回放）
+	IsEmpty          bool     // 是否为空响应
+	HasError         bool     // 是否有流错误
+	Error            error    // 流错误
+	BlacklistReason  string   // 拉黑原因（非空时应拉黑 Key）
+	BlacklistMessage string   // 拉黑错误信息
 }
 
 // PreflightStreamEvents 在发送 HTTP Header 之前预检测流式响应是否为空
@@ -56,6 +69,14 @@ func PreflightStreamEvents(eventChan <-chan string, errChan <-chan error) *Strea
 				return result
 			}
 			result.BufferedEvents = append(result.BufferedEvents, event)
+
+			// 检测 SSE error 事件中的拉黑条件（认证/余额错误）
+			if result.BlacklistReason == "" {
+				if reason, msg := DetectStreamBlacklistError(event); reason != "" {
+					result.BlacklistReason = reason
+					result.BlacklistMessage = msg
+				}
+			}
 
 			// 检测非文本 content block（tool_use / thinking）
 			if !hasNonTextContent && hasNonTextContentBlock(event) {
@@ -738,7 +759,17 @@ func HandleStreamResponse(
 	if preflight.IsEmpty {
 		log.Printf("[Messages-EmptyResponse] 上游返回空响应 (缓冲事件数: %d)，触发重试", len(preflight.BufferedEvents))
 		drainChannels(eventChan, errChan)
+		// 如果同时检测到拉黑条件，优先返回拉黑错误
+		if preflight.BlacklistReason != "" {
+			return nil, &ErrBlacklistKey{Reason: preflight.BlacklistReason, Message: preflight.BlacklistMessage}
+		}
 		return nil, ErrEmptyStreamResponse
+	}
+
+	// 流中有拉黑错误但内容非空（如错误前有部分输出）：仍返回拉黑错误以触发 Key 拉黑
+	if preflight.BlacklistReason != "" {
+		drainChannels(eventChan, errChan)
+		return nil, &ErrBlacklistKey{Reason: preflight.BlacklistReason, Message: preflight.BlacklistMessage}
 	}
 
 	// 非空响应：正常流程
@@ -1376,6 +1407,84 @@ func ExtractTextFromEvent(event string, buf *bytes.Buffer) {
 			}
 		}
 	}
+}
+
+// DetectStreamBlacklistError 检测 SSE error 事件中是否包含应拉黑 Key 的错误
+// 返回 (reason, message)，reason 非空表示应拉黑
+func DetectStreamBlacklistError(event string) (reason string, message string) {
+	// 检查是否为 error 事件
+	isErrorEvent := false
+	for _, line := range strings.Split(event, "\n") {
+		if strings.HasPrefix(line, "event: ") {
+			if strings.TrimPrefix(line, "event: ") == "error" {
+				isErrorEvent = true
+			}
+			break
+		}
+	}
+
+	// 即使不是显式的 event: error，也检查 data 中的 type == "error"
+	for _, line := range strings.Split(event, "\n") {
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		jsonStr := strings.TrimPrefix(line, "data: ")
+
+		var data map[string]interface{}
+		if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
+			continue
+		}
+
+		// Claude 格式: {"type":"error","error":{"type":"authentication_error","message":"..."}}
+		if dataType, _ := data["type"].(string); dataType == "error" || isErrorEvent {
+			if errObj, ok := data["error"].(map[string]interface{}); ok {
+				errType, _ := errObj["type"].(string)
+				errMsg, _ := errObj["message"].(string)
+				errCode, _ := errObj["code"].(string)
+
+				typeLower := strings.ToLower(errType)
+
+				// 认证错误
+				if typeLower == "authentication_error" || typeLower == "invalid_api_key" {
+					return "authentication_error", truncateMsg(errMsg)
+				}
+				// 权限错误
+				if typeLower == "permission_error" || typeLower == "permission_denied" {
+					return "permission_error", truncateMsg(errMsg)
+				}
+				// 余额不足（明确的错误类型或错误码）
+				if typeLower == "insufficient_balance" || typeLower == "insufficient_quota" || typeLower == "billing_error" {
+					return "insufficient_balance", truncateMsg(errMsg)
+				}
+				// 已知的余额不足错误码（如 Kimi 的 1113）
+				if isInsufficientBalanceCode(errCode) {
+					return "insufficient_balance", truncateMsg(errMsg)
+				}
+			}
+		}
+	}
+	return "", ""
+}
+
+// isInsufficientBalanceCode 检查错误码是否为已知的余额不足代码
+func isInsufficientBalanceCode(code string) bool {
+	knownCodes := []string{
+		"1113", // Kimi: 余额不足或无可用资源包
+	}
+	for _, c := range knownCodes {
+		if code == c {
+			return true
+		}
+	}
+	return false
+}
+
+// truncateMsg 截断消息（最多200字符）
+func truncateMsg(msg string) string {
+	if len(msg) > 200 {
+		return msg[:200]
+	}
+	return msg
 }
 
 // extractSSEEventInfo 从 SSE 事件中提取事件类型、block 索引和 block 类型

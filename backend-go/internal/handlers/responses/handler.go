@@ -545,6 +545,7 @@ func handleStreamSuccess(
 	preflightEmpty := false
 	preflightTimeout := time.NewTimer(30 * time.Second)
 	preflightDone := false
+	var blacklistReason, blacklistMessage string
 
 	for !preflightDone {
 		select {
@@ -558,6 +559,14 @@ func handleStreamSuccess(
 			}
 			line := sl.text
 			bufferedLines = append(bufferedLines, line)
+
+			// 检测 SSE error 事件中的拉黑条件
+			if blacklistReason == "" {
+				if r, m := common.DetectStreamBlacklistError(line + "\n"); r != "" {
+					blacklistReason = r
+					blacklistMessage = m
+				}
+			}
 
 			// 处理转换后的事件用于文本提取
 			var eventsToCheck []string
@@ -620,7 +629,16 @@ func handleStreamSuccess(
 	if preflightEmpty {
 		log.Printf("[Responses-EmptyResponse] 上游返回空响应 (缓冲行数: %d)，触发重试", len(bufferedLines))
 		close(scanDone) // 通知 scanner goroutine 退出
+		if blacklistReason != "" {
+			return nil, &common.ErrBlacklistKey{Reason: blacklistReason, Message: blacklistMessage}
+		}
 		return nil, common.ErrEmptyStreamResponse
+	}
+
+	// 流中有拉黑错误但内容非空：仍返回拉黑错误以触发 Key 拉黑
+	if blacklistReason != "" {
+		close(scanDone)
+		return nil, &common.ErrBlacklistKey{Reason: blacklistReason, Message: blacklistMessage}
 	}
 
 	// 非空响应：发送 Header 并回放缓冲行

@@ -155,6 +155,7 @@ func main() {
 		apiGroup.DELETE("/messages/channels/:id/keys/:apiKey", messages.DeleteApiKey(cfgManager))
 		apiGroup.POST("/messages/channels/:id/keys/:apiKey/top", messages.MoveApiKeyToTop(cfgManager))
 		apiGroup.POST("/messages/channels/:id/keys/:apiKey/bottom", messages.MoveApiKeyToBottom(cfgManager))
+		apiGroup.POST("/messages/channels/:id/keys/restore", handlers.RestoreBlacklistedKey(cfgManager, "Messages"))
 
 		// Messages 多渠道调度 API
 		apiGroup.POST("/messages/channels/reorder", messages.ReorderChannels(cfgManager))
@@ -186,6 +187,7 @@ func main() {
 		apiGroup.DELETE("/responses/channels/:id/keys/:apiKey", responses.DeleteApiKey(cfgManager))
 		apiGroup.POST("/responses/channels/:id/keys/:apiKey/top", responses.MoveApiKeyToTop(cfgManager))
 		apiGroup.POST("/responses/channels/:id/keys/:apiKey/bottom", responses.MoveApiKeyToBottom(cfgManager))
+		apiGroup.POST("/responses/channels/:id/keys/restore", handlers.RestoreBlacklistedKey(cfgManager, "Responses"))
 
 		// Responses 多渠道调度 API
 		apiGroup.POST("/responses/channels/reorder", responses.ReorderChannels(cfgManager))
@@ -213,6 +215,7 @@ func main() {
 		apiGroup.DELETE("/gemini/channels/:id/keys/:apiKey", gemini.DeleteApiKey(cfgManager))
 		apiGroup.POST("/gemini/channels/:id/keys/:apiKey/top", gemini.MoveApiKeyToTop(cfgManager))
 		apiGroup.POST("/gemini/channels/:id/keys/:apiKey/bottom", gemini.MoveApiKeyToBottom(cfgManager))
+		apiGroup.POST("/gemini/channels/:id/keys/restore", handlers.RestoreBlacklistedKey(cfgManager, "Gemini"))
 
 		// Gemini 多渠道调度 API
 		apiGroup.POST("/gemini/channels/reorder", gemini.ReorderChannels(cfgManager))
@@ -241,6 +244,7 @@ func main() {
 		apiGroup.DELETE("/chat/channels/:id/keys/:apiKey", chat.DeleteApiKey(cfgManager))
 		apiGroup.POST("/chat/channels/:id/keys/:apiKey/top", chat.MoveApiKeyToTop(cfgManager))
 		apiGroup.POST("/chat/channels/:id/keys/:apiKey/bottom", chat.MoveApiKeyToBottom(cfgManager))
+		apiGroup.POST("/chat/channels/:id/keys/restore", handlers.RestoreBlacklistedKey(cfgManager, "Chat"))
 
 		// Chat 多渠道调度 API
 		apiGroup.POST("/chat/channels/reorder", chat.ReorderChannels(cfgManager))

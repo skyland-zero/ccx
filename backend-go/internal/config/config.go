@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"log"
+	"slices"
 	"sync"
 	"time"
 
@@ -19,6 +20,7 @@ type UpstreamConfig struct {
 	BaseURLs           []string          `json:"baseUrls,omitempty"` // 多 BaseURL 支持（failover 模式）
 	APIKeys            []string          `json:"apiKeys"`
 	HistoricalAPIKeys  []string          `json:"historicalApiKeys,omitempty"` // 历史 API Key（用于统计聚合，换 Key 后保留旧 Key 的统计数据）
+	DisabledAPIKeys    []DisabledKeyInfo `json:"disabledApiKeys,omitempty"`  // 被拉黑的 API Key（持久化，需手动恢复）
 	ServiceType        string            `json:"serviceType"`                 // gemini, openai, claude
 	Name               string            `json:"name,omitempty"`
 	Description        string            `json:"description,omitempty"`
@@ -34,6 +36,8 @@ type UpstreamConfig struct {
 	PromotionUntil *time.Time `json:"promotionUntil,omitempty"` // 促销期截止时间，在此期间内优先使用此渠道（忽略trace亲和）
 	LowQuality     bool       `json:"lowQuality,omitempty"`     // 低质量渠道标记：启用后强制本地估算 token，偏差>5%时使用本地值
 	RPM            int        `json:"rpm"`                      // 能力测试发送速率（每分钟请求数，仅影响能力测试）
+	// 自动拉黑开关
+	AutoBlacklistBalance *bool `json:"autoBlacklistBalance,omitempty"` // 余额不足时自动拉黑 Key（默认 true）
 	// Gemini 特定配置
 	InjectDummyThoughtSignature bool `json:"injectDummyThoughtSignature,omitempty"` // 给空 thought_signature 注入 dummy 值（兼容 x666.me 等要求必须有该字段的 API）
 	StripThoughtSignature       bool `json:"stripThoughtSignature,omitempty"`       // 移除 thought_signature 字段（兼容旧版 Gemini API）
@@ -43,6 +47,22 @@ type UpstreamConfig struct {
 	ProxyURL string `json:"proxyUrl,omitempty"` // HTTP/HTTPS/SOCKS5 代理地址
 	// 模型白名单
 	SupportedModels []string `json:"supportedModels,omitempty"` // 支持的模型白名单（空=全部），支持通配符如 gpt-4*
+}
+
+// DisabledKeyInfo 被拉黑的 API Key 信息
+type DisabledKeyInfo struct {
+	Key        string `json:"key"`
+	Reason     string `json:"reason"`     // "authentication_error" / "permission_error" / "insufficient_balance"
+	Message    string `json:"message"`    // 原始错误信息
+	DisabledAt string `json:"disabledAt"` // ISO8601 时间戳
+}
+
+// IsAutoBlacklistBalanceEnabled 检查余额不足自动拉黑是否启用（默认 true）
+func (u *UpstreamConfig) IsAutoBlacklistBalanceEnabled() bool {
+	if u.AutoBlacklistBalance == nil {
+		return true
+	}
+	return *u.AutoBlacklistBalance
 }
 
 // UpstreamUpdate 用于部分更新 UpstreamConfig
@@ -374,4 +394,110 @@ func (cm *ConfigManager) SetStripBillingHeader(enabled bool) error {
 	}
 	log.Printf("[Config-StripBillingHeader] 移除计费头已%s", status)
 	return nil
+}
+
+// ============== API Key 拉黑相关方法 ==============
+
+// BlacklistKey 将指定 Key 从活跃列表移到拉黑列表（持久化）
+// apiType: Messages/Responses/Gemini/Chat，用于定位 upstream slice
+// channelIndex: 渠道在 upstream slice 中的索引
+func (cm *ConfigManager) BlacklistKey(apiType string, channelIndex int, apiKey string, reason string, message string) error {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	upstreams := cm.getUpstreamSliceLocked(apiType)
+	if upstreams == nil || channelIndex < 0 || channelIndex >= len(*upstreams) {
+		return fmt.Errorf("无效的渠道索引: %s[%d]", apiType, channelIndex)
+	}
+
+	upstream := &(*upstreams)[channelIndex]
+
+	// 检查 key 是否在活跃列表中
+	keyIdx := -1
+	for i, k := range upstream.APIKeys {
+		if k == apiKey {
+			keyIdx = i
+			break
+		}
+	}
+	if keyIdx == -1 {
+		return nil // key 不在活跃列表，可能已被拉黑，忽略
+	}
+
+	// 从 APIKeys 中移除
+	upstream.APIKeys = append(upstream.APIKeys[:keyIdx], upstream.APIKeys[keyIdx+1:]...)
+
+	// 添加到 DisabledAPIKeys
+	upstream.DisabledAPIKeys = append(upstream.DisabledAPIKeys, DisabledKeyInfo{
+		Key:        apiKey,
+		Reason:     reason,
+		Message:    message,
+		DisabledAt: time.Now().Format(time.RFC3339),
+	})
+
+	// 同时添加到 HistoricalAPIKeys（保留统计数据）
+	if !slices.Contains(upstream.HistoricalAPIKeys, apiKey) {
+		upstream.HistoricalAPIKeys = append(upstream.HistoricalAPIKeys, apiKey)
+	}
+
+	log.Printf("[%s-Blacklist] Key %s 已被拉黑 (原因: %s, 渠道: %s, 剩余Key: %d)",
+		apiType, utils.MaskAPIKey(apiKey), reason, upstream.Name, len(upstream.APIKeys))
+
+	if len(upstream.APIKeys) == 0 {
+		log.Printf("[%s-Blacklist] 警告: 渠道 %s 的所有 Key 都已被拉黑！", apiType, upstream.Name)
+	}
+
+	return cm.saveConfigLocked(cm.config)
+}
+
+// RestoreKey 将指定 Key 从拉黑列表恢复到活跃列表（持久化）
+func (cm *ConfigManager) RestoreKey(apiType string, channelIndex int, apiKey string) error {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	upstreams := cm.getUpstreamSliceLocked(apiType)
+	if upstreams == nil || channelIndex < 0 || channelIndex >= len(*upstreams) {
+		return fmt.Errorf("无效的渠道索引: %s[%d]", apiType, channelIndex)
+	}
+
+	upstream := &(*upstreams)[channelIndex]
+
+	// 查找并移除
+	disabledIdx := -1
+	for i, dk := range upstream.DisabledAPIKeys {
+		if dk.Key == apiKey {
+			disabledIdx = i
+			break
+		}
+	}
+	if disabledIdx == -1 {
+		return fmt.Errorf("Key %s 不在拉黑列表中", utils.MaskAPIKey(apiKey))
+	}
+
+	upstream.DisabledAPIKeys = append(upstream.DisabledAPIKeys[:disabledIdx], upstream.DisabledAPIKeys[disabledIdx+1:]...)
+	upstream.APIKeys = append(upstream.APIKeys, apiKey)
+
+	// 清除内存中的失败记录
+	cacheKey := failedKeyCacheKey(apiType, apiKey)
+	delete(cm.failedKeysCache, cacheKey)
+
+	log.Printf("[%s-Blacklist] Key %s 已恢复 (渠道: %s)", apiType, utils.MaskAPIKey(apiKey), upstream.Name)
+
+	return cm.saveConfigLocked(cm.config)
+}
+
+// getUpstreamSliceLocked 根据 apiType 获取对应的 upstream slice 指针（调用方需持有锁）
+func (cm *ConfigManager) getUpstreamSliceLocked(apiType string) *[]UpstreamConfig {
+	switch apiType {
+	case "Messages":
+		return &cm.config.Upstream
+	case "Responses":
+		return &cm.config.ResponsesUpstream
+	case "Gemini":
+		return &cm.config.GeminiUpstream
+	case "Chat":
+		return &cm.config.ChatUpstream
+	default:
+		return nil
+	}
 }

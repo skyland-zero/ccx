@@ -29,6 +29,9 @@ func PrepareUpstreamHeaders(c *gin.Context, targetHost string) http.Header {
 	// 这样可以避免在原始请求包含 Accept-Encoding 时 Go 不自动解压缩的问题
 	headers.Del("Accept-Encoding")
 
+	// 强制去重 Content-Type（部分客户端可能发送重复的 Content-Type 头）
+	headers.Set("Content-Type", "application/json")
+
 	return headers
 }
 

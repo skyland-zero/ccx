@@ -195,6 +195,18 @@ func TryUpstreamWithAllKeys(
 				respBodyBytes = utils.DecompressGzipIfNeeded(resp, respBodyBytes)
 
 				shouldFailover, isQuotaRelated := ShouldRetryWithNextKey(resp.StatusCode, respBodyBytes, cfgManager.GetFuzzyModeEnabled(), apiType)
+
+				// 检查是否应永久拉黑该 Key（认证/权限/余额错误）
+				blResult := ShouldBlacklistKey(resp.StatusCode, respBodyBytes)
+				if blResult.ShouldBlacklist {
+					isBalanceError := blResult.Reason == "insufficient_balance"
+					if !isBalanceError || upstream.IsAutoBlacklistBalanceEnabled() {
+						if err := cfgManager.BlacklistKey(apiType, channelIndex, apiKey, blResult.Reason, blResult.Message); err != nil {
+							log.Printf("[%s-Blacklist] 拉黑 Key 失败: %v", apiType, err)
+						}
+					}
+				}
+
 				if shouldFailover {
 					lastError = fmt.Errorf("上游错误: %d", resp.StatusCode)
 					failedKeys[apiKey] = true
@@ -315,6 +327,38 @@ func TryUpstreamWithAllKeys(
 						})
 					}
 					log.Printf("[%s-InvalidResponse] 上游返回无效响应 (Key: %s): %v，尝试下一个密钥", apiType, utils.MaskAPIKey(apiKey), err)
+					continue
+				} else if blErr, ok := err.(*ErrBlacklistKey); ok {
+					// SSE 流内检测到拉黑条件：Header 未发送，可安全 failover + 拉黑 Key
+					failedKeys[apiKey] = true
+					isBalanceError := blErr.Reason == "insufficient_balance"
+					if !isBalanceError || upstream.IsAutoBlacklistBalanceEnabled() {
+						if blacklistErr := cfgManager.BlacklistKey(apiType, channelIndex, apiKey, blErr.Reason, blErr.Message); blacklistErr != nil {
+							log.Printf("[%s-Blacklist] 拉黑 Key 失败: %v", apiType, blacklistErr)
+						}
+					}
+					cfgManager.MarkKeyAsFailed(apiKey, apiType)
+					metricsManager.RecordRequestFinalizeFailure(currentBaseURL, apiKey, requestID)
+					channelScheduler.RecordRequestEnd(currentBaseURL, apiKey, kind)
+					if markURLFailure != nil {
+						markURLFailure(currentBaseURL)
+					}
+					if channelLogStore != nil {
+						channelLogStore.Record(channelIndex, &metrics.ChannelLog{
+							Timestamp:     time.Now(),
+							Model:         redirectedModel,
+							OriginalModel: originalModel,
+							StatusCode:    200,
+							DurationMs:    time.Since(attemptStart).Milliseconds(),
+							Success:       false,
+							KeyMask:       utils.MaskAPIKey(apiKey),
+							BaseURL:       currentBaseURL,
+							ErrorInfo:     fmt.Sprintf("key blacklisted: %s - %s", blErr.Reason, blErr.Message),
+							IsRetry:       attempt > 0 || urlIdx > 0,
+							InterfaceType: apiType,
+						})
+					}
+					log.Printf("[%s-Blacklist] SSE 流内错误触发拉黑 (Key: %s, 原因: %s)，尝试下一个密钥", apiType, utils.MaskAPIKey(apiKey), blErr.Reason)
 					continue
 				} else {
 					// 真实渠道故障：计入失败指标

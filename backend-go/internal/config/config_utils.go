@@ -179,6 +179,14 @@ func (u *UpstreamConfig) Clone() *UpstreamConfig {
 		cloned.SupportedModels = make([]string, len(u.SupportedModels))
 		copy(cloned.SupportedModels, u.SupportedModels)
 	}
+	if u.DisabledAPIKeys != nil {
+		cloned.DisabledAPIKeys = make([]DisabledKeyInfo, len(u.DisabledAPIKeys))
+		copy(cloned.DisabledAPIKeys, u.DisabledAPIKeys)
+	}
+	if u.AutoBlacklistBalance != nil {
+		v := *u.AutoBlacklistBalance
+		cloned.AutoBlacklistBalance = &v
+	}
 
 	return &cloned
 }

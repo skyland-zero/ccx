@@ -510,3 +510,89 @@ func isNonRetryableError(bodyBytes []byte) bool {
 	}
 	return false
 }
+
+// BlacklistResult 拉黑判定结果
+type BlacklistResult struct {
+	ShouldBlacklist bool
+	Reason          string // "authentication_error" / "permission_error" / "insufficient_balance"
+	Message         string // 原始错误信息摘要
+}
+
+// ShouldBlacklistKey 判断 HTTP 错误响应是否应该永久拉黑该 Key
+// 仅识别明确的错误类型/状态码，不做模糊关键词匹配
+func ShouldBlacklistKey(statusCode int, bodyBytes []byte) BlacklistResult {
+	// HTTP 402: 明确的付费/余额不足
+	if statusCode == 402 {
+		return BlacklistResult{
+			ShouldBlacklist: true,
+			Reason:          "insufficient_balance",
+			Message:         truncateMessage(string(bodyBytes)),
+		}
+	}
+
+	// 解析响应体
+	errType, errMessage := extractErrorInfo(bodyBytes)
+	if errType == "" {
+		return BlacklistResult{}
+	}
+
+	typeLower := strings.ToLower(errType)
+
+	// 认证错误: authentication_error / invalid_api_key
+	if typeLower == "authentication_error" || typeLower == "invalid_api_key" {
+		return BlacklistResult{
+			ShouldBlacklist: true,
+			Reason:          "authentication_error",
+			Message:         truncateMessage(errMessage),
+		}
+	}
+
+	// 权限错误: permission_error / permission_denied
+	if typeLower == "permission_error" || typeLower == "permission_denied" {
+		return BlacklistResult{
+			ShouldBlacklist: true,
+			Reason:          "permission_error",
+			Message:         truncateMessage(errMessage),
+		}
+	}
+
+	// 余额不足的明确错误类型
+	if typeLower == "insufficient_balance" || typeLower == "insufficient_quota" || typeLower == "billing_error" {
+		return BlacklistResult{
+			ShouldBlacklist: true,
+			Reason:          "insufficient_balance",
+			Message:         truncateMessage(errMessage),
+		}
+	}
+
+	return BlacklistResult{}
+}
+
+// extractErrorInfo 从 JSON 响应体中提取 error.type 和 error.message
+func extractErrorInfo(bodyBytes []byte) (errType string, errMessage string) {
+	var resp map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &resp); err != nil {
+		return "", ""
+	}
+
+	errObj, ok := resp["error"].(map[string]interface{})
+	if !ok {
+		return "", ""
+	}
+
+	if t, ok := errObj["type"].(string); ok {
+		errType = t
+	}
+	if m, ok := errObj["message"].(string); ok {
+		errMessage = m
+	}
+	return
+}
+
+// truncateMessage 截断错误信息（最多200字符）
+func truncateMessage(msg string) string {
+	if len(msg) > 200 {
+		return msg[:200]
+	}
+	return msg
+}
