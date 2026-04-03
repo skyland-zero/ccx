@@ -259,6 +259,10 @@
                 <v-icon start size="x-small">mdi-key</v-icon>
                 {{ element.apiKeys?.length || 0 }}
               </v-chip>
+              <v-chip v-if="element.disabledApiKeys?.length" size="x-small" color="error" variant="tonal" class="ml-1" @click="$emit('edit', element)">
+                <v-icon start size="x-small">mdi-key-remove</v-icon>
+                {{ element.disabledApiKeys.length }}
+              </v-chip>
             </div>
 
             <!-- Action buttons -->
@@ -449,6 +453,10 @@
             <v-chip size="x-small" variant="outlined" color="grey" class="keys-chip" @click="$emit('edit', channel)">
               <v-icon start size="x-small">mdi-key</v-icon>
               {{ channel.apiKeys?.length || 0 }}
+            </v-chip>
+            <v-chip v-if="channel.disabledApiKeys?.length" size="x-small" color="error" variant="tonal" class="ml-1" @click="$emit('edit', channel)">
+              <v-icon start size="x-small">mdi-key-remove</v-icon>
+              {{ channel.disabledApiKeys.length }}
             </v-chip>
           </div>
 

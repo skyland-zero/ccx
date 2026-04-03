@@ -40,7 +40,7 @@ type SQLiteStore struct {
 // SQLiteStoreConfig SQLite 存储配置
 type SQLiteStoreConfig struct {
 	DBPath        string // 数据库文件路径
-	RetentionDays int    // 数据保留天数（3-30）
+	RetentionDays int    // 数据保留天数（3-90）
 }
 
 // 硬编码的内部配置
@@ -54,15 +54,15 @@ func NewSQLiteStore(cfg *SQLiteStoreConfig) (*SQLiteStore, error) {
 	if cfg == nil {
 		cfg = &SQLiteStoreConfig{
 			DBPath:        ".config/metrics.db",
-			RetentionDays: 7,
+			RetentionDays: 30,
 		}
 	}
 
 	// 验证保留天数范围
 	if cfg.RetentionDays < 3 {
 		cfg.RetentionDays = 3
-	} else if cfg.RetentionDays > 30 {
-		cfg.RetentionDays = 30
+	} else if cfg.RetentionDays > 90 {
+		cfg.RetentionDays = 90
 	}
 
 	// 确保目录存在
@@ -477,4 +477,82 @@ func (s *SQLiteStore) GetRecordCount() (int64, error) {
 	var count int64
 	err := s.db.QueryRow("SELECT COUNT(*) FROM request_records").Scan(&count)
 	return count, err
+}
+
+// AggregatedBucket 聚合时间桶
+type AggregatedBucket struct {
+	Timestamp           time.Time
+	TotalRequests       int64
+	SuccessCount        int64
+	InputTokens         int64
+	OutputTokens        int64
+	CacheCreationTokens int64
+	CacheReadTokens     int64
+}
+
+// QueryAggregatedHistory 从 SQLite 查询聚合历史数据
+// 按指定时间间隔聚合，可选按 apiType、metricsKey、baseURL 过滤
+func (s *SQLiteStore) QueryAggregatedHistory(apiType string, since time.Time, intervalSeconds int64, metricsKey string, baseURL string) ([]AggregatedBucket, error) {
+	// 先刷新缓冲区，确保查询到最新数据
+	s.flushBuffer()
+
+	query := `
+		SELECT
+			(timestamp / ?) * ? AS bucket,
+			COUNT(*) AS total,
+			SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) AS success_count,
+			SUM(input_tokens) AS input_tokens,
+			SUM(output_tokens) AS output_tokens,
+			SUM(cache_creation_tokens) AS cache_creation_tokens,
+			SUM(cache_read_tokens) AS cache_read_tokens
+		FROM request_records
+		WHERE api_type = ? AND timestamp >= ?`
+
+	args := []any{intervalSeconds, intervalSeconds, apiType, since.Unix()}
+
+	if metricsKey != "" {
+		query += " AND metrics_key = ?"
+		args = append(args, metricsKey)
+	}
+	if baseURL != "" {
+		query += " AND base_url = ?"
+		args = append(args, baseURL)
+	}
+
+	query += " GROUP BY bucket ORDER BY bucket"
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("查询聚合历史失败: %w", err)
+	}
+	defer rows.Close()
+
+	var results []AggregatedBucket
+	for rows.Next() {
+		var bucket int64
+		var b AggregatedBucket
+		if err := rows.Scan(&bucket, &b.TotalRequests, &b.SuccessCount, &b.InputTokens, &b.OutputTokens, &b.CacheCreationTokens, &b.CacheReadTokens); err != nil {
+			return nil, fmt.Errorf("扫描聚合结果失败: %w", err)
+		}
+		b.Timestamp = time.Unix(bucket, 0)
+		results = append(results, b)
+	}
+	return results, rows.Err()
+}
+
+// flushBuffer 手动刷新写入缓冲区（查询前调用，确保数据完整性）
+func (s *SQLiteStore) flushBuffer() {
+	s.bufferMu.Lock()
+	records := make([]PersistentRecord, len(s.writeBuffer))
+	copy(records, s.writeBuffer)
+	s.writeBuffer = s.writeBuffer[:0]
+	s.bufferMu.Unlock()
+
+	if len(records) > 0 {
+		s.flushMu.Lock()
+		defer s.flushMu.Unlock()
+		if err := s.batchInsertRecords(records); err != nil {
+			log.Printf("[SQLite-Flush] 手动刷新失败: %v", err)
+		}
+	}
 }

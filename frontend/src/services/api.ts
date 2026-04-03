@@ -83,12 +83,21 @@ export interface ChannelMetrics {
   }
 }
 
+export interface DisabledKeyInfo {
+  key: string
+  reason: string      // "authentication_error" / "permission_error" / "insufficient_balance"
+  message: string
+  disabledAt: string  // ISO8601 时间戳
+}
+
 export interface Channel {
   name: string
   serviceType: 'openai' | 'gemini' | 'claude' | 'responses'
   baseUrl: string
   baseUrls?: string[]                // 多 BaseURL 支持（failover 模式）
   apiKeys: string[]
+  disabledApiKeys?: DisabledKeyInfo[]  // 被拉黑的 API Key
+  historicalApiKeys?: string[]
   description?: string
   website?: string
   insecureSkipVerify?: boolean
@@ -98,6 +107,8 @@ export interface Channel {
   fastMode?: boolean
   customHeaders?: Record<string, string>  // 自定义请求头
   proxyUrl?: string                        // HTTP/HTTPS/SOCKS5 代理 URL
+  routePrefix?: string                     // 路由前缀（如 "kimi"，访问 /kimi/v1/messages）
+  autoBlacklistBalance?: boolean           // 余额不足自动拉黑（默认 true）
   latency?: number
   status?: ChannelStatus | 'healthy' | 'error' | 'unknown' | ''
   index: number
@@ -596,6 +607,13 @@ export class ApiService {
     })
   }
 
+  async restoreApiKey(channelId: number, apiKey: string): Promise<void> {
+    await this.request(`/messages/channels/${channelId}/keys/restore`, {
+      method: 'POST',
+      body: JSON.stringify({ apiKey })
+    })
+  }
+
   async pingChannel(id: number): Promise<PingResult> {
     return this.request(`/messages/ping/${id}`)
   }
@@ -615,13 +633,16 @@ export class ApiService {
 
   // ============== 能力测试 API ==============
 
-  async startChannelCapabilityTest(type: 'messages' | 'chat' | 'gemini' | 'responses', id: number, previousJobId?: string): Promise<CapabilityTestJobStartResponse> {
-    const body: { targetProtocols: string[]; timeout: number; previousJobId?: string } = {
+  async startChannelCapabilityTest(type: 'messages' | 'chat' | 'gemini' | 'responses', id: number, previousJobId?: string, models?: string[]): Promise<CapabilityTestJobStartResponse> {
+    const body: { targetProtocols: string[]; timeout: number; previousJobId?: string; models?: string[] } = {
       targetProtocols: ['messages', 'chat', 'gemini', 'responses'],
       timeout: 10000
     }
     if (previousJobId) {
       body.previousJobId = previousJobId
+    }
+    if (models && models.length > 0) {
+      body.models = models
     }
     return this.request(`/${type}/channels/${id}/capability-test`, {
       method: 'POST',
@@ -692,6 +713,13 @@ export class ApiService {
   async removeResponsesApiKey(channelId: number, apiKey: string): Promise<void> {
     await this.request(`/responses/channels/${channelId}/keys/${encodeURIComponent(apiKey)}`, {
       method: 'DELETE'
+    })
+  }
+
+  async restoreResponsesApiKey(channelId: number, apiKey: string): Promise<void> {
+    await this.request(`/responses/channels/${channelId}/keys/restore`, {
+      method: 'POST',
+      body: JSON.stringify({ apiKey })
     })
   }
 
@@ -869,41 +897,41 @@ export class ApiService {
   // ============== 历史指标 API ==============
 
   // 获取 Messages 渠道历史指标（用于时间序列图表）
-  async getChannelMetricsHistory(duration: '1h' | '6h' | '24h' = '24h'): Promise<MetricsHistoryResponse[]> {
+  async getChannelMetricsHistory(duration: string = '24h'): Promise<MetricsHistoryResponse[]> {
     return this.request(`/messages/channels/metrics/history?duration=${duration}`)
   }
 
   // 获取 Responses 渠道历史指标
-  async getResponsesChannelMetricsHistory(duration: '1h' | '6h' | '24h' = '24h'): Promise<MetricsHistoryResponse[]> {
+  async getResponsesChannelMetricsHistory(duration: string = '24h'): Promise<MetricsHistoryResponse[]> {
     return this.request(`/responses/channels/metrics/history?duration=${duration}`)
   }
 
   // ============== Key 级别历史指标 API ==============
 
   // 获取 Messages 渠道 Key 级别历史指标（用于 Key 趋势图表）
-  async getChannelKeyMetricsHistory(channelId: number, duration: '1h' | '6h' | '24h' | 'today' = '6h'): Promise<ChannelKeyMetricsHistoryResponse> {
+  async getChannelKeyMetricsHistory(channelId: number, duration: string = '6h'): Promise<ChannelKeyMetricsHistoryResponse> {
     return this.request(`/messages/channels/${channelId}/keys/metrics/history?duration=${duration}`)
   }
 
   // 获取 Responses 渠道 Key 级别历史指标
-  async getResponsesChannelKeyMetricsHistory(channelId: number, duration: '1h' | '6h' | '24h' | 'today' = '6h'): Promise<ChannelKeyMetricsHistoryResponse> {
+  async getResponsesChannelKeyMetricsHistory(channelId: number, duration: string = '6h'): Promise<ChannelKeyMetricsHistoryResponse> {
     return this.request(`/responses/channels/${channelId}/keys/metrics/history?duration=${duration}`)
   }
 
   // ============== 全局统计 API ==============
 
   // 获取 Messages 全局统计历史
-  async getMessagesGlobalStats(duration: '1h' | '6h' | '24h' | 'today' = '24h'): Promise<GlobalStatsHistoryResponse> {
+  async getMessagesGlobalStats(duration: string = '24h'): Promise<GlobalStatsHistoryResponse> {
     return this.request(`/messages/global/stats/history?duration=${duration}`)
   }
 
   // 获取 Responses 全局统计历史
-  async getResponsesGlobalStats(duration: '1h' | '6h' | '24h' | 'today' = '24h'): Promise<GlobalStatsHistoryResponse> {
+  async getResponsesGlobalStats(duration: string = '24h'): Promise<GlobalStatsHistoryResponse> {
     return this.request(`/responses/global/stats/history?duration=${duration}`)
   }
   // ============== 模型统计 API ==============
 
-  async getModelStatsHistory(type: 'messages' | 'responses' | 'gemini' | 'chat', duration: '1h' | '6h' | '24h' | 'today' = '24h'): Promise<ModelStatsHistoryResponse> {
+  async getModelStatsHistory(type: 'messages' | 'responses' | 'gemini' | 'chat', duration: string = '24h'): Promise<ModelStatsHistoryResponse> {
     return this.request(`/${type}/models/stats/history?duration=${duration}`)
   }
 
@@ -949,6 +977,13 @@ export class ApiService {
   async removeChatApiKey(channelId: number, apiKey: string): Promise<void> {
     await this.request(`/chat/channels/${channelId}/keys/${encodeURIComponent(apiKey)}`, {
       method: 'DELETE'
+    })
+  }
+
+  async restoreChatApiKey(channelId: number, apiKey: string): Promise<void> {
+    await this.request(`/chat/channels/${channelId}/keys/restore`, {
+      method: 'POST',
+      body: JSON.stringify({ apiKey })
     })
   }
 
@@ -999,15 +1034,15 @@ export class ApiService {
 
   // ============== Chat 历史指标 API ==============
 
-  async getChatChannelMetricsHistory(duration: '1h' | '6h' | '24h' = '24h'): Promise<MetricsHistoryResponse[]> {
+  async getChatChannelMetricsHistory(duration: string = '24h'): Promise<MetricsHistoryResponse[]> {
     return this.request(`/chat/channels/metrics/history?duration=${duration}`)
   }
 
-  async getChatChannelKeyMetricsHistory(channelId: number, duration: '1h' | '6h' | '24h' | 'today' = '6h'): Promise<ChannelKeyMetricsHistoryResponse> {
+  async getChatChannelKeyMetricsHistory(channelId: number, duration: string = '6h'): Promise<ChannelKeyMetricsHistoryResponse> {
     return this.request(`/chat/channels/${channelId}/keys/metrics/history?duration=${duration}`)
   }
 
-  async getChatGlobalStats(duration: '1h' | '6h' | '24h' | 'today' = '24h'): Promise<GlobalStatsHistoryResponse> {
+  async getChatGlobalStats(duration: string = '24h'): Promise<GlobalStatsHistoryResponse> {
     return this.request(`/chat/global/stats/history?duration=${duration}`)
   }
 
@@ -1067,6 +1102,13 @@ export class ApiService {
     })
   }
 
+  async restoreGeminiApiKey(channelId: number, apiKey: string): Promise<void> {
+    await this.request(`/gemini/channels/${channelId}/keys/restore`, {
+      method: 'POST',
+      body: JSON.stringify({ apiKey })
+    })
+  }
+
   async moveGeminiApiKeyToTop(channelId: number, apiKey: string): Promise<void> {
     await this.request(`/gemini/channels/${channelId}/keys/${encodeURIComponent(apiKey)}/top`, {
       method: 'POST'
@@ -1114,17 +1156,17 @@ export class ApiService {
   // ============== Gemini 历史指标 API ==============
 
   // 获取 Gemini 渠道历史指标
-  async getGeminiChannelMetricsHistory(duration: '1h' | '6h' | '24h' = '24h'): Promise<MetricsHistoryResponse[]> {
+  async getGeminiChannelMetricsHistory(duration: string = '24h'): Promise<MetricsHistoryResponse[]> {
     return this.request(`/gemini/channels/metrics/history?duration=${duration}`)
   }
 
   // 获取 Gemini 渠道 Key 级别历史指标
-  async getGeminiChannelKeyMetricsHistory(channelId: number, duration: '1h' | '6h' | '24h' | 'today' = '6h'): Promise<ChannelKeyMetricsHistoryResponse> {
+  async getGeminiChannelKeyMetricsHistory(channelId: number, duration: string = '6h'): Promise<ChannelKeyMetricsHistoryResponse> {
     return this.request(`/gemini/channels/${channelId}/keys/metrics/history?duration=${duration}`)
   }
 
   // 获取 Gemini 全局统计历史
-  async getGeminiGlobalStats(duration: '1h' | '6h' | '24h' | 'today' = '24h'): Promise<GlobalStatsHistoryResponse> {
+  async getGeminiGlobalStats(duration: string = '24h'): Promise<GlobalStatsHistoryResponse> {
     return this.request(`/gemini/global/stats/history?duration=${duration}`)
   }
 

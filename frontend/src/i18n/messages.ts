@@ -38,6 +38,14 @@ export type MessageKey =
   | 'channels.empty.description'
   | 'channels.empty.button'
   | 'capability.title'
+  | 'capability.fetchingModels'
+  | 'capability.selectModels'
+  | 'capability.selectAll'
+  | 'capability.deselectAll'
+  | 'capability.noModelsFound'
+  | 'capability.addModelLabel'
+  | 'capability.addModelPlaceholder'
+  | 'capability.startTest'
   | 'capability.loadingTitle'
   | 'capability.loadingBody'
   | 'capability.compatibleProtocols'
@@ -190,6 +198,9 @@ export type MessageKey =
   | 'addChannel.proxyUrlLabel'
   | 'addChannel.proxyUrlPlaceholder'
   | 'addChannel.proxyUrlHint'
+  | 'addChannel.routePrefixLabel'
+  | 'addChannel.routePrefixPlaceholder'
+  | 'addChannel.routePrefixHint'
   | 'addChannel.createChannel'
   | 'addChannel.updateChannel'
   | 'addChannel.modelMappingHintChat'
@@ -222,6 +233,11 @@ export type MessageKey =
   | 'channelCard.copied'
   | 'channelCard.copyKey'
   | 'channelCard.noApiKeys'
+  | 'channelCard.disabledKeys'
+  | 'channelCard.restoreKey'
+  | 'channelCard.blacklistReason.authentication_error'
+  | 'channelCard.blacklistReason.permission_error'
+  | 'channelCard.blacklistReason.insufficient_balance'
   | 'channelCard.notChecked'
   | 'channelCard.statusHealthy'
   | 'channelCard.statusError'
@@ -245,6 +261,8 @@ export type MessageKey =
   | 'chart.6h'
   | 'chart.24h'
   | 'chart.today'
+  | 'chart.7d'
+  | 'chart.30d'
   | 'chart.traffic'
   | 'chart.tokens'
   | 'chart.cacheRw'
@@ -364,6 +382,14 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'channels.empty.description': 'No API channel is configured yet. Add your first channel to start using the proxy service.',
     'channels.empty.button': 'Add first channel',
     'capability.title': 'Capability test - {channel}',
+    'capability.fetchingModels': 'Fetching model list...',
+    'capability.selectModels': 'Select models to test',
+    'capability.selectAll': 'Select all',
+    'capability.deselectAll': 'Deselect all',
+    'capability.noModelsFound': 'No models found. Add models manually below.',
+    'capability.addModelLabel': 'Add model',
+    'capability.addModelPlaceholder': 'e.g. claude-sonnet-4-6',
+    'capability.startTest': 'Start test',
     'capability.loadingTitle': 'Testing protocol compatibility...',
     'capability.loadingBody': 'This may take a few seconds',
     'capability.compatibleProtocols': 'Compatible protocols',
@@ -516,6 +542,9 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'addChannel.proxyUrlLabel': 'Proxy URL (optional)',
     'addChannel.proxyUrlPlaceholder': 'http://127.0.0.1:7890 or socks5://127.0.0.1:1080',
     'addChannel.proxyUrlHint': 'Supports HTTP/HTTPS/SOCKS5 proxy URLs for accessing upstream services through a proxy.',
+    'addChannel.routePrefixLabel': 'Route Prefix (optional)',
+    'addChannel.routePrefixPlaceholder': 'kimi',
+    'addChannel.routePrefixHint': 'Access this channel via /{prefix}/v1/messages. Multiple channels can share the same prefix.',
     'addChannel.createChannel': 'Create channel',
     'addChannel.updateChannel': 'Update channel',
     'addChannel.modelMappingHintChat': 'Configure model name mapping to redirect the requested model to a target model. Example: redirect "gpt-4o" to "gpt-5.4".',
@@ -548,6 +577,11 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'channelCard.copied': 'Copied!',
     'channelCard.copyKey': 'Copy key',
     'channelCard.noApiKeys': 'No API keys yet',
+    'channelCard.disabledKeys': 'Blacklisted keys',
+    'channelCard.restoreKey': 'Restore key',
+    'channelCard.blacklistReason.authentication_error': 'Auth error',
+    'channelCard.blacklistReason.permission_error': 'Permission denied',
+    'channelCard.blacklistReason.insufficient_balance': 'No balance',
     'channelCard.notChecked': 'Not checked',
     'channelCard.statusHealthy': 'Healthy',
     'channelCard.statusError': 'Error',
@@ -571,6 +605,8 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'chart.6h': '6h',
     'chart.24h': '24h',
     'chart.today': 'Today',
+    'chart.7d': '7d',
+    'chart.30d': '30d',
     'chart.traffic': 'Traffic',
     'chart.tokens': 'Tokens',
     'chart.cacheRw': 'Cache R/W',
@@ -689,6 +725,14 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'channels.empty.description': 'Belum ada channel API yang dikonfigurasi. Tambahkan channel pertama untuk mulai memakai layanan proxy.',
     'channels.empty.button': 'Tambah channel pertama',
     'capability.title': 'Tes kemampuan - {channel}',
+    'capability.fetchingModels': 'Mengambil daftar model...',
+    'capability.selectModels': 'Pilih model untuk diuji',
+    'capability.selectAll': 'Pilih semua',
+    'capability.deselectAll': 'Batal pilih',
+    'capability.noModelsFound': 'Tidak ada model ditemukan. Tambahkan model secara manual.',
+    'capability.addModelLabel': 'Tambah model',
+    'capability.addModelPlaceholder': 'cth. claude-sonnet-4-6',
+    'capability.startTest': 'Mulai tes',
     'capability.loadingTitle': 'Menguji kompatibilitas protokol...',
     'capability.loadingBody': 'Ini mungkin butuh beberapa detik',
     'capability.compatibleProtocols': 'Protokol kompatibel',
@@ -841,6 +885,9 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'addChannel.proxyUrlLabel': 'Proxy URL (opsional)',
     'addChannel.proxyUrlPlaceholder': 'http://127.0.0.1:7890 atau socks5://127.0.0.1:1080',
     'addChannel.proxyUrlHint': 'Mendukung proxy HTTP/HTTPS/SOCKS5 untuk mengakses layanan upstream lewat proxy.',
+    'addChannel.routePrefixLabel': 'Prefiks Rute (opsional)',
+    'addChannel.routePrefixPlaceholder': 'kimi',
+    'addChannel.routePrefixHint': 'Akses channel ini melalui /{prefix}/v1/messages. Beberapa channel bisa berbagi prefiks yang sama.',
     'addChannel.createChannel': 'Buat channel',
     'addChannel.updateChannel': 'Perbarui channel',
     'addChannel.modelMappingHintChat': 'Atur pemetaan nama model untuk mengarahkan model yang diminta ke model target. Contoh: arahkan "gpt-4o" ke "gpt-5.4".',
@@ -873,6 +920,11 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'channelCard.copied': 'Tersalin!',
     'channelCard.copyKey': 'Salin key',
     'channelCard.noApiKeys': 'Belum ada API key',
+    'channelCard.disabledKeys': 'Key diblokir',
+    'channelCard.restoreKey': 'Pulihkan key',
+    'channelCard.blacklistReason.authentication_error': 'Auth error',
+    'channelCard.blacklistReason.permission_error': 'Izin ditolak',
+    'channelCard.blacklistReason.insufficient_balance': 'Saldo habis',
     'channelCard.notChecked': 'Belum dicek',
     'channelCard.statusHealthy': 'Sehat',
     'channelCard.statusError': 'Error',
@@ -896,6 +948,8 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'chart.6h': '6j',
     'chart.24h': '24j',
     'chart.today': 'Hari ini',
+    'chart.7d': '7h',
+    'chart.30d': '30h',
     'chart.traffic': 'Traffic',
     'chart.tokens': 'Token',
     'chart.cacheRw': 'Cache R/W',
@@ -1014,6 +1068,14 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'channels.empty.description': '还没有配置任何API渠道，请添加第一个渠道来开始使用代理服务',
     'channels.empty.button': '添加第一个渠道',
     'capability.title': '能力测试 - {channel}',
+    'capability.fetchingModels': '正在获取模型列表...',
+    'capability.selectModels': '选择要测试的模型',
+    'capability.selectAll': '全选',
+    'capability.deselectAll': '取消全选',
+    'capability.noModelsFound': '未找到模型，请在下方手动添加',
+    'capability.addModelLabel': '添加模型',
+    'capability.addModelPlaceholder': '例如 claude-sonnet-4-6',
+    'capability.startTest': '开始测试',
     'capability.loadingTitle': '正在测试协议兼容性...',
     'capability.loadingBody': '这可能需要几秒钟',
     'capability.compatibleProtocols': '兼容协议',
@@ -1166,6 +1228,9 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'addChannel.proxyUrlLabel': '代理 URL (可选)',
     'addChannel.proxyUrlPlaceholder': 'http://127.0.0.1:7890 或 socks5://127.0.0.1:1080',
     'addChannel.proxyUrlHint': '支持 HTTP/HTTPS/SOCKS5 代理，用于通过代理访问上游服务',
+    'addChannel.routePrefixLabel': '路由前缀 (可选)',
+    'addChannel.routePrefixPlaceholder': 'kimi',
+    'addChannel.routePrefixHint': '通过 /{前缀}/v1/messages 访问此渠道，多个渠道可共享同一前缀',
     'addChannel.createChannel': '创建渠道',
     'addChannel.updateChannel': '更新渠道',
     'addChannel.modelMappingHintChat': '配置模型名称映射，将请求中的模型名重定向到目标模型。例如：将 "gpt-4o" 重定向到 "gpt-5.4"',
@@ -1198,6 +1263,11 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'channelCard.copied': '已复制!',
     'channelCard.copyKey': '复制密钥',
     'channelCard.noApiKeys': '暂无API密钥',
+    'channelCard.disabledKeys': '已拉黑密钥',
+    'channelCard.restoreKey': '恢复密钥',
+    'channelCard.blacklistReason.authentication_error': '认证失败',
+    'channelCard.blacklistReason.permission_error': '权限不足',
+    'channelCard.blacklistReason.insufficient_balance': '余额不足',
     'channelCard.notChecked': '未检测',
     'channelCard.statusHealthy': '健康',
     'channelCard.statusError': '错误',
@@ -1221,6 +1291,8 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'chart.6h': '6小时',
     'chart.24h': '24小时',
     'chart.today': '今日',
+    'chart.7d': '1周',
+    'chart.30d': '1月',
     'chart.traffic': '流量',
     'chart.tokens': 'Token',
     'chart.cacheRw': '缓存 R/W',

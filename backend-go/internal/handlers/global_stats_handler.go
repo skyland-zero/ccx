@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"time"
 
 	"github.com/BenedictKing/ccx/internal/metrics"
@@ -8,68 +9,92 @@ import (
 )
 
 // GetGlobalStatsHistory 获取全局统计历史数据
-// GET /api/{messages|responses}/global/stats/history?duration={1h|6h|24h|today}
+// GET /api/{messages|responses}/global/stats/history?duration={1h|6h|24h|today|7d|30d}
 func GetGlobalStatsHistory(metricsManager *metrics.MetricsManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// 解析 duration 参数
 		durationStr := c.DefaultQuery("duration", "24h")
-
-		var duration time.Duration
-		var err error
-
-		// 特殊处理 "today" 参数
-		if durationStr == "today" {
-			duration = metrics.CalculateTodayDuration()
-			// 如果刚过零点，duration 可能非常小，设置最小值
-			if duration < time.Minute {
-				duration = time.Minute
-			}
-		} else {
-			duration, err = time.ParseDuration(durationStr)
-			if err != nil {
-				c.JSON(400, gin.H{"error": "Invalid duration parameter. Use: 1h, 6h, 24h, or today"})
-				return
-			}
+		duration := parseExtendedDuration(durationStr)
+		if duration < time.Minute {
+			duration = time.Minute
+		}
+		maxDuration := 30 * 24 * time.Hour
+		if duration > maxDuration {
+			duration = maxDuration
 		}
 
-		// 限制最大查询范围为 24 小时
+		interval := selectIntervalForDuration(c.Query("interval"), duration)
+
+		// >24h 走 SQLite 聚合查询
 		if duration > 24*time.Hour {
-			duration = 24 * time.Hour
-		}
-
-		// 解析或自动选择 interval
-		intervalStr := c.Query("interval")
-		var interval time.Duration
-		if intervalStr != "" {
-			interval, err = time.ParseDuration(intervalStr)
-			if err != nil {
-				c.JSON(400, gin.H{"error": "Invalid interval parameter"})
+			store := metricsManager.GetPersistenceStore()
+			if store == nil {
+				c.JSON(400, gin.H{"error": "长时间范围查询需要启用 SQLite 持久化存储"})
 				return
 			}
-			// 限制 interval 最小值为 1 分钟，防止生成过多 bucket
-			if interval < time.Minute {
-				interval = time.Minute
+			apiType := metricsManager.GetAPIType()
+			since := time.Now().Add(-duration)
+			intervalSec := int64(interval.Seconds())
+
+			buckets, err := store.QueryAggregatedHistory(apiType, since, intervalSec, "", "")
+			if err != nil {
+				log.Printf("[GlobalStats-History] SQLite 查询失败: %v", err)
+				c.JSON(500, gin.H{"error": "查询历史数据失败"})
+				return
 			}
-		} else {
-			// 根据 duration 自动选择合适的聚合粒度
-			// 目标：每个时间段约 60-100 个数据点，保持图表清晰
-			// 1h = 60 points (1m interval)
-			// 6h = 72 points (5m interval)
-			// 24h = 96 points (15m interval)
-			switch {
-			case duration <= time.Hour:
-				interval = time.Minute
-			case duration <= 6*time.Hour:
-				interval = 5 * time.Minute
-			default:
-				interval = 15 * time.Minute
+
+			// 构建与内存查询兼容的响应格式
+			dataPoints := make([]metrics.GlobalHistoryDataPoint, 0, len(buckets))
+			var totalReqs, totalSuccess, totalInput, totalOutput, totalCacheCreate, totalCacheRead int64
+			for _, b := range buckets {
+				var successRate float64
+				if b.TotalRequests > 0 {
+					successRate = float64(b.SuccessCount) / float64(b.TotalRequests) * 100
+				}
+				dataPoints = append(dataPoints, metrics.GlobalHistoryDataPoint{
+					Timestamp:           b.Timestamp,
+					RequestCount:        b.TotalRequests,
+					SuccessCount:        b.SuccessCount,
+					FailureCount:        b.TotalRequests - b.SuccessCount,
+					SuccessRate:         successRate,
+					InputTokens:         b.InputTokens,
+					OutputTokens:        b.OutputTokens,
+					CacheCreationTokens: b.CacheCreationTokens,
+					CacheReadTokens:     b.CacheReadTokens,
+				})
+				totalReqs += b.TotalRequests
+				totalSuccess += b.SuccessCount
+				totalInput += b.InputTokens
+				totalOutput += b.OutputTokens
+				totalCacheCreate += b.CacheCreationTokens
+				totalCacheRead += b.CacheReadTokens
 			}
+
+			var overallRate float64
+			if totalReqs > 0 {
+				overallRate = float64(totalSuccess) / float64(totalReqs) * 100
+			}
+
+			result := metrics.GlobalStatsHistoryResponse{
+				Summary: metrics.GlobalStatsSummary{
+					Duration:                 durationStr,
+					TotalRequests:            totalReqs,
+					TotalSuccess:             totalSuccess,
+					TotalFailure:             totalReqs - totalSuccess,
+					AvgSuccessRate:           overallRate,
+					TotalInputTokens:         totalInput,
+					TotalOutputTokens:        totalOutput,
+					TotalCacheCreationTokens: totalCacheCreate,
+					TotalCacheReadTokens:     totalCacheRead,
+				},
+				DataPoints: dataPoints,
+			}
+
+			c.JSON(200, result)
+			return
 		}
 
-		// 获取全局统计数据
+		// <=24h 走内存
 		result := metricsManager.GetGlobalHistoricalStatsWithTokens(duration, interval)
-
-		// 更新 duration 字符串（特别是 today 情况）
 		if durationStr == "today" {
 			result.Summary.Duration = "today"
 		}

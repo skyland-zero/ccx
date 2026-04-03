@@ -230,6 +230,48 @@
             <div v-else class="text-center py-4">
               <span class="text-body-2 text-medium-emphasis">{{ t('channelCard.noApiKeys') }}</span>
             </div>
+
+            <!-- 被拉黑的 Key -->
+            <div v-if="channel.disabledApiKeys?.length" class="mt-3">
+              <div class="d-flex align-center ga-2 mb-2">
+                <v-icon size="small" color="error">mdi-key-remove</v-icon>
+                <span class="text-body-2 font-weight-medium text-error">{{ t('channelCard.disabledKeys') }}</span>
+                <v-chip size="x-small" color="error" variant="tonal">{{ channel.disabledApiKeys.length }}</v-chip>
+              </div>
+              <div class="d-flex flex-column ga-2" style="max-height: 120px; overflow-y: auto;">
+                <div
+                  v-for="(dk, dkIndex) in channel.disabledApiKeys"
+                  :key="'disabled-' + dkIndex"
+                  class="d-flex align-center justify-space-between pa-2 rounded"
+                  style="background: rgba(var(--v-theme-error), 0.06);"
+                >
+                  <div class="d-flex flex-column flex-1-1 mr-2" style="min-width: 0;">
+                    <code class="text-caption text-truncate">{{ maskApiKey(dk.key) }}</code>
+                    <div class="d-flex align-center ga-1 mt-1">
+                      <v-chip size="x-small" :color="dk.reason === 'insufficient_balance' ? 'warning' : 'error'" variant="tonal">
+                        {{ t('channelCard.blacklistReason.' + dk.reason) }}
+                      </v-chip>
+                      <span class="text-caption text-medium-emphasis">{{ formatDisabledTime(dk.disabledAt) }}</span>
+                    </div>
+                  </div>
+                  <v-tooltip :text="t('channelCard.restoreKey')" location="top" :open-delay="150">
+                    <template #activator="{ props: tooltipProps }">
+                      <v-btn
+                        v-bind="tooltipProps"
+                        size="x-small"
+                        color="success"
+                        icon
+                        variant="text"
+                        rounded="md"
+                        @click="$emit('restoreKey', channel.index, dk.key)"
+                      >
+                        <v-icon size="small">mdi-restore</v-icon>
+                      </v-btn>
+                    </template>
+                  </v-tooltip>
+                </div>
+              </div>
+            </div>
           </v-expansion-panel-text>
         </v-expansion-panel>
       </v-expansion-panels>
@@ -308,6 +350,7 @@ defineEmits<{
   delete: [channelId: number]
   addKey: [channelId: number]
   removeKey: [channelId: number, apiKey: string]
+  restoreKey: [channelId: number, apiKey: string]
   moveKeyToTop: [channelId: number, apiKey: string]
   moveKeyToBottom: [channelId: number, apiKey: string]
   ping: [channelId: number]
@@ -370,6 +413,16 @@ const maskApiKey = (key: string): string => {
 // 获取原始密钥（用于删除操作），现在直接传递原始密钥
 const getOriginalKey = (originalKey: string) => {
   return originalKey
+}
+
+// 格式化拉黑时间
+const formatDisabledTime = (isoStr: string): string => {
+  try {
+    const d = new Date(isoStr)
+    return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  } catch {
+    return isoStr
+  }
 }
 
 // 复制API密钥到剪贴板

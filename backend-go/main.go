@@ -133,7 +133,9 @@ func main() {
 	r.Use(middleware.WebAuthMiddleware(envCfg, cfgManager))
 
 	// 健康检查端点（固定路径 /health，与 Dockerfile HEALTHCHECK 保持一致）
-	r.GET("/health", handlers.HealthCheck(envCfg, cfgManager))
+	healthHandler := handlers.HealthCheck(envCfg, cfgManager)
+	r.GET("/health", healthHandler)
+	r.GET("/:routePrefix/health", healthHandler)
 
 	// 配置保存端点
 	r.POST("/admin/config/save", handlers.SaveConfigHandler(cfgManager))
@@ -276,24 +278,43 @@ func main() {
 	}
 
 	// 代理端点 - Messages API
-	r.POST("/v1/messages", messages.Handler(envCfg, cfgManager, channelScheduler))
-	r.POST("/v1/messages/count_tokens", messages.CountTokensHandler(envCfg, cfgManager, channelScheduler))
+	messagesHandler := messages.Handler(envCfg, cfgManager, channelScheduler)
+	r.POST("/v1/messages", messagesHandler)
+	r.POST("/:routePrefix/v1/messages", messagesHandler)
+
+	countTokensHandler := messages.CountTokensHandler(envCfg, cfgManager, channelScheduler)
+	r.POST("/v1/messages/count_tokens", countTokensHandler)
+	r.POST("/:routePrefix/v1/messages/count_tokens", countTokensHandler)
 
 	// 代理端点 - Models API（转发到上游）
-	r.GET("/v1/models", messages.ModelsHandler(envCfg, cfgManager, channelScheduler))
-	r.GET("/v1/models/:model", messages.ModelsDetailHandler(envCfg, cfgManager, channelScheduler))
+	modelsHandler := messages.ModelsHandler(envCfg, cfgManager, channelScheduler)
+	r.GET("/v1/models", modelsHandler)
+	r.GET("/:routePrefix/v1/models", modelsHandler)
+
+	modelsDetailHandler := messages.ModelsDetailHandler(envCfg, cfgManager, channelScheduler)
+	r.GET("/v1/models/:model", modelsDetailHandler)
+	r.GET("/:routePrefix/v1/models/:model", modelsDetailHandler)
 
 	// 代理端点 - Responses API
-	r.POST("/v1/responses", responses.Handler(envCfg, cfgManager, sessionManager, channelScheduler))
-	r.POST("/v1/responses/compact", responses.CompactHandler(envCfg, cfgManager, sessionManager, channelScheduler))
+	responsesHandler := responses.Handler(envCfg, cfgManager, sessionManager, channelScheduler)
+	r.POST("/v1/responses", responsesHandler)
+	r.POST("/:routePrefix/v1/responses", responsesHandler)
+
+	compactHandler := responses.CompactHandler(envCfg, cfgManager, sessionManager, channelScheduler)
+	r.POST("/v1/responses/compact", compactHandler)
+	r.POST("/:routePrefix/v1/responses/compact", compactHandler)
 
 	// 代理端点 - Gemini API (原生协议)
 	// 使用通配符捕获 model:action 格式，如 gemini-pro:generateContent
 	// 路径格式：/v1beta/models/{model}:generateContent (Gemini 原生格式)
-	r.POST("/v1beta/models/*modelAction", gemini.Handler(envCfg, cfgManager, channelScheduler))
+	geminiHandler := gemini.Handler(envCfg, cfgManager, channelScheduler)
+	r.POST("/v1beta/models/*modelAction", geminiHandler)
+	r.POST("/:routePrefix/v1beta/models/*modelAction", geminiHandler)
 
 	// 代理端点 - Chat Completions API (OpenAI 兼容)
-	r.POST("/v1/chat/completions", chat.Handler(envCfg, cfgManager, channelScheduler))
+	chatHandler := chat.Handler(envCfg, cfgManager, channelScheduler)
+	r.POST("/v1/chat/completions", chatHandler)
+	r.POST("/:routePrefix/v1/chat/completions", chatHandler)
 
 	// 静态文件服务 (嵌入的前端)
 	if envCfg.EnableWebUI {

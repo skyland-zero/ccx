@@ -587,6 +587,42 @@
                       {{ t('app.actions.add') }}
                     </v-btn>
                   </div>
+
+                  <!-- 被拉黑的密钥（仅编辑模式） -->
+                  <div v-if="isEditing && props.channel?.disabledApiKeys?.length" class="mt-4">
+                    <div class="d-flex align-center ga-2 mb-2">
+                      <v-icon size="small" color="error">mdi-key-remove</v-icon>
+                      <span class="text-body-2 font-weight-medium text-error">{{ t('channelCard.disabledKeys') }}</span>
+                      <v-chip size="x-small" color="error" variant="tonal">{{ props.channel.disabledApiKeys.length }}</v-chip>
+                    </div>
+                    <v-list density="compact" class="rounded-lg" style="max-height: 150px; overflow-y: auto;">
+                      <v-list-item
+                        v-for="(dk, dkIdx) in props.channel.disabledApiKeys"
+                        :key="'disabled-' + dkIdx"
+                        class="px-3"
+                        style="background: rgba(var(--v-theme-error), 0.04);"
+                      >
+                        <template #prepend>
+                          <v-icon size="small" color="error" class="mr-2">mdi-key-alert</v-icon>
+                        </template>
+                        <v-list-item-title class="text-caption font-weight-mono">
+                          {{ dk.key.length > 20 ? dk.key.slice(0, 8) + '***' + dk.key.slice(-5) : dk.key }}
+                        </v-list-item-title>
+                        <v-list-item-subtitle class="d-flex align-center ga-1">
+                          <v-chip size="x-small" :color="dk.reason === 'insufficient_balance' ? 'warning' : 'error'" variant="tonal">
+                            {{ t('channelCard.blacklistReason.' + dk.reason) }}
+                          </v-chip>
+                          <span class="text-caption">{{ new Date(dk.disabledAt).toLocaleDateString() }}</span>
+                        </v-list-item-subtitle>
+                        <template #append>
+                          <v-btn size="x-small" color="success" variant="tonal" rounded="lg" :loading="restoringKey === dk.key" @click="restoreDisabledKey(dk.key)">
+                            <v-icon start size="small">mdi-restore</v-icon>
+                            {{ t('channelCard.restoreKey') }}
+                          </v-btn>
+                        </template>
+                      </v-list-item>
+                    </v-list>
+                  </div>
                 </v-card-text>
               </v-card>
             </v-col>
@@ -757,6 +793,21 @@
                 :placeholder="t('addChannel.proxyUrlPlaceholder')"
                 prepend-inner-icon="mdi-shield-lock-outline"
                 :hint="t('addChannel.proxyUrlHint')"
+                persistent-hint
+                clearable
+                variant="outlined"
+                density="comfortable"
+              />
+            </v-col>
+
+            <!-- 路由前缀 -->
+            <v-col cols="12">
+              <v-text-field
+                v-model="form.routePrefix"
+                :label="t('addChannel.routePrefixLabel')"
+                :placeholder="t('addChannel.routePrefixPlaceholder')"
+                prepend-inner-icon="mdi-routes"
+                :hint="t('addChannel.routePrefixHint')"
                 persistent-hint
                 clearable
                 variant="outlined"
@@ -1342,6 +1393,7 @@ const form = reactive({
   fastMode: false,
   customHeaders: {} as Record<string, string>,
   proxyUrl: '',
+  routePrefix: '',
   supportedModels: [] as string[],
   rpm: 10
 })
@@ -1574,6 +1626,7 @@ const resetForm = () => {
   form.fastMode = false
   form.customHeaders = {}
   form.proxyUrl = ''
+  form.routePrefix = ''
   form.supportedModels = []
   form.rpm = 10
   newApiKey.value = ''
@@ -1644,6 +1697,7 @@ const loadChannelData = (channel: Channel) => {
   form.fastMode = !!channel.fastMode
   form.customHeaders = { ...(channel.customHeaders || {}) }
   form.proxyUrl = channel.proxyUrl || ''
+  form.routePrefix = channel.routePrefix || ''
   form.supportedModels = channel.supportedModels || []
   form.rpm = channel.rpm ?? 10
 
@@ -1719,6 +1773,35 @@ const moveApiKeyToBottom = (index: number) => {
   form.apiKeys.push(key)
   duplicateKeyIndex.value = -1
   copiedKeyIndex.value = null
+}
+
+// 恢复被拉黑的密钥
+const restoringKey = ref('')
+const restoreDisabledKey = async (apiKey: string) => {
+  if (!props.channel) return
+  restoringKey.value = apiKey
+  try {
+    const channelId = props.channel.index
+    if (props.channelType === 'chat') {
+      await api.restoreChatApiKey(channelId, apiKey)
+    } else if (props.channelType === 'gemini') {
+      await api.restoreGeminiApiKey(channelId, apiKey)
+    } else if (props.channelType === 'responses') {
+      await api.restoreResponsesApiKey(channelId, apiKey)
+    } else {
+      await api.restoreApiKey(channelId, apiKey)
+    }
+    // 恢复后加入活跃列表并从拉黑列表移除
+    form.apiKeys.push(apiKey)
+    if (props.channel.disabledApiKeys) {
+      const idx = props.channel.disabledApiKeys.findIndex(dk => dk.key === apiKey)
+      if (idx !== -1) props.channel.disabledApiKeys.splice(idx, 1)
+    }
+  } catch (error) {
+    apiKeyError.value = error instanceof Error ? error.message : 'Restore failed'
+  } finally {
+    restoringKey.value = ''
+  }
 }
 
 // 复制API密钥到剪贴板

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"sort"
 	"strconv"
 	"strings"
@@ -317,47 +318,22 @@ type MetricsHistoryResponse struct {
 //   - interval: 时间间隔 (5m, 15m, 1h)，默认根据 duration 自动选择
 func GetChannelMetricsHistory(metricsManager *metrics.MetricsManager, cfgManager *config.ConfigManager, isResponses bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// 解析 duration 参数
+		// 解析 duration 参数（支持 1h, 6h, 24h, 7d, 30d）
 		durationStr := c.DefaultQuery("duration", "24h")
-		duration, err := time.ParseDuration(durationStr)
-		if err != nil {
+		duration := parseExtendedDuration(durationStr)
+		if duration <= 0 {
 			c.JSON(400, gin.H{"error": "Invalid duration parameter"})
 			return
 		}
 
-		// 限制最大查询范围为 24 小时
-		if duration > 24*time.Hour {
-			duration = 24 * time.Hour
+		// 限制最大查询范围
+		maxDuration := 30 * 24 * time.Hour
+		if duration > maxDuration {
+			duration = maxDuration
 		}
 
 		// 解析或自动选择 interval
-		intervalStr := c.Query("interval")
-		var interval time.Duration
-		if intervalStr != "" {
-			interval, err = time.ParseDuration(intervalStr)
-			if err != nil {
-				c.JSON(400, gin.H{"error": "Invalid interval parameter"})
-				return
-			}
-			// 限制 interval 最小值为 1 分钟，防止生成过多 bucket
-			if interval < time.Minute {
-				interval = time.Minute
-			}
-		} else {
-			// 根据 duration 自动选择合适的聚合粒度
-			// 目标：每个时间段约 60-100 个数据点，保持图表清晰
-			// 1h = 60 points (1m interval)
-			// 6h = 72 points (5m interval)
-			// 24h = 96 points (15m interval)
-			switch {
-			case duration <= time.Hour:
-				interval = time.Minute
-			case duration <= 6*time.Hour:
-				interval = 5 * time.Minute
-			default:
-				interval = 15 * time.Minute
-			}
-		}
+		interval := selectIntervalForDuration(c.Query("interval"), duration)
 
 		cfg := cfgManager.GetConfig()
 		var upstreams []config.UpstreamConfig
@@ -367,9 +343,37 @@ func GetChannelMetricsHistory(metricsManager *metrics.MetricsManager, cfgManager
 			upstreams = cfg.Upstream
 		}
 
+		// >24h 走 SQLite 聚合查询
+		if duration > 24*time.Hour {
+			store := metricsManager.GetPersistenceStore()
+			if store == nil {
+				c.JSON(400, gin.H{"error": "长时间范围查询需要启用 SQLite 持久化存储"})
+				return
+			}
+			apiType := metricsManager.GetAPIType()
+			since := time.Now().Add(-duration)
+			intervalSec := int64(interval.Seconds())
+
+			result := make([]MetricsHistoryResponse, 0, len(upstreams))
+			for i, upstream := range upstreams {
+				// 过滤属于此渠道的数据（按 baseURL 匹配）
+				allURLs := upstream.GetAllBaseURLs()
+				channelBuckets := filterBucketsByURLs(store, apiType, since, intervalSec, allURLs)
+
+				dataPoints := convertBucketsToDataPoints(channelBuckets)
+				result = append(result, MetricsHistoryResponse{
+					ChannelIndex: i,
+					ChannelName:  upstream.Name,
+					DataPoints:   dataPoints,
+				})
+			}
+			c.JSON(200, result)
+			return
+		}
+
+		// <=24h 走内存
 		result := make([]MetricsHistoryResponse, 0, len(upstreams))
 		for i, upstream := range upstreams {
-			// 使用多 URL 聚合方法获取历史数据（支持 failover 多端点场景）
 			dataPoints := metricsManager.GetHistoricalStatsMultiURL(upstream.GetAllBaseURLs(), upstream.APIKeys, duration, interval)
 
 			result = append(result, MetricsHistoryResponse{
@@ -709,52 +713,46 @@ func GetChannelDashboard(cfgManager *config.ConfigManager, sch *scheduler.Channe
 //   - interval: 时间间隔 (5m, 15m, 1h)，默认根据 duration 自动选择
 func GetGeminiChannelMetricsHistory(metricsManager *metrics.MetricsManager, cfgManager *config.ConfigManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// 解析 duration 参数
 		durationStr := c.DefaultQuery("duration", "24h")
-		duration, err := time.ParseDuration(durationStr)
-		if err != nil {
+		duration := parseExtendedDuration(durationStr)
+		if duration <= 0 {
 			c.JSON(400, gin.H{"error": "Invalid duration parameter"})
 			return
 		}
-
-		// 限制最大查询范围为 24 小时
-		if duration > 24*time.Hour {
-			duration = 24 * time.Hour
+		maxDuration := 30 * 24 * time.Hour
+		if duration > maxDuration {
+			duration = maxDuration
 		}
-
-		// 解析或自动选择 interval
-		intervalStr := c.Query("interval")
-		var interval time.Duration
-		if intervalStr != "" {
-			interval, err = time.ParseDuration(intervalStr)
-			if err != nil {
-				c.JSON(400, gin.H{"error": "Invalid interval parameter"})
-				return
-			}
-			// 限制 interval 最小值为 1 分钟，防止生成过多 bucket
-			if interval < time.Minute {
-				interval = time.Minute
-			}
-		} else {
-			// 根据 duration 自动选择合适的聚合粒度
-			switch {
-			case duration <= time.Hour:
-				interval = time.Minute
-			case duration <= 6*time.Hour:
-				interval = 5 * time.Minute
-			default:
-				interval = 15 * time.Minute
-			}
-		}
+		interval := selectIntervalForDuration(c.Query("interval"), duration)
 
 		cfg := cfgManager.GetConfig()
 		upstreams := cfg.GeminiUpstream
 
+		if duration > 24*time.Hour {
+			store := metricsManager.GetPersistenceStore()
+			if store == nil {
+				c.JSON(400, gin.H{"error": "长时间范围查询需要启用 SQLite 持久化存储"})
+				return
+			}
+			apiType := metricsManager.GetAPIType()
+			since := time.Now().Add(-duration)
+			intervalSec := int64(interval.Seconds())
+			result := make([]MetricsHistoryResponse, 0, len(upstreams))
+			for i, upstream := range upstreams {
+				channelBuckets := filterBucketsByURLs(store, apiType, since, intervalSec, upstream.GetAllBaseURLs())
+				result = append(result, MetricsHistoryResponse{
+					ChannelIndex: i,
+					ChannelName:  upstream.Name,
+					DataPoints:   convertBucketsToDataPoints(channelBuckets),
+				})
+			}
+			c.JSON(200, result)
+			return
+		}
+
 		result := make([]MetricsHistoryResponse, 0, len(upstreams))
 		for i, upstream := range upstreams {
-			// 使用多 URL 聚合方法获取历史数据（支持 failover 多端点场景）
 			dataPoints := metricsManager.GetHistoricalStatsMultiURL(upstream.GetAllBaseURLs(), upstream.APIKeys, duration, interval)
-
 			result = append(result, MetricsHistoryResponse{
 				ChannelIndex: i,
 				ChannelName:  upstream.Name,
@@ -957,6 +955,25 @@ func GetChatChannelMetricsHistory(metricsManager *metrics.MetricsManager, cfgMan
 	return func(c *gin.Context) {
 		duration, interval := parseHistoryDuration(c)
 		cfg := cfgManager.GetConfig()
+
+		if duration > 24*time.Hour {
+			store := metricsManager.GetPersistenceStore()
+			if store == nil {
+				c.JSON(400, gin.H{"error": "长时间范围查询需要启用 SQLite 持久化存储"})
+				return
+			}
+			apiType := metricsManager.GetAPIType()
+			since := time.Now().Add(-duration)
+			intervalSec := int64(interval.Seconds())
+			result := make([]MetricsHistoryResponse, 0, len(cfg.ChatUpstream))
+			for i, upstream := range cfg.ChatUpstream {
+				channelBuckets := filterBucketsByURLs(store, apiType, since, intervalSec, upstream.GetAllBaseURLs())
+				result = append(result, MetricsHistoryResponse{ChannelIndex: i, ChannelName: upstream.Name, DataPoints: convertBucketsToDataPoints(channelBuckets)})
+			}
+			c.JSON(200, result)
+			return
+		}
+
 		result := make([]MetricsHistoryResponse, 0, len(cfg.ChatUpstream))
 		for i, upstream := range cfg.ChatUpstream {
 			dataPoints := metricsManager.GetHistoricalStatsMultiURL(upstream.GetAllBaseURLs(), upstream.APIKeys, duration, interval)
@@ -1008,9 +1025,13 @@ func ResumeChannelWithKind(sch *scheduler.ChannelScheduler, kind scheduler.Chann
 // parseHistoryDuration 解析历史数据查询参数
 func parseHistoryDuration(c *gin.Context) (time.Duration, time.Duration) {
 	durationStr := c.DefaultQuery("duration", "24h")
-	duration, _ := time.ParseDuration(durationStr)
-	if duration <= 0 || duration > 24*time.Hour {
+	duration := parseExtendedDuration(durationStr)
+	if duration <= 0 {
 		duration = 24 * time.Hour
+	}
+	maxDuration := 30 * 24 * time.Hour
+	if duration > maxDuration {
+		duration = maxDuration
 	}
 	return duration, selectIntervalForDuration(c.Query("interval"), duration)
 }
@@ -1018,17 +1039,13 @@ func parseHistoryDuration(c *gin.Context) (time.Duration, time.Duration) {
 // parseKeyHistoryDuration 解析 Key 历史数据查询参数（支持 today）
 func parseKeyHistoryDuration(c *gin.Context) (time.Duration, time.Duration) {
 	durationStr := c.DefaultQuery("duration", "6h")
-	var duration time.Duration
-	if durationStr == "today" {
-		duration = metrics.CalculateTodayDuration()
-		if duration < time.Minute {
-			duration = time.Minute
-		}
-	} else {
-		duration, _ = time.ParseDuration(durationStr)
+	duration := parseExtendedDuration(durationStr)
+	if duration < time.Minute {
+		duration = time.Minute
 	}
-	if duration <= 0 || duration > 24*time.Hour {
-		duration = 24 * time.Hour
+	maxDuration := 30 * 24 * time.Hour
+	if duration > maxDuration {
+		duration = maxDuration
 	}
 	return duration, selectIntervalForDuration(c.Query("interval"), duration)
 }
@@ -1046,7 +1063,91 @@ func selectIntervalForDuration(intervalStr string, duration time.Duration) time.
 		return time.Minute
 	case duration <= 6*time.Hour:
 		return 5 * time.Minute
-	default:
+	case duration <= 24*time.Hour:
 		return 15 * time.Minute
+	case duration <= 7*24*time.Hour:
+		return time.Hour
+	default:
+		return 4 * time.Hour
 	}
+}
+
+// parseExtendedDuration 解析扩展的时间范围字符串
+// 支持标准 Go duration (1h, 6h, 24h) 和扩展格式 (7d, 30d, today)
+func parseExtendedDuration(s string) time.Duration {
+	if s == "today" {
+		return metrics.CalculateTodayDuration()
+	}
+	// 尝试天数格式: 7d, 30d
+	if strings.HasSuffix(s, "d") {
+		dayStr := strings.TrimSuffix(s, "d")
+		if days, err := strconv.Atoi(dayStr); err == nil && days > 0 {
+			return time.Duration(days) * 24 * time.Hour
+		}
+	}
+	// 标准 Go duration
+	d, _ := time.ParseDuration(s)
+	return d
+}
+
+// filterBucketsByURLs 按渠道的 URL 和 Key 过滤 SQLite 聚合数据
+func filterBucketsByURLs(store metrics.PersistenceStore, apiType string, since time.Time, intervalSec int64, baseURLs []string) []metrics.AggregatedBucket {
+	// 由于 SQLite 中存储的是 metrics_key（hash(baseURL+apiKey)），
+	// 我们需要计算渠道所有 URL+Key 的 metricsKey 然后逐个查询并合并
+	// 简化方案：不按 metricsKey 过滤，直接查全部，因为 apiType 已经隔离了不同接口
+	// 但如果需要按渠道过滤，需要用 metricsKey
+
+	// 为每个 baseURL+apiKey 组合查询并合并
+	bucketMap := make(map[int64]*metrics.AggregatedBucket)
+
+	for _, baseURL := range baseURLs {
+		buckets, err := store.QueryAggregatedHistory(apiType, since, intervalSec, "", baseURL)
+		if err != nil {
+			log.Printf("[Metrics-History] 查询 baseURL %s 失败: %v", baseURL, err)
+			continue
+		}
+		for _, b := range buckets {
+			ts := b.Timestamp.Unix()
+			if existing, ok := bucketMap[ts]; ok {
+				existing.TotalRequests += b.TotalRequests
+				existing.SuccessCount += b.SuccessCount
+				existing.InputTokens += b.InputTokens
+				existing.OutputTokens += b.OutputTokens
+				existing.CacheCreationTokens += b.CacheCreationTokens
+				existing.CacheReadTokens += b.CacheReadTokens
+			} else {
+				copy := b
+				bucketMap[ts] = &copy
+			}
+		}
+	}
+
+	// 转为有序 slice
+	result := make([]metrics.AggregatedBucket, 0, len(bucketMap))
+	for _, b := range bucketMap {
+		result = append(result, *b)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Timestamp.Before(result[j].Timestamp)
+	})
+	return result
+}
+
+// convertBucketsToDataPoints 将 SQLite 聚合桶转为 HistoryDataPoint 格式
+func convertBucketsToDataPoints(buckets []metrics.AggregatedBucket) []metrics.HistoryDataPoint {
+	points := make([]metrics.HistoryDataPoint, 0, len(buckets))
+	for _, b := range buckets {
+		var successRate float64
+		if b.TotalRequests > 0 {
+			successRate = float64(b.SuccessCount) / float64(b.TotalRequests) * 100
+		}
+		points = append(points, metrics.HistoryDataPoint{
+			Timestamp:    b.Timestamp,
+			RequestCount: b.TotalRequests,
+			SuccessCount: b.SuccessCount,
+			FailureCount: b.TotalRequests - b.SuccessCount,
+			SuccessRate:  successRate,
+		})
+	}
+	return points
 }

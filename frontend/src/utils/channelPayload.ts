@@ -19,6 +19,7 @@ export interface ChannelFormLike {
   fastMode: boolean
   customHeaders: Record<string, string>
   proxyUrl: string
+  routePrefix: string
   supportedModels: string[]
   rpm?: number
 
@@ -78,6 +79,7 @@ export function buildChannelPayload(form: ChannelFormLike): Omit<Channel, 'index
     fastMode: advancedOptions.fastMode,
     customHeaders: form.customHeaders,
     proxyUrl: form.proxyUrl.trim(),
+    routePrefix: form.routePrefix.trim(),
     supportedModels: form.supportedModels,
     rpm: form.rpm && form.rpm > 0 ? form.rpm : 10
   }

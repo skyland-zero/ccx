@@ -98,8 +98,9 @@ func setCapabilityCache(key string, resp CapabilityTestResponse) {
 // CapabilityTestRequest 能力测试请求体
 type CapabilityTestRequest struct {
 	TargetProtocols []string `json:"targetProtocols"`
-	Timeout         int      `json:"timeout"`       // 毫秒
-	PreviousJobID   string   `json:"previousJobId"` // 可选：上次测试的 jobId，用于复用成功结果
+	Models          []string `json:"models"`          // 可选：用户指定要测试的模型列表，为空时使用预定义列表
+	Timeout         int      `json:"timeout"`         // 毫秒
+	PreviousJobID   string   `json:"previousJobId"`   // 可选：上次测试的 jobId，用于复用成功结果
 }
 
 type ModelTestResult struct {
@@ -269,7 +270,7 @@ func TestChannelCapability(cfgManager *config.ConfigManager, channelKind string)
 				}
 			})
 
-			go runCapabilityTestJob(job.JobID, channelKind, id, *channel, protocols, timeout, cacheKey, lookupKey, previousResults)
+			go runCapabilityTestJob(job.JobID, channelKind, id, *channel, protocols, timeout, cacheKey, lookupKey, previousResults, req.Models)
 
 			c.JSON(http.StatusOK, gin.H{"jobId": job.JobID, "resumed": true, "job": job})
 			return
@@ -316,7 +317,7 @@ func TestChannelCapability(cfgManager *config.ConfigManager, channelKind string)
 			}
 		}
 
-		go runCapabilityTestJob(job.JobID, channelKind, id, *channel, protocols, timeout, cacheKey, lookupKey, previousResults)
+		go runCapabilityTestJob(job.JobID, channelKind, id, *channel, protocols, timeout, cacheKey, lookupKey, previousResults, req.Models)
 
 		c.JSON(http.StatusOK, gin.H{"jobId": job.JobID, "resumed": false, "job": job})
 		return
@@ -358,7 +359,7 @@ func buildRoundRobinQueue(protocolModels map[string][]string, protocols []string
 	return queue
 }
 
-func runCapabilityTestJob(jobID, channelKind string, channelID int, channel config.UpstreamConfig, protocols []string, timeout time.Duration, cacheKey, lookupKey string, previousResults map[string]map[string]ModelTestResult) {
+func runCapabilityTestJob(jobID, channelKind string, channelID int, channel config.UpstreamConfig, protocols []string, timeout time.Duration, cacheKey, lookupKey string, previousResults map[string]map[string]ModelTestResult, userModels []string) {
 	// 创建可取消的 context，用于支持前端取消操作
 	ctx, cancel := context.WithCancel(context.Background())
 	capabilityJobs.setCancelFunc(jobID, cancel)
@@ -392,7 +393,7 @@ func runCapabilityTestJob(jobID, channelKind string, channelID int, channel conf
 	log.Printf("[CapabilityTest-Job] 开始执行能力测试任务 %s，渠道 %s (ID:%d, 类型:%s)，协议: %v", jobID, channel.Name, channelID, channel.ServiceType, protocols)
 
 	totalStart := time.Now()
-	results := runRoundRobinTests(ctx, &channel, protocols, timeout, jobID, previousResults)
+	results := runRoundRobinTests(ctx, &channel, protocols, timeout, jobID, previousResults, userModels)
 	totalDuration := time.Since(totalStart).Milliseconds()
 
 	compatible := make([]string, 0)
@@ -447,14 +448,21 @@ func runCapabilityTestJob(jobID, channelKind string, channelID int, channel conf
 // runRoundRobinTests 核心编排器，串行按 round-robin 顺序逐个调度
 // 所有模型都会被测试，不会在首次成功后跳过后续模型
 // previousResults 可选：上次测试中成功的结果，跳过这些模型
-func runRoundRobinTests(ctx context.Context, channel *config.UpstreamConfig, protocols []string, perModelTimeout time.Duration, jobID string, previousResults map[string]map[string]ModelTestResult) []ProtocolTestResult {
+func runRoundRobinTests(ctx context.Context, channel *config.UpstreamConfig, protocols []string, perModelTimeout time.Duration, jobID string, previousResults map[string]map[string]ModelTestResult, userModels []string) []ProtocolTestResult {
 	// 1. 收集各协议模型列表，初始化 job 状态
 	protocolModels := make(map[string][]string)
 	protocolTimedOut := make(map[string]bool) // true = 全局超时强制终止
 	results := make(map[string]*ProtocolTestResult)
 
 	for _, protocol := range protocols {
-		models, err := getCapabilityProbeModels(protocol)
+		var models []string
+		var err error
+		if len(userModels) > 0 {
+			// 用户指定模型列表，所有协议共用
+			models = userModels
+		} else {
+			models, err = getCapabilityProbeModels(protocol)
+		}
 		if err != nil {
 			errMsg := "no_models_configured"
 			results[protocol] = &ProtocolTestResult{
@@ -797,13 +805,13 @@ func executeModelTest(ctx context.Context, channel *config.UpstreamConfig, proto
 // testProtocolCompatibility 并发测试多个协议的兼容性（已废弃，保留用于兼容）
 func testProtocolCompatibility(ctx context.Context, channel *config.UpstreamConfig, protocols []string, timeout time.Duration, jobID string) []ProtocolTestResult {
 	// 已废弃，直接调用新实现
-	return runRoundRobinTests(ctx, channel, protocols, timeout, jobID, nil)
+	return runRoundRobinTests(ctx, channel, protocols, timeout, jobID, nil, nil)
 }
 
 // testSingleProtocol 已废弃，保留用于兼容
 func testSingleProtocol(ctx context.Context, channel *config.UpstreamConfig, protocol string, timeout time.Duration, jobID string) ProtocolTestResult {
 	// 已废弃，直接调用新实现
-	results := runRoundRobinTests(ctx, channel, []string{protocol}, timeout, jobID, nil)
+	results := runRoundRobinTests(ctx, channel, []string{protocol}, timeout, jobID, nil, nil)
 	if len(results) > 0 {
 		return results[0]
 	}

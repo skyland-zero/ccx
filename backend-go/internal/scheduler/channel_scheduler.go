@@ -96,6 +96,7 @@ func (s *ChannelScheduler) SelectChannel(
 	failedChannels map[int]bool,
 	kind ChannelKind,
 	model string,
+	routePrefix string,
 ) (*SelectionResult, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -117,6 +118,21 @@ func (s *ChannelScheduler) SelectChannel(
 			return nil, fmt.Errorf("没有 %s 渠道支持模型 %q，请检查渠道的 supportedModels 配置", kindName, model)
 		}
 		return nil, fmt.Errorf("没有可用的活跃 %s 渠道", kindName)
+	}
+
+	// 按路由前缀过滤渠道
+	if routePrefix != "" {
+		var filtered []ChannelInfo
+		for _, ch := range activeChannels {
+			upstream := s.getUpstreamByIndex(ch.Index, kind)
+			if upstream != nil && upstream.RoutePrefix == routePrefix {
+				filtered = append(filtered, ch)
+			}
+		}
+		if len(filtered) == 0 {
+			return nil, fmt.Errorf("no channels with route prefix: %s", routePrefix)
+		}
+		activeChannels = filtered
 	}
 
 	// 获取对应类型的指标管理器

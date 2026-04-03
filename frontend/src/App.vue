@@ -376,11 +376,13 @@
       ref="capabilityTestDialogRef"
       v-model="showCapabilityTestDialog"
       :channel-name="capabilityTestChannelName"
+      :channel-id="capabilityTestChannelId"
       :current-tab="channelStore.activeTab"
       :capability-job="capabilityTestJob"
       @copy-to-tab="handleCopyToTab"
       @cancel="handleCancelCapabilityTest"
       @retry-model="handleRetryCapabilityModel"
+      @start-test="handleStartCapabilityTest"
     />
 
     <!-- 添加API密钥对话框 -->
@@ -727,25 +729,29 @@ const testChannelCapability = async (channelId: number) => {
   capabilityTestChannelName.value = channel?.name || t('capability.channelFallback', { id: channelId })
   capabilityTestChannelId.value = channelId
 
+  // 打开对话框，进入模型选择阶段（不立即开始测试）
   showCapabilityTestDialog.value = true
   stopCapabilityTestPolling()
-  // 记录上一次的 jobId 用于复用成功结果
   capabilityTestPreviousJobId.value = capabilityTestJobId.value
   capabilityTestJobId.value = ''
-  // 不清空 capabilityTestJob，保留旧数据，后端返回后自动更新
+  capabilityTestJob.value = null
+}
+
+// 用户在对话框中选择模型后开始测试
+const handleStartCapabilityTest = async (models: string[]) => {
+  const channelId = capabilityTestChannelId.value
+  stopCapabilityTestPolling()
 
   try {
     const startResp: CapabilityTestJobStartResponse = await api.startChannelCapabilityTest(
-      channelStore.activeTab, channelId, capabilityTestPreviousJobId.value || undefined
+      channelStore.activeTab, channelId, capabilityTestPreviousJobId.value || undefined, models.length > 0 ? models : undefined
     )
     capabilityTestJobId.value = startResp.jobId
 
-    // 后端返回时已带完整 job（含各协议模型列表），直接展示
     if (startResp.job) {
       updateCapabilityJob(startResp.job)
     }
 
-    // 缓存命中或已完成，无需轮询
     if (startResp.job?.status === 'completed' || startResp.job?.status === 'failed') {
       return
     }

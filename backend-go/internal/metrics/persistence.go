@@ -16,6 +16,10 @@ type PersistenceStore interface {
 	// 用于启动时补全超出 24h 窗口的时间戳
 	LoadLatestTimestamps(apiType string) (map[string]*KeyLatestTimestamps, error)
 
+	// QueryAggregatedHistory 查询聚合历史数据（按时间桶分组）
+	// 用于 >24h 的长时间范围查询（1周/1月），内存中仅保留 24h
+	QueryAggregatedHistory(apiType string, since time.Time, intervalSeconds int64, metricsKey string, baseURL string) ([]AggregatedBucket, error)
+
 	// CleanupOldRecords 清理过期数据
 	CleanupOldRecords(before time.Time) (int64, error)
 

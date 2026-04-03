@@ -15,6 +15,8 @@
           <v-btn value="1h" size="x-small">{{ t('chart.1h') }}</v-btn>
           <v-btn value="6h" size="x-small">{{ t('chart.6h') }}</v-btn>
           <v-btn value="24h" size="x-small">{{ t('chart.24h') }}</v-btn>
+          <v-btn value="7d" size="x-small">{{ t('chart.7d') }}</v-btn>
+          <v-btn value="30d" size="x-small">{{ t('chart.30d') }}</v-btn>
         </v-btn-toggle>
         <v-btn icon size="x-small" variant="text" :loading="isLoading" :disabled="isLoading" @click="refreshData">
           <v-icon size="small">mdi-refresh</v-icon>
@@ -90,7 +92,7 @@ const theme = useTheme()
 const { t } = useI18n()
 
 // State
-const selectedDuration = ref<'1h' | '6h' | '24h'>('6h')
+const selectedDuration = ref<'1h' | '6h' | '24h' | '7d' | '30d'>('6h')
 const isLoading = ref(false)
 const historyData = ref<MetricsHistoryResponse | null>(null)
 const showError = ref(false)
@@ -131,7 +133,7 @@ const baseChartOptions = computed<ApexOptions>(() => ({
     type: 'datetime',
     labels: {
       datetimeUTC: false,
-      format: selectedDuration.value === '1h' ? 'HH:mm' : 'HH:mm',
+      format: selectedDuration.value === '7d' || selectedDuration.value === '30d' ? 'MM-dd HH:mm' : 'HH:mm',
       style: { fontSize: '10px' }
     },
     axisBorder: { show: false },

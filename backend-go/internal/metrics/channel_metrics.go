@@ -93,6 +93,16 @@ type MetricsManager struct {
 	apiType string // "messages"、"responses" 或 "gemini"
 }
 
+// GetPersistenceStore 获取持久化存储（可能为 nil）
+func (m *MetricsManager) GetPersistenceStore() PersistenceStore {
+	return m.store
+}
+
+// GetAPIType 获取 API 类型
+func (m *MetricsManager) GetAPIType() string {
+	return m.apiType
+}
+
 // NewMetricsManager 创建指标管理器
 func NewMetricsManager() *MetricsManager {
 	m := &MetricsManager{

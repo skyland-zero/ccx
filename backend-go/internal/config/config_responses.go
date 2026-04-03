@@ -204,6 +204,9 @@ func (cm *ConfigManager) UpdateResponsesUpstream(index int, updates UpstreamUpda
 	if updates.SupportedModels != nil {
 		upstream.SupportedModels = updates.SupportedModels
 	}
+	if updates.RoutePrefix != nil {
+		upstream.RoutePrefix = *updates.RoutePrefix
+	}
 
 	if err := cm.saveConfigLocked(cm.config); err != nil {
 		return false, err
