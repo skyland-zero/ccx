@@ -391,6 +391,13 @@ func isSchemaValidationMessage(msgLower string) bool {
 		"invalid_request",
 		"invalid request",
 		"unsupported content type",
+		// 结构字段校验（Anthropic 常见）
+		"field required",
+		"required field",
+		"is required",
+		"messages.",
+		".content.",
+		".thinking.",
 	}
 	for _, keyword := range nonRetryableKeywords {
 		if strings.Contains(msgLower, keyword) {

@@ -376,7 +376,7 @@ func main() {
 		Addr:              addr,
 		Handler:           r,
 		ReadHeaderTimeout: 10 * time.Second,
-		ReadTimeout:       time.Duration(envCfg.RequestTimeout) * time.Millisecond, // 与请求超时一致
+		ReadTimeout:       time.Duration(envCfg.ServerReadTimeout) * time.Millisecond, // 仅控制服务端读取入站请求，避免与上游请求超时耦合
 		IdleTimeout:       120 * time.Second,
 	}
 

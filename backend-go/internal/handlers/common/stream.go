@@ -804,6 +804,9 @@ func logStreamCompletion(ctx *StreamContext, envCfg *config.EnvConfig, startTime
 	if envCfg.EnableResponseLogs {
 		log.Printf("[Messages-Stream] 流式响应完成: %dms", time.Since(startTime).Milliseconds())
 	}
+	if ctx.ClientGone && envCfg.ShouldLog("info") {
+		log.Printf("[Messages-Stream] 客户端已提前断开；上游流仍已完整接收（仅服务端日志可见）")
+	}
 
 	// SSE 事件统计日志
 	if envCfg.SSEDebugLevel == "full" || envCfg.SSEDebugLevel == "summary" {

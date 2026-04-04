@@ -463,6 +463,18 @@ func TestShouldRetryWithNextKey(t *testing.T) {
 			wantFailover: false,
 			wantQuota:    false,
 		},
+		{
+			name:       "400 anthropic thinking field required should not failover",
+			statusCode: 400,
+			body: map[string]interface{}{
+				"error": map[string]interface{}{
+					"type":    "invalid_request_error",
+					"message": "messages.1213.content.0.thinking.thinking: Field required",
+				},
+			},
+			wantFailover: false,
+			wantQuota:    false,
+		},
 		// 404 不应 failover
 		{
 			name:         "404 never failover",
@@ -737,6 +749,10 @@ func TestShouldRetryWithNextKey_FuzzyMode_InvalidRequestShouldNotFailover(t *tes
 		{
 			name: "schema validation message in upstream_error",
 			body: []byte(`{"error":{"type":"upstream_error","upstream_error":{"message":"Schema validation failed: unsupported content type input_text"}}}`),
+		},
+		{
+			name: "anthropic thinking field required",
+			body: []byte(`{"error":{"type":"invalid_request_error","message":"messages.1213.content.0.thinking.thinking: Field required"},"type":"error"}`),
 		},
 	}
 

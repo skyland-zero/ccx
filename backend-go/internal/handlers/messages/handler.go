@@ -42,6 +42,10 @@ func Handler(envCfg *config.EnvConfig, cfgManager *config.ConfigManager, channel
 		bodyBytes, modified := common.RemoveEmptySignatures(bodyBytes, envCfg.EnableRequestLogs, "Messages")
 		_ = modified // 保留以便未来扩展（如需在 handler 层面做额外处理）
 
+		// 预处理：清理历史 thinking 内容块/字段，预防上游参数校验 400
+		bodyBytes, thinkingModified := common.SanitizeMalformedThinkingBlocks(bodyBytes, envCfg.EnableRequestLogs, "Messages")
+		_ = thinkingModified // 保留以便未来扩展（如需在 handler 层面做额外处理）
+
 		// 预处理：移除 system 中的 cch= 计费参数
 		if cfgManager.GetStripBillingHeader() {
 			bodyBytes, _ = common.RemoveBillingHeaders(bodyBytes, envCfg.EnableRequestLogs, "Messages")

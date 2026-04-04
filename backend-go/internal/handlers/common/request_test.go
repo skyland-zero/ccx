@@ -2,8 +2,8 @@ package common
 
 import (
 	"bytes"
-	"errors"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -210,4 +210,122 @@ func TestPassthroughJSONResponse(t *testing.T) {
 			t.Fatalf("unexpected body: %q", w.Body.String())
 		}
 	})
+}
+
+func TestSanitizeMalformedThinkingBlocks(t *testing.T) {
+	input := `{
+		"messages": [
+			{
+				"role": "assistant",
+				"content": [
+					{"type": "thinking"},
+					{"type": "text", "text": "ok"}
+				]
+			},
+			{
+				"role": "assistant",
+				"content": [
+					{"type": "thinking", "thinking": {"foo": "bar"}}
+				]
+			},
+			{
+				"role": "assistant",
+				"content": [
+					{"type": "thinking", "thinking": "keep me"}
+				]
+			},
+			{
+				"role": "user",
+				"content": [
+					{"type": "text", "text": "hello"}
+				]
+			}
+		]
+	}`
+
+	gotBytes, modified := SanitizeMalformedThinkingBlocks([]byte(input), false, "Messages")
+	if !modified {
+		t.Fatal("expected modified=true")
+	}
+
+	var got map[string]interface{}
+	if err := json.Unmarshal(gotBytes, &got); err != nil {
+		t.Fatalf("unmarshal result failed: %v", err)
+	}
+
+	messages, ok := got["messages"].([]interface{})
+	if !ok {
+		t.Fatalf("messages type = %T, want []interface{}", got["messages"])
+	}
+
+	// 两条仅含 thinking 的 assistant 消息应被删除
+	if len(messages) != 2 {
+		t.Fatalf("messages len = %d, want 2", len(messages))
+	}
+
+	firstMsg, _ := messages[0].(map[string]interface{})
+	firstContent, _ := firstMsg["content"].([]interface{})
+	if len(firstContent) != 1 {
+		t.Fatalf("first message content len = %d, want 1", len(firstContent))
+	}
+	firstBlock, _ := firstContent[0].(map[string]interface{})
+	if firstBlock["type"] != "text" {
+		t.Fatalf("first message content[0].type = %v, want text", firstBlock["type"])
+	}
+
+	// 剩余第二条应为原 user 文本消息
+	secondMsg, _ := messages[1].(map[string]interface{})
+	if secondMsg["role"] != "user" {
+		t.Fatalf("second message role = %v, want user", secondMsg["role"])
+	}
+}
+
+func TestSanitizeMalformedThinkingBlocks_InvalidJSON_NoChange(t *testing.T) {
+	input := []byte(`{"messages":[`)
+	got, modified := SanitizeMalformedThinkingBlocks(input, false, "Messages")
+	if modified {
+		t.Fatal("expected modified=false")
+	}
+	if string(got) != string(input) {
+		t.Fatalf("unexpected output change: got %q, want %q", string(got), string(input))
+	}
+}
+
+func TestSanitizeMalformedThinkingBlocks_ContentObject(t *testing.T) {
+	input := `{
+		"messages": [
+			{
+				"role": "assistant",
+				"content": {"type": "thinking", "thinking": {}}
+			},
+			{
+				"role": "assistant",
+				"content": {"type": "text", "text": "ok", "thinking": {"thinking": "noise"}}
+			}
+		]
+	}`
+
+	gotBytes, modified := SanitizeMalformedThinkingBlocks([]byte(input), false, "Messages")
+	if !modified {
+		t.Fatal("expected modified=true")
+	}
+
+	var got map[string]interface{}
+	if err := json.Unmarshal(gotBytes, &got); err != nil {
+		t.Fatalf("unmarshal result failed: %v", err)
+	}
+
+	messages, _ := got["messages"].([]interface{})
+	if len(messages) != 1 {
+		t.Fatalf("messages len = %d, want 1", len(messages))
+	}
+
+	msg, _ := messages[0].(map[string]interface{})
+	content, _ := msg["content"].(map[string]interface{})
+	if _, exists := content["thinking"]; exists {
+		t.Fatalf("unexpected thinking field in non-thinking content: %v", content["thinking"])
+	}
+	if content["type"] != "text" {
+		t.Fatalf("content.type = %v, want text", content["type"])
+	}
 }

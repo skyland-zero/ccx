@@ -272,6 +272,139 @@ func removeEmptySignaturesInMessages(data map[string]interface{}) (bool, int) {
 	return modified, removedCount
 }
 
+// SanitizeMalformedThinkingBlocks 清理 messages[*].content[*] 中的 thinking 相关字段
+// 策略：
+// 1) 一律移除 type=thinking 的内容块（避免上游严格校验导致 400）
+// 2) 移除非 thinking 块里的残留 thinking 字段
+// 返回 (新字节, 是否修改)
+func SanitizeMalformedThinkingBlocks(bodyBytes []byte, enableLog bool, apiType string) ([]byte, bool) {
+	decoder := json.NewDecoder(bytes.NewReader(bodyBytes))
+	decoder.UseNumber() // 保留数字精度
+
+	var data map[string]interface{}
+	if err := decoder.Decode(&data); err != nil {
+		return bodyBytes, false
+	}
+
+	modified, removedBlocks, removedMsgs := sanitizeMalformedThinkingBlocksInMessages(data)
+	if !modified {
+		return bodyBytes, false
+	}
+
+	if enableLog {
+		if removedMsgs > 0 {
+			log.Printf("[%s-Preprocess] 已移除 %d 个 thinking 内容块，并删除 %d 条清理后 content 为空的 assistant 消息", apiType, removedBlocks, removedMsgs)
+		} else {
+			log.Printf("[%s-Preprocess] 已移除 %d 个 thinking 内容块", apiType, removedBlocks)
+		}
+	}
+
+	newBytes, err := utils.MarshalJSONNoEscape(data)
+	if err != nil {
+		return bodyBytes, false
+	}
+	return newBytes, true
+}
+
+func sanitizeMalformedThinkingBlocksInMessages(data map[string]interface{}) (bool, int, int) {
+	messages, ok := data["messages"].([]interface{})
+	if !ok {
+		return false, 0, 0
+	}
+
+	modified := false
+	removedBlocks := 0
+	removedMsgs := 0
+	sanitizedMessages := make([]interface{}, 0, len(messages))
+
+	for _, msg := range messages {
+		msgMap, ok := msg.(map[string]interface{})
+		if !ok {
+			sanitizedMessages = append(sanitizedMessages, msg)
+			continue
+		}
+
+		role, _ := msgMap["role"].(string)
+
+		switch content := msgMap["content"].(type) {
+		case []interface{}:
+			newContent := make([]interface{}, 0, len(content))
+			removedInCurrentMessage := 0
+			messageModified := false
+
+			for _, block := range content {
+				blockMap, ok := block.(map[string]interface{})
+				if !ok {
+					newContent = append(newContent, block)
+					continue
+				}
+
+				blockModified, removeBlock := sanitizeThinkingInContentBlock(blockMap)
+				if blockModified {
+					modified = true
+					messageModified = true
+				}
+				if removeBlock {
+					removedBlocks++
+					removedInCurrentMessage++
+					continue
+				}
+				newContent = append(newContent, blockMap)
+			}
+
+			if messageModified {
+				msgMap["content"] = newContent
+			}
+
+			if removedInCurrentMessage > 0 && len(newContent) == 0 && role == "assistant" {
+				removedMsgs++
+				continue
+			}
+
+		case map[string]interface{}:
+			blockModified, removeBlock := sanitizeThinkingInContentBlock(content)
+			if blockModified {
+				modified = true
+			}
+			if removeBlock {
+				removedBlocks++
+				if role == "assistant" {
+					removedMsgs++
+					continue
+				}
+				msgMap["content"] = []interface{}{}
+			} else if blockModified {
+				msgMap["content"] = content
+			}
+		}
+
+		sanitizedMessages = append(sanitizedMessages, msgMap)
+	}
+
+	if modified {
+		data["messages"] = sanitizedMessages
+	}
+
+	return modified, removedBlocks, removedMsgs
+}
+
+func sanitizeThinkingInContentBlock(block map[string]interface{}) (modified bool, removeBlock bool) {
+	blockType, _ := block["type"].(string)
+	if blockType == "thinking" {
+		// 无论完整与否，一律移除 thinking block。
+		// 原因：历史 thinking 内容对续写价值很低，但容易触发上游严格校验（如 thinking.thinking 必填）。
+		return true, true
+	}
+
+	if _, hasThinking := block["thinking"]; hasThinking {
+		// 非 thinking block 里的 thinking 字段对上游无意义且可能触发校验错误，直接移除
+		delete(block, "thinking")
+		return true, false
+	}
+
+	return false, false
+}
+
 // NormalizeMetadataUserID 规范化 metadata.user_id 字段
 // Claude Code v2.1.78 将 user_id 从扁平字符串改为 JSON 对象字符串:
 //

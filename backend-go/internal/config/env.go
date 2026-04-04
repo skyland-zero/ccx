@@ -19,6 +19,7 @@ type EnvConfig struct {
 	RawLogOutput         bool   // 原始日志输出（不缩进、不截断、不重排序）
 	SSEDebugLevel        string // SSE 调试级别: off, summary, full
 	RewriteResponseModel bool   // 是否改写响应中的 model 字段为请求的 model（默认 false）
+	ServerReadTimeout    int    // HTTP 服务端读取请求超时（毫秒），仅用于入站连接读取
 
 	RequestTimeout     int
 	MaxRequestBodySize int64 // 请求体最大大小 (字节)，由 MB 配置转换
@@ -64,6 +65,7 @@ func NewEnvConfig() *EnvConfig {
 		RawLogOutput:         getEnv("RAW_LOG_OUTPUT", "false") == "true",
 		SSEDebugLevel:        getEnv("SSE_DEBUG_LEVEL", "off"),
 		RewriteResponseModel: getEnv("REWRITE_RESPONSE_MODEL", "false") == "true",
+		ServerReadTimeout:    clampInt(getEnvAsInt("SERVER_READ_TIMEOUT", 60000), 10000, 300000),
 
 		RequestTimeout:     getEnvAsInt("REQUEST_TIMEOUT", 300000),
 		MaxRequestBodySize: getEnvAsInt64("MAX_REQUEST_BODY_SIZE_MB", 50) * 1024 * 1024, // MB 转换为字节
