@@ -589,15 +589,15 @@
                   </div>
 
                   <!-- 被拉黑的密钥（仅编辑模式） -->
-                  <div v-if="isEditing && props.channel?.disabledApiKeys?.length" class="mt-4">
+                  <div v-if="isEditing && visibleDisabledKeys.length" class="mt-4">
                     <div class="d-flex align-center ga-2 mb-2">
                       <v-icon size="small" color="error">mdi-key-remove</v-icon>
                       <span class="text-body-2 font-weight-medium text-error">{{ t('channelCard.disabledKeys') }}</span>
-                      <v-chip size="x-small" color="error" variant="tonal">{{ props.channel.disabledApiKeys.length }}</v-chip>
+                      <v-chip size="x-small" color="error" variant="tonal">{{ visibleDisabledKeys.length }}</v-chip>
                     </div>
                     <v-list density="compact" class="rounded-lg" style="max-height: 150px; overflow-y: auto;">
                       <v-list-item
-                        v-for="(dk, dkIdx) in props.channel.disabledApiKeys"
+                        v-for="(dk, dkIdx) in visibleDisabledKeys"
                         :key="'disabled-' + dkIdx"
                         class="px-3"
                         style="background: rgba(var(--v-theme-error), 0.04);"
@@ -1777,6 +1777,13 @@ const moveApiKeyToBottom = (index: number) => {
 
 // 恢复被拉黑的密钥
 const restoringKey = ref('')
+const localRestoredKeys = ref(new Set<string>())
+
+// 本地过滤已恢复的 key，不直接修改 props
+const visibleDisabledKeys = computed(() =>
+  (props.channel?.disabledApiKeys || []).filter(dk => !localRestoredKeys.value.has(dk.key))
+)
+
 const restoreDisabledKey = async (apiKey: string) => {
   if (!props.channel) return
   restoringKey.value = apiKey
@@ -1791,12 +1798,9 @@ const restoreDisabledKey = async (apiKey: string) => {
     } else {
       await api.restoreApiKey(channelId, apiKey)
     }
-    // 恢复后加入活跃列表并从拉黑列表移除
+    // 本地标记已恢复，加入活跃列表
+    localRestoredKeys.value.add(apiKey)
     form.apiKeys.push(apiKey)
-    if (props.channel.disabledApiKeys) {
-      const idx = props.channel.disabledApiKeys.findIndex(dk => dk.key === apiKey)
-      if (idx !== -1) props.channel.disabledApiKeys.splice(idx, 1)
-    }
   } catch (error) {
     apiKeyError.value = error instanceof Error ? error.message : 'Restore failed'
   } finally {
@@ -2060,6 +2064,7 @@ watch(
       // 无论是编辑还是新增，都先清理密钥错误状态
       apiKeyError.value = ''
       duplicateKeyIndex.value = -1
+      localRestoredKeys.value = new Set<string>()
 
       if (props.channel) {
         // 编辑模式：使用表单模式
