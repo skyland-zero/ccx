@@ -46,6 +46,8 @@ type StreamPreflightResult struct {
 	Error            error    // 流错误
 	BlacklistReason  string   // 拉黑原因（非空时应拉黑 Key）
 	BlacklistMessage string   // 拉黑错误信息
+	Diagnostic       string   // 空响应诊断摘要
+	UnknownEventType string   // 首个未知 SSE data.type
 }
 
 // PreflightStreamEvents 在发送 HTTP Header 之前预检测流式响应是否为空
@@ -54,6 +56,11 @@ func PreflightStreamEvents(eventChan <-chan string, errChan <-chan error) *Strea
 	result := &StreamPreflightResult{}
 	var textBuf bytes.Buffer
 	hasNonTextContent := false // tool_use / thinking 等非文本 content block
+	seenEvent := false
+	seenMessageStop := false
+	seenUsageOnlyEvent := false
+	seenUnknownDataType := false
+	unknownEventType := ""
 	timeout := time.NewTimer(30 * time.Second)
 	defer timeout.Stop()
 
@@ -66,8 +73,11 @@ func PreflightStreamEvents(eventChan <-chan string, errChan <-chan error) *Strea
 					return result // 有非文本内容，视为非空
 				}
 				result.IsEmpty = isEmptyContent(textBuf.String())
+				result.UnknownEventType = unknownEventType
+				result.Diagnostic = buildClaudePreflightDiagnostic(seenEvent, seenMessageStop, seenUsageOnlyEvent, seenUnknownDataType, unknownEventType, textBuf.String(), result.BufferedEvents)
 				return result
 			}
+			seenEvent = true
 			result.BufferedEvents = append(result.BufferedEvents, event)
 
 			// 检测 SSE error 事件中的拉黑条件（认证/余额错误）
@@ -82,6 +92,17 @@ func PreflightStreamEvents(eventChan <-chan string, errChan <-chan error) *Strea
 			if !hasNonTextContent && hasNonTextContentBlock(event) {
 				hasNonTextContent = true
 				return result // 有效内容，立即放行
+			}
+
+			seenMessageStop = seenMessageStop || IsMessageStopEvent(event)
+			if isUsageOnlySSEEvent(event) {
+				seenUsageOnlyEvent = true
+			}
+			if t, ok := firstUnknownSSEDataType(event); ok {
+				seenUnknownDataType = true
+				if unknownEventType == "" {
+					unknownEventType = t
+				}
 			}
 
 			// 提取文本内容
@@ -99,6 +120,8 @@ func PreflightStreamEvents(eventChan <-chan string, errChan <-chan error) *Strea
 					return result
 				}
 				result.IsEmpty = isEmptyContent(textBuf.String())
+				result.UnknownEventType = unknownEventType
+				result.Diagnostic = buildClaudePreflightDiagnostic(seenEvent, true, seenUsageOnlyEvent, seenUnknownDataType, unknownEventType, textBuf.String(), result.BufferedEvents)
 				return result
 			}
 
@@ -121,19 +144,96 @@ func PreflightStreamEvents(eventChan <-chan string, errChan <-chan error) *Strea
 	}
 }
 
+func buildClaudePreflightDiagnostic(seenEvent, seenMessageStop, seenUsageOnlyEvent, seenUnknownDataType bool, unknownEventType string, text string, events []string) string {
+	switch {
+	case !seenEvent:
+		return "未收到任何 SSE 事件"
+	case seenUsageOnlyEvent && IsEffectivelyEmptyStreamText(text):
+		return "仅收到 usage/计数类事件，没有文本或语义内容"
+	case seenUnknownDataType && IsEffectivelyEmptyStreamText(text):
+		if unknownEventType != "" {
+			return "收到了未识别的 SSE data.type=" + unknownEventType + "，但没有文本或语义内容"
+		}
+		return "收到了未识别的 SSE data.type，但没有文本或语义内容"
+	case seenMessageStop && IsEffectivelyEmptyStreamText(text):
+		return "流正常结束(message_stop)，但未检测到文本或语义内容"
+	default:
+		return "检测到空流，但未匹配到明确类别"
+	}
+}
+
+func isUsageOnlySSEEvent(event string) bool {
+	for _, line := range strings.Split(event, "\n") {
+		jsonStr, ok := extractSSEJSONLine(line)
+		if !ok {
+			continue
+		}
+		var data map[string]interface{}
+		if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
+			continue
+		}
+		if usage, ok := data["usage"].(map[string]interface{}); ok && len(usage) > 0 {
+			if _, hasDelta := data["delta"]; !hasDelta && data["type"] != "message_start" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func firstUnknownSSEDataType(event string) (string, bool) {
+	knownTypes := map[string]struct{}{
+		"message_start": {}, "message_delta": {}, "message_stop": {}, "content_block_start": {}, "content_block_delta": {}, "content_block_stop": {}, "ping": {}, "error": {},
+	}
+	for _, line := range strings.Split(event, "\n") {
+		jsonStr, ok := extractSSEJSONLine(line)
+		if !ok {
+			continue
+		}
+		var data map[string]interface{}
+		if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
+			continue
+		}
+		if t, _ := data["type"].(string); t != "" {
+			if _, ok := knownTypes[t]; !ok {
+				return t, true
+			}
+		}
+	}
+	return "", false
+}
+
 // isEmptyContent 判断流式响应的累积文本是否为空内容
 func isEmptyContent(text string) bool {
+	return IsEffectivelyEmptyStreamText(text)
+}
+
+// IsEffectivelyEmptyStreamText 判断流式响应文本是否仍可视为“空”
+func IsEffectivelyEmptyStreamText(text string) bool {
 	return text == "" || strings.TrimSpace(text) == "{"
+}
+
+func extractSSEJSONLine(line string) (string, bool) {
+	if !strings.HasPrefix(line, "data:") {
+		return "", false
+	}
+	jsonStr := strings.TrimPrefix(line, "data:")
+	return strings.TrimPrefix(jsonStr, " "), true
 }
 
 // hasNonTextContentBlock 检测 SSE 事件是否包含非文本 content block（tool_use / thinking）
 // 这些 content block 不产生 delta.text，但属于有效响应内容
 func hasNonTextContentBlock(event string) bool {
+	return HasClaudeSemanticContent(event)
+}
+
+// HasClaudeSemanticContent 判断 Claude/Messages 风格 SSE 是否包含有效语义内容
+func HasClaudeSemanticContent(event string) bool {
 	for _, line := range strings.Split(event, "\n") {
-		if !strings.HasPrefix(line, "data: ") {
+		jsonStr, ok := extractSSEJSONLine(line)
+		if !ok {
 			continue
 		}
-		jsonStr := strings.TrimPrefix(line, "data: ")
 
 		var data map[string]interface{}
 		if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
@@ -144,8 +244,66 @@ func hasNonTextContentBlock(event string) bool {
 		if cb, ok := data["content_block"].(map[string]interface{}); ok {
 			if cbType, ok := cb["type"].(string); ok {
 				switch cbType {
-				case "tool_use", "thinking", "server_tool_use":
+				case "text", "":
+				default:
 					return true
+				}
+			}
+		}
+
+		if delta, ok := data["delta"].(map[string]interface{}); ok {
+			if deltaType, _ := delta["type"].(string); deltaType == "input_json_delta" {
+				return true
+			}
+			if stopReason, _ := delta["stop_reason"].(string); stopReason == "tool_use" || stopReason == "server_tool_use" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func responseItemCarriesSemanticContent(item map[string]interface{}) bool {
+	itemType, _ := item["type"].(string)
+	switch itemType {
+	case "function_call", "reasoning":
+		return true
+	}
+	return strings.HasSuffix(itemType, "_call")
+}
+
+// HasResponsesSemanticContent 判断 Responses 风格 SSE 是否包含有效语义内容
+func HasResponsesSemanticContent(event string) bool {
+	lines := strings.Split(event, "\n")
+	for _, line := range lines {
+		jsonStr, ok := extractSSEJSONLine(line)
+		if !ok {
+			continue
+		}
+
+		var data map[string]interface{}
+		if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
+			continue
+		}
+
+		switch data["type"] {
+		case "response.function_call_arguments.delta", "response.function_call_arguments.done",
+			"response.reasoning_summary_part.added", "response.reasoning_summary_part.done",
+			"response.reasoning_summary_text.done":
+			return true
+		case "response.output_item.added", "response.output_item.done":
+			item, _ := data["item"].(map[string]interface{})
+			if responseItemCarriesSemanticContent(item) {
+				return true
+			}
+		case "response.completed":
+			if response, ok := data["response"].(map[string]interface{}); ok {
+				if output, ok := response["output"].([]interface{}); ok {
+					for _, item := range output {
+						if itemMap, ok := item.(map[string]interface{}); ok && responseItemCarriesSemanticContent(itemMap) {
+							return true
+						}
+					}
 				}
 			}
 		}
@@ -759,7 +917,7 @@ func HandleStreamResponse(
 
 	// 空响应：Header 未发送，可安全重试
 	if preflight.IsEmpty {
-		log.Printf("[Messages-EmptyResponse] 上游返回空响应 (缓冲事件数: %d)，触发重试", len(preflight.BufferedEvents))
+		log.Printf("[Messages-EmptyResponse] 上游返回空响应 (缓冲事件数: %d, 诊断: %s)，触发重试", len(preflight.BufferedEvents), preflight.Diagnostic)
 		drainChannels(eventChan, errChan)
 		// 如果同时检测到拉黑条件，优先返回拉黑错误
 		if preflight.BlacklistReason != "" {
@@ -804,10 +962,10 @@ func HandleStreamResponse(
 // CheckEventUsageStatus 检测事件是否包含 usage 字段
 func CheckEventUsageStatus(event string, enableLog bool) (bool, bool, bool, CollectedUsageData) {
 	for _, line := range strings.Split(event, "\n") {
-		if !strings.HasPrefix(line, "data: ") {
+		jsonStr, ok := extractSSEJSONLine(line)
+		if !ok {
 			continue
 		}
-		jsonStr := strings.TrimPrefix(line, "data: ")
 
 		var data map[string]interface{}
 		if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
@@ -1331,10 +1489,10 @@ func IsMessageDeltaEvent(event string) bool {
 		return true
 	}
 	for _, line := range strings.Split(event, "\n") {
-		if !strings.HasPrefix(line, "data: ") {
+		jsonStr, ok := extractSSEJSONLine(line)
+		if !ok {
 			continue
 		}
-		jsonStr := strings.TrimPrefix(line, "data: ")
 		var data map[string]interface{}
 		if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
 			continue
@@ -1350,10 +1508,10 @@ func IsMessageDeltaEvent(event string) bool {
 // 支持 message_start 事件的 message.usage.input_tokens 和顶层 usage.input_tokens
 func ExtractInputTokensFromEvent(event string) int {
 	for _, line := range strings.Split(event, "\n") {
-		if !strings.HasPrefix(line, "data: ") {
+		jsonStr, ok := extractSSEJSONLine(line)
+		if !ok {
 			continue
 		}
-		jsonStr := strings.TrimPrefix(line, "data: ")
 
 		var data map[string]interface{}
 		if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
@@ -1382,10 +1540,10 @@ func ExtractInputTokensFromEvent(event string) int {
 // ExtractTextFromEvent 从 SSE 事件中提取文本内容
 func ExtractTextFromEvent(event string, buf *bytes.Buffer) {
 	for _, line := range strings.Split(event, "\n") {
-		if !strings.HasPrefix(line, "data: ") {
+		jsonStr, ok := extractSSEJSONLine(line)
+		if !ok {
 			continue
 		}
-		jsonStr := strings.TrimPrefix(line, "data: ")
 
 		var data map[string]interface{}
 		if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
@@ -1427,10 +1585,10 @@ func DetectStreamBlacklistError(event string) (reason string, message string) {
 
 	// 即使不是显式的 event: error，也检查 data 中的 type == "error"
 	for _, line := range strings.Split(event, "\n") {
-		if !strings.HasPrefix(line, "data: ") {
+		jsonStr, ok := extractSSEJSONLine(line)
+		if !ok {
 			continue
 		}
-		jsonStr := strings.TrimPrefix(line, "data: ")
 
 		var data map[string]interface{}
 		if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
@@ -1492,10 +1650,10 @@ func truncateMsg(msg string) string {
 // extractSSEEventInfo 从 SSE 事件中提取事件类型、block 索引和 block 类型
 func extractSSEEventInfo(event string) (eventType string, blockIndex int, blockType string) {
 	for _, line := range strings.Split(event, "\n") {
-		if !strings.HasPrefix(line, "data: ") {
+		jsonStr, ok := extractSSEJSONLine(line)
+		if !ok {
 			continue
 		}
-		jsonStr := strings.TrimPrefix(line, "data: ")
 
 		var data map[string]interface{}
 		if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {

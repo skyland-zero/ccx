@@ -388,7 +388,7 @@ func (p *GeminiProvider) HandleStreamResponse(body io.ReadCloser) (<-chan string
 		textBlockIndex := 0
 
 		for scanner.Scan() {
-			line := scanner.Text()
+			line := normalizeSSEFieldLine(scanner.Text())
 			line = strings.TrimSpace(line)
 
 			if line == "" || line == "data: [DONE]" {

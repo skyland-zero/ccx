@@ -473,7 +473,7 @@ func (p *ResponsesProvider) HandleStreamResponse(body io.ReadCloser) (<-chan str
 		}
 
 		for scanner.Scan() {
-			line := strings.TrimSpace(scanner.Text())
+			line := strings.TrimSpace(normalizeSSEFieldLine(scanner.Text()))
 			if line == "" {
 				continue
 			}

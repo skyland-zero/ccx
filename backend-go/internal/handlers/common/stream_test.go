@@ -401,9 +401,53 @@ func TestPreflightStreamEvents_TrueEmptyStillDetected(t *testing.T) {
 	if !result.IsEmpty {
 		t.Errorf("truly empty response should be detected as empty, got IsEmpty=false")
 	}
+	if result.Diagnostic == "" {
+		t.Fatal("expected diagnostic for empty preflight result")
+	}
 }
 
-func TestHasNonTextContentBlock(t *testing.T) {
+func TestPreflightStreamEvents_UnknownEventTypeRecordedInDiagnostic(t *testing.T) {
+	eventChan := make(chan string, 2)
+	errChan := make(chan error, 1)
+
+	eventChan <- "event: weird\ndata: {\"type\":\"custom.semantic.delta\",\"foo\":\"bar\"}\n\n"
+	close(eventChan)
+	close(errChan)
+
+	result := PreflightStreamEvents(eventChan, errChan)
+	if !result.IsEmpty {
+		t.Fatal("expected stream with only unknown event and no semantic content to be empty")
+	}
+	if result.UnknownEventType != "custom.semantic.delta" {
+		t.Fatalf("UnknownEventType = %q, want %q", result.UnknownEventType, "custom.semantic.delta")
+	}
+	if !strings.Contains(result.Diagnostic, "custom.semantic.delta") {
+		t.Fatalf("Diagnostic = %q, want it to mention unknown event type", result.Diagnostic)
+	}
+}
+
+func TestPreflightStreamEvents_ToolUseStopReasonWithoutContentBlockStillNotEmpty(t *testing.T) {
+	eventChan := make(chan string, 4)
+	errChan := make(chan error, 1)
+
+	events := []string{
+		"event: message_start\ndata:{\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":10,\"output_tokens\":0}}}\n\n",
+		"event: message_delta\ndata:{\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"input_tokens\":10,\"output_tokens\":1}}\n\n",
+		"event: message_stop\ndata:{\"type\":\"message_stop\"}\n\n",
+	}
+	for _, e := range events {
+		eventChan <- e
+	}
+	close(eventChan)
+	close(errChan)
+
+	result := PreflightStreamEvents(eventChan, errChan)
+	if result.IsEmpty {
+		t.Fatalf("tool_use stop_reason should NOT be detected as empty")
+	}
+}
+
+func TestHasClaudeSemanticContent(t *testing.T) {
 	tests := []struct {
 		name  string
 		event string
@@ -435,17 +479,17 @@ func TestHasNonTextContentBlock(t *testing.T) {
 			want:  false,
 		},
 		{
-			name:  "content_block_delta - no content_block field",
+			name:  "content_block_delta input_json_delta counts as non-text",
 			event: "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{}\"}}\n\n",
-			want:  false,
+			want:  true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := hasNonTextContentBlock(tt.event)
+			got := HasClaudeSemanticContent(tt.event)
 			if got != tt.want {
-				t.Errorf("hasNonTextContentBlock() = %v, want %v", got, tt.want)
+				t.Errorf("HasClaudeSemanticContent() = %v, want %v", got, tt.want)
 			}
 		})
 	}

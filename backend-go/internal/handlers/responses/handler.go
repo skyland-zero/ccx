@@ -529,7 +529,7 @@ func handleStreamSuccess(
 		defer close(lineChan)
 		for scanner.Scan() {
 			select {
-			case lineChan <- scanLine{text: scanner.Text(), ok: true}:
+			case lineChan <- scanLine{text: normalizeResponsesSSEFieldLine(scanner.Text()), ok: true}:
 			case <-scanDone:
 				return
 			}
@@ -544,9 +544,15 @@ func handleStreamSuccess(
 	var preflightTextBuf bytes.Buffer
 	preflightHasNonTextContent := false
 	preflightEmpty := false
+	preflightDiagnostic := ""
 	preflightTimeout := time.NewTimer(30 * time.Second)
 	preflightDone := false
 	var blacklistReason, blacklistMessage string
+	seenConvertedEvent := false
+	seenCompletedEvent := false
+	seenUsageOnlyEvent := false
+	seenUnknownEvent := false
+	unknownEventType := ""
 
 	for !preflightDone {
 		select {
@@ -556,8 +562,9 @@ func handleStreamSuccess(
 				if preflightHasNonTextContent {
 					preflightEmpty = false
 				} else {
-					preflightEmpty = isResponsesEmptyContent(preflightTextBuf.String())
+					preflightEmpty = common.IsEffectivelyEmptyStreamText(preflightTextBuf.String())
 				}
+				preflightDiagnostic = buildResponsesPreflightDiagnostic(seenConvertedEvent, seenCompletedEvent, seenUsageOnlyEvent, seenUnknownEvent, unknownEventType, preflightTextBuf.String())
 				preflightDone = true
 				break
 			}
@@ -600,7 +607,17 @@ func handleStreamSuccess(
 			}
 
 			for _, event := range eventsToCheck {
-				if !preflightHasNonTextContent && hasResponsesNonTextContent(event) {
+				seenConvertedEvent = true
+				seenCompletedEvent = seenCompletedEvent || isResponsesCompletedEvent(event)
+				seenUsageOnlyEvent = seenUsageOnlyEvent || isResponsesUsageOnlyEvent(event)
+				if t, ok := firstUnknownResponsesEventType(event); ok {
+					seenUnknownEvent = true
+					if unknownEventType == "" {
+						unknownEventType = t
+					}
+				}
+
+				if !preflightHasNonTextContent && common.HasResponsesSemanticContent(event) {
 					preflightHasNonTextContent = true
 					preflightEmpty = false
 					preflightDone = true
@@ -610,7 +627,7 @@ func handleStreamSuccess(
 				extractResponsesTextFromEvent(event, &preflightTextBuf)
 
 				// 检查是否有有效内容 delta 事件
-				if !isResponsesEmptyContent(preflightTextBuf.String()) {
+				if !common.IsEffectivelyEmptyStreamText(preflightTextBuf.String()) {
 					preflightDone = true
 					break
 				}
@@ -619,11 +636,12 @@ func handleStreamSuccess(
 				if isResponsesCompletedEvent(event) {
 					preflightDone = true
 					// 检查是否有实际内容（文本或工具调用）
-					preflightEmpty = !preflightHasNonTextContent && isResponsesEmptyContent(preflightTextBuf.String())
+					preflightEmpty = !preflightHasNonTextContent && common.IsEffectivelyEmptyStreamText(preflightTextBuf.String())
 					// 如果有工具调用，不算空响应
 					if preflightEmpty && hasResponsesFunctionCall(event) {
 						preflightEmpty = false
 					}
+					preflightDiagnostic = buildResponsesPreflightDiagnostic(seenConvertedEvent, true, seenUsageOnlyEvent, seenUnknownEvent, unknownEventType, preflightTextBuf.String())
 					break
 				}
 			}
@@ -636,7 +654,7 @@ func handleStreamSuccess(
 
 	// 空响应：Header 未发送，可安全重试
 	if preflightEmpty {
-		log.Printf("[Responses-EmptyResponse] 上游返回空响应 (缓冲行数: %d)，触发重试", len(bufferedLines))
+		log.Printf("[Responses-EmptyResponse] 上游返回空响应 (缓冲行数: %d, 诊断: %s)，触发重试", len(bufferedLines), preflightDiagnostic)
 		close(scanDone) // 通知 scanner goroutine 退出
 		if blacklistReason != "" {
 			return nil, &common.ErrBlacklistKey{Reason: blacklistReason, Message: blacklistMessage}
@@ -848,11 +866,16 @@ type responsesStreamUsage struct {
 	HasClaudeCache             bool // 是否检测到 Claude 原生缓存字段（区别于 OpenAI cached_tokens）
 }
 
-// extractResponsesTextFromEvent 从 Responses SSE 事件中提取文本内容
-func isResponsesEmptyContent(text string) bool {
-	return text == "" || strings.TrimSpace(text) == "{"
+func normalizeResponsesSSEFieldLine(line string) string {
+	for _, prefix := range []string{"data:", "event:", "id:", "retry:"} {
+		if strings.HasPrefix(line, prefix) && !strings.HasPrefix(line, prefix+" ") {
+			return prefix + " " + line[len(prefix):]
+		}
+	}
+	return line
 }
 
+// extractResponsesTextFromEvent 从 Responses SSE 事件中提取文本内容
 func extractResponsesTextFromEvent(event string, buf *bytes.Buffer) {
 	for _, line := range strings.Split(event, "\n") {
 		// 支持 "data:" 和 "data: " 两种格式（有些上游不带空格）
@@ -904,39 +927,6 @@ func extractResponsesTextFromEvent(event string, buf *bytes.Buffer) {
 			}
 		}
 	}
-}
-
-func hasResponsesNonTextContent(event string) bool {
-	lines := strings.Split(event, "\n")
-	for _, line := range lines {
-		var jsonStr string
-		if strings.HasPrefix(line, "data:") {
-			jsonStr = strings.TrimPrefix(line, "data:")
-			jsonStr = strings.TrimPrefix(jsonStr, " ")
-		} else {
-			continue
-		}
-
-		var data map[string]interface{}
-		if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
-			continue
-		}
-
-		switch data["type"] {
-		case "response.function_call_arguments.delta", "response.function_call_arguments.done":
-			return true
-		case "response.output_item.added", "response.output_item.done":
-			item, _ := data["item"].(map[string]interface{})
-			if itemType, _ := item["type"].(string); itemType == "function_call" {
-				return true
-			}
-		case "response.completed":
-			if hasResponsesFunctionCall(event) {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 // checkResponsesEventUsage 检测 Responses 事件是否包含 usage
@@ -1423,4 +1413,78 @@ func hasResponsesFunctionCall(event string) bool {
 		}
 	}
 	return false
+}
+
+func buildResponsesPreflightDiagnostic(seenEvent, seenCompleted, seenUsageOnly, seenUnknown bool, unknownEventType, text string) string {
+	switch {
+	case !seenEvent:
+		return "未收到任何转换后的 Responses 事件"
+	case seenUsageOnly && common.IsEffectivelyEmptyStreamText(text):
+		return "仅收到 usage/计数类 Responses 事件，没有文本或语义内容"
+	case seenUnknown && common.IsEffectivelyEmptyStreamText(text):
+		if unknownEventType != "" {
+			return "收到了未识别的 Responses 事件类型=" + unknownEventType + "，但没有文本或语义内容"
+		}
+		return "收到了未识别的 Responses 事件类型，但没有文本或语义内容"
+	case seenCompleted && common.IsEffectivelyEmptyStreamText(text):
+		return "流正常结束(response.completed)，但未检测到文本或语义内容"
+	default:
+		return "检测到空的 Responses 流，但未匹配到明确类别"
+	}
+}
+
+func isResponsesUsageOnlyEvent(event string) bool {
+	lines := strings.Split(event, "\n")
+	for _, line := range lines {
+		var jsonStr string
+		if strings.HasPrefix(line, "data:") {
+			jsonStr = strings.TrimPrefix(line, "data:")
+			jsonStr = strings.TrimPrefix(jsonStr, " ")
+		} else {
+			continue
+		}
+		var data map[string]interface{}
+		if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
+			continue
+		}
+		if data["type"] == "response.completed" {
+			if response, ok := data["response"].(map[string]interface{}); ok {
+				if usage, ok := response["usage"].(map[string]interface{}); ok && len(usage) > 0 {
+					if output, ok := response["output"].([]interface{}); !ok || len(output) == 0 {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+func firstUnknownResponsesEventType(event string) (string, bool) {
+	knownTypes := map[string]struct{}{
+		"response.output_text.delta": {}, "response.function_call_arguments.delta": {}, "response.function_call_arguments.done": {},
+		"response.reasoning_summary_text.delta": {}, "response.reasoning_summary_text.done": {}, "response.reasoning_summary_part.added": {}, "response.reasoning_summary_part.done": {},
+		"response.output_json.delta": {}, "response.content_part.delta": {}, "response.audio.delta": {}, "response.audio_transcript.delta": {},
+		"response.output_item.added": {}, "response.output_item.done": {}, "response.completed": {},
+	}
+	lines := strings.Split(event, "\n")
+	for _, line := range lines {
+		var jsonStr string
+		if strings.HasPrefix(line, "data:") {
+			jsonStr = strings.TrimPrefix(line, "data:")
+			jsonStr = strings.TrimPrefix(jsonStr, " ")
+		} else {
+			continue
+		}
+		var data map[string]interface{}
+		if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
+			continue
+		}
+		if t, _ := data["type"].(string); t != "" {
+			if _, ok := knownTypes[t]; !ok {
+				return t, true
+			}
+		}
+	}
+	return "", false
 }
