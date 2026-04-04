@@ -597,21 +597,29 @@ func ShouldBlacklistKey(statusCode int, bodyBytes []byte) BlacklistResult {
 }
 
 // extractErrorInfo 从 JSON 响应体中提取 error.type 和 error.message
+// 支持嵌套格式 {"error":{"type":"...","message":"..."}} 和扁平格式 {"type":"...","message":"..."}
 func extractErrorInfo(bodyBytes []byte) (errType string, errMessage string) {
 	var resp map[string]interface{}
 	if err := json.Unmarshal(bodyBytes, &resp); err != nil {
 		return "", ""
 	}
 
-	errObj, ok := resp["error"].(map[string]interface{})
-	if !ok {
-		return "", ""
+	// 优先尝试嵌套格式: {"error": {"type": "...", "message": "..."}}
+	if errObj, ok := resp["error"].(map[string]interface{}); ok {
+		if t, ok := errObj["type"].(string); ok {
+			errType = t
+		}
+		if m, ok := errObj["message"].(string); ok {
+			errMessage = m
+		}
+		return
 	}
 
-	if t, ok := errObj["type"].(string); ok {
+	// fallback: 扁平格式 {"type": "...", "message": "..."} (Anthropic 部分接口)
+	if t, ok := resp["type"].(string); ok {
 		errType = t
 	}
-	if m, ok := errObj["message"].(string); ok {
+	if m, ok := resp["message"].(string); ok {
 		errMessage = m
 	}
 	return
