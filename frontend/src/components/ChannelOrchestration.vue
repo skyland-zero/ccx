@@ -254,15 +254,18 @@
             </div>
 
             <!-- API key count -->
-            <div class="channel-keys" @click.stop>
+            <div class="channel-keys d-flex align-center ga-1" @click.stop>
               <v-chip size="x-small" variant="outlined" class="keys-chip" @click="$emit('edit', element)">
                 <v-icon start size="x-small">mdi-key</v-icon>
                 {{ element.apiKeys?.length || 0 }}
               </v-chip>
-              <v-chip v-if="element.disabledApiKeys?.length" size="x-small" color="error" variant="tonal" class="ml-1" @click="$emit('edit', element)">
-                <v-icon start size="x-small">mdi-key-remove</v-icon>
-                {{ element.disabledApiKeys.length }}
-              </v-chip>
+              <v-tooltip v-if="element.disabledApiKeys?.length" :text="`${element.disabledApiKeys.length} 个密钥已拉黑`" location="top">
+                <template #activator="{ props: tip }">
+                  <v-chip v-bind="tip" size="x-small" color="error" variant="tonal" @click="$emit('edit', element)">
+                    {{ element.disabledApiKeys.length }}
+                  </v-chip>
+                </template>
+              </v-tooltip>
             </div>
 
             <!-- Action buttons -->
@@ -449,15 +452,18 @@
           </div>
 
           <!-- API key count -->
-          <div class="channel-keys">
+          <div class="channel-keys d-flex align-center ga-1">
             <v-chip size="x-small" variant="outlined" color="grey" class="keys-chip" @click="$emit('edit', channel)">
               <v-icon start size="x-small">mdi-key</v-icon>
               {{ channel.apiKeys?.length || 0 }}
             </v-chip>
-            <v-chip v-if="channel.disabledApiKeys?.length" size="x-small" color="error" variant="tonal" class="ml-1" @click="$emit('edit', channel)">
-              <v-icon start size="x-small">mdi-key-remove</v-icon>
-              {{ channel.disabledApiKeys.length }}
-            </v-chip>
+            <v-tooltip v-if="channel.disabledApiKeys?.length" :text="`${channel.disabledApiKeys.length} 个密钥已拉黑`" location="top">
+              <template #activator="{ props: tip }">
+                <v-chip v-bind="tip" size="x-small" color="error" variant="tonal" @click="$emit('edit', channel)">
+                  {{ channel.disabledApiKeys.length }}
+                </v-chip>
+              </template>
+            </v-tooltip>
           </div>
 
           <!-- Action buttons -->
