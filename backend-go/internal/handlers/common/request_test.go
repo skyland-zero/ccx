@@ -258,9 +258,9 @@ func TestSanitizeMalformedThinkingBlocks(t *testing.T) {
 		t.Fatalf("messages type = %T, want []interface{}", got["messages"])
 	}
 
-	// 两条仅含 thinking 的 assistant 消息应被删除
-	if len(messages) != 2 {
-		t.Fatalf("messages len = %d, want 2", len(messages))
+	// 仅含 thinking 的 assistant 消息保留骨架（content 清空），不删除整条消息，共 4 条
+	if len(messages) != 4 {
+		t.Fatalf("messages len = %d, want 4", len(messages))
 	}
 
 	firstMsg, _ := messages[0].(map[string]interface{})
@@ -273,10 +273,24 @@ func TestSanitizeMalformedThinkingBlocks(t *testing.T) {
 		t.Fatalf("first message content[0].type = %v, want text", firstBlock["type"])
 	}
 
-	// 剩余第二条应为原 user 文本消息
+	// 第二条：仅含 thinking，保留骨架 content=[]
 	secondMsg, _ := messages[1].(map[string]interface{})
-	if secondMsg["role"] != "user" {
-		t.Fatalf("second message role = %v, want user", secondMsg["role"])
+	secondContent, _ := secondMsg["content"].([]interface{})
+	if len(secondContent) != 0 {
+		t.Fatalf("second message content len = %d, want 0 (thinking-only, kept as empty)", len(secondContent))
+	}
+
+	// 第三条：同上
+	thirdMsg, _ := messages[2].(map[string]interface{})
+	thirdContent, _ := thirdMsg["content"].([]interface{})
+	if len(thirdContent) != 0 {
+		t.Fatalf("third message content len = %d, want 0", len(thirdContent))
+	}
+
+	// 最后一条：user 文本消息
+	lastMsg, _ := messages[3].(map[string]interface{})
+	if lastMsg["role"] != "user" {
+		t.Fatalf("last message role = %v, want user", lastMsg["role"])
 	}
 }
 

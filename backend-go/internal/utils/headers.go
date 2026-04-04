@@ -92,9 +92,9 @@ func ApplyCustomHeaders(headers http.Header, customHeaders map[string]string) {
 func EnsureCompatibleUserAgent(headers http.Header, serviceType string) {
 	userAgent := headers.Get("User-Agent")
 
-	// 仅在Claude服务类型且用户未设置或设置不正确时才修改
+	// 仅在Claude服务类型且客户端未提供 User-Agent 时才设置默认值，有 UA 则透传
 	if serviceType == "claude" {
-		if userAgent == "" || !strings.HasPrefix(strings.ToLower(userAgent), "claude-cli") {
+		if userAgent == "" {
 			headers.Set("User-Agent", "claude-cli/2.0.34 (external, cli)")
 		}
 	}

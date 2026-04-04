@@ -358,7 +358,7 @@ func sanitizeMalformedThinkingBlocksInMessages(data map[string]interface{}) (boo
 
 			if removedInCurrentMessage > 0 && len(newContent) == 0 && role == "assistant" {
 				removedMsgs++
-				continue
+				msgMap["content"] = []interface{}{} // 保留消息骨架，清空 content，不删整条消息
 			}
 
 		case map[string]interface{}:

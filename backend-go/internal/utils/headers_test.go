@@ -172,11 +172,11 @@ func TestEnsureCompatibleUserAgent(t *testing.T) {
 			shouldBeChanged: true,
 		},
 		{
-			name:            "Claude服务 - 非Claude-CLI User-Agent",
+			name:            "Claude服务 - 非Claude-CLI User-Agent（透传，不替换）",
 			serviceType:     "claude",
 			initialUA:       "Mozilla/5.0",
-			expectedUA:      "claude-cli/2.0.34 (external, cli)",
-			shouldBeChanged: true,
+			expectedUA:      "Mozilla/5.0",
+			shouldBeChanged: false,
 		},
 		{
 			name:            "Claude服务 - 已有Claude-CLI User-Agent",
