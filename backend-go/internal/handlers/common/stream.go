@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -902,6 +903,16 @@ func HandleStreamResponse(
 	requestModel string,
 ) (*types.Usage, error) {
 	defer resp.Body.Close()
+
+	// claude serviceType: 完全透传，跳过所有事件处理和 token 修补
+	if upstream != nil && upstream.ServiceType == "claude" {
+		SetupStreamHeaders(c, resp)
+		if f, ok := c.Writer.(http.Flusher); ok {
+			f.Flush()
+		}
+		io.Copy(c.Writer, resp.Body) //nolint:errcheck
+		return nil, nil
+	}
 
 	eventChan, errChan, err := provider.HandleStreamResponse(resp.Body)
 	if err != nil {
