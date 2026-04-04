@@ -48,9 +48,12 @@ func GetUpstreams(cfgManager *config.ConfigManager) gin.HandlerFunc {
 				"promotionUntil":     up.PromotionUntil,
 				"lowQuality":         up.LowQuality,
 				"rpm":                up.RPM,
-				"customHeaders":      up.CustomHeaders,
-				"proxyUrl":           up.ProxyURL,
-				"supportedModels":    up.SupportedModels,
+				"customHeaders":          up.CustomHeaders,
+				"proxyUrl":               up.ProxyURL,
+				"supportedModels":        up.SupportedModels,
+				"routePrefix":            up.RoutePrefix,
+				"disabledApiKeys":        up.DisabledAPIKeys,
+				"autoBlacklistBalance":   up.IsAutoBlacklistBalanceEnabled(),
 			}
 		}
 
