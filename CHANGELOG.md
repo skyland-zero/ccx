@@ -1,3 +1,11 @@
+## [Unreleased]
+
+### Fixed
+
+- **routePrefix 下 responses 渠道协议转换失败** - 修复 `ResponsesProvider.buildProviderRequestBody` 对请求路径的硬编码比较（`== "/v1/messages"`），改为 `HasSuffix` 匹配，使带 routePrefix 前缀的路由（如 `/:prefix/v1/messages`）也能正确触发 Claude→Responses 协议转换
+- **恢复拉黑 Key 后统计重复计数** - 修复 `ConfigManager.RestoreKey` 未从 `HistoricalAPIKeys` 移除已恢复 key 的问题，避免 key 同时存在于 active 和 historical 列表导致指标聚合重复
+- **Go 代码格式规范化** - 修正 `chat/channels.go` 和 `messages/channels.go` 中 `gin.H` 字面量的对齐格式（`go fmt`）
+
 ## [v2.6.45] - 2026-04-03
 
 ### Fixed

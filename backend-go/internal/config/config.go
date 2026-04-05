@@ -484,6 +484,11 @@ func (cm *ConfigManager) RestoreKey(apiType string, channelIndex int, apiKey str
 		upstream.APIKeys = append(upstream.APIKeys, apiKey)
 	}
 
+	// 从 HistoricalAPIKeys 移除，避免 active∩historical 重复导致统计重复计数
+	upstream.HistoricalAPIKeys = slices.DeleteFunc(upstream.HistoricalAPIKeys, func(k string) bool {
+		return k == apiKey
+	})
+
 	// 清除内存中的失败记录
 	cacheKey := failedKeyCacheKey(apiType, apiKey)
 	delete(cm.failedKeysCache, cacheKey)

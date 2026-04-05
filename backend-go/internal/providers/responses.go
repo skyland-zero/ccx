@@ -77,7 +77,7 @@ func (p *ResponsesProvider) ConvertToProviderRequest(
 }
 
 func (p *ResponsesProvider) buildProviderRequestBody(requestPath string, bodyBytes []byte, upstream *config.UpstreamConfig) (interface{}, []byte, error) {
-	if requestPath == "/v1/messages" {
+	if strings.HasSuffix(requestPath, "/v1/messages") {
 		responsesReq, err := p.buildResponsesRequestFromClaude(bodyBytes, upstream)
 		if err != nil {
 			return nil, nil, fmt.Errorf("解析 Claude Messages 请求失败: %w", err)
