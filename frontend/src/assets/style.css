@@ -14,6 +14,14 @@
   border-color: #555 !important;
 }
 
+/* 对话框标题统一样式 */
+.dialog-title {
+  font-size: 1.125rem;
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
 /* 全局基础样式 */
 html {
   font-family: 'Courier New', Consolas, 'Liberation Mono', monospace;

@@ -1645,7 +1645,7 @@ defineExpose({
 }
 
 .channel-name .font-weight-medium {
-  font-size: 0.95rem;
+  font-size: 0.875rem;
   flex-shrink: 0;
 }
 
@@ -1746,7 +1746,7 @@ defineExpose({
   font-weight: 600;
   color: rgba(var(--v-theme-on-surface), 0.68);
   text-transform: uppercase;
-  letter-spacing: 0.4px;
+  letter-spacing: 0;
 }
 
 .channel-keys {
@@ -1902,7 +1902,7 @@ defineExpose({
 
   .rpm-tpm-labels {
     font-size: 10px;
-    letter-spacing: 0.3px;
+    letter-spacing: 0;
   }
 }
 
@@ -1972,7 +1972,7 @@ defineExpose({
 
 .metrics-chip {
   font-weight: 700;
-  letter-spacing: 0.1px;
+  letter-spacing: 0;
 }
 
 .request-summary {

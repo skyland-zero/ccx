@@ -2140,7 +2140,7 @@ onUnmounted(() => {
 .base-url-hint {
   min-height: 20px;
   padding: 4px 12px 8px;
-  line-height: 1.45;
+  line-height: 1.5;
 }
 
 .modal-header-text {
@@ -2151,21 +2151,21 @@ onUnmounted(() => {
 
 .modal-title {
   font-size: 1.125rem;
-  line-height: 1.25;
+  line-height: 1.3;
   font-weight: 600;
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
 }
 
 .modal-subtitle {
   font-size: 0.8125rem;
-  line-height: 1.45;
+  line-height: 1.5;
 }
 
 .section-title {
-  font-size: 0.9375rem;
-  line-height: 1.35;
+  font-size: 0.875rem;
+  line-height: 1.4;
   font-weight: 600;
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
 }
 
 .section-title--soft {
@@ -2174,8 +2174,8 @@ onUnmounted(() => {
 }
 
 .section-card-title {
-  font-size: 0.9375rem !important;
-  line-height: 1.35;
+  font-size: 0.875rem !important;
+  line-height: 1.4;
   font-weight: 600;
 }
 
@@ -2208,7 +2208,7 @@ onUnmounted(() => {
   background-color: rgba(var(--v-theme-surface), 0.98);
   border: 1px solid rgba(var(--v-theme-primary), 0.45);
   font-weight: 600;
-  letter-spacing: 0.2px;
+  letter-spacing: 0;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
 }
 
@@ -2245,6 +2245,7 @@ onUnmounted(() => {
 
 .mode-toggle-btn :deep(.v-btn__content) {
   gap: 4px;
+  line-height: 1.5;
 }
 
 .capability-test-btn {
@@ -2257,6 +2258,7 @@ onUnmounted(() => {
 
 .capability-test-btn :deep(.v-btn__content) {
   gap: 4px;
+  line-height: 1.5;
 }
 
 /* 高级选项中的右侧开关行 */

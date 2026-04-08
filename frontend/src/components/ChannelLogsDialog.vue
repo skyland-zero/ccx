@@ -4,7 +4,7 @@
       <v-card-title class="d-flex align-center justify-space-between">
         <span class="dialog-title">{{ t('channelLogs.title', { channel: channelName }) }}</span>
         <div class="d-flex align-center ga-2">
-          <v-btn size="x-small" :variant="autoRefresh ? 'flat' : 'outlined'" :color="autoRefresh ? 'primary' : ''" @click="autoRefresh = !autoRefresh">
+          <v-btn class="auto-refresh-btn" size="x-small" :variant="autoRefresh ? 'flat' : 'outlined'" :color="autoRefresh ? 'primary' : ''" @click="autoRefresh = !autoRefresh">
             {{ autoRefresh ? t('channelLogs.autoRefreshing') : t('channelLogs.autoRefresh') }}
           </v-btn>
           <v-btn icon size="small" variant="text" @click="$emit('update:modelValue', false)">
@@ -156,11 +156,10 @@ onUnmounted(() => stopPolling())
 </script>
 
 <style scoped>
-.dialog-title {
-  font-size: 1.125rem;
-  line-height: 1.25;
-  font-weight: 600;
-  letter-spacing: 0.01em;
+.auto-refresh-btn :deep(.v-btn__content) {
+  font-size: 0.8125rem;
+  letter-spacing: 0;
+  line-height: 1.5;
 }
 
 .channel-logs-scroll {
@@ -179,8 +178,8 @@ onUnmounted(() => stopPolling())
 }
 
 .log-summary {
-  font-size: 0.95rem;
-  line-height: 1.55;
+  font-size: 0.875rem;
+  line-height: 1.6;
 }
 
 .log-meta {
@@ -188,7 +187,7 @@ onUnmounted(() => stopPolling())
 }
 
 .log-model {
-  font-size: 0.9375rem;
+  font-size: 0.875rem;
 }
 
 .log-error-info {

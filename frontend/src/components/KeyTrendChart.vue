@@ -606,7 +606,7 @@ const buildTrafficTooltip = ({ seriesIndex, dataPointIndex, w }: any): string =>
   const hasFailure = grandFailure > 0
 
   // Build HTML
-  let html = `<div style="padding: 8px 12px; font-size: 13px; line-height: 1.55;">`
+  let html = `<div style="padding: 8px 12px; font-size: 13px; line-height: 1.6;">`
   html += `<div style="font-weight: 600; margin-bottom: 6px; color: ${hasFailure ? '#ef4444' : 'inherit'};">${timeStr}</div>`
 
   // Details for each key
@@ -812,7 +812,7 @@ defineExpose({
 .chart-control-toggle :deep(.v-btn.chart-control-btn) {
   font-size: 11px !important;
   font-weight: 600 !important;
-  letter-spacing: 0.3px !important;
+  letter-spacing: 0 !important;
   padding-inline: 8px !important;
   min-width: 36px !important;
 }

@@ -166,7 +166,7 @@ const formatTime = (dateStr: string): string => {
   font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0;
 }
 
 /* 状态样式 - 高对比度实心边框 */

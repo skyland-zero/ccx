@@ -1352,7 +1352,7 @@ a.api-type-text {
   min-width: 2ch;
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
   line-height: 1;
 }
 
@@ -1506,7 +1506,7 @@ a.api-type-text {
   font-size: 1.75rem;
   font-weight: 700;
   line-height: 1.2;
-  letter-spacing: -0.5px;
+  letter-spacing: 0;
 }
 
 .stat-card-total {
@@ -1516,20 +1516,20 @@ a.api-type-text {
 }
 
 .stat-card-label {
-  font-size: 0.9375rem;
+  font-size: 0.875rem;
   font-weight: 600;
   margin-top: 4px;
-  line-height: 1.35;
+  line-height: 1.4;
   opacity: 0.92;
   text-transform: uppercase;
-  letter-spacing: 0.3px;
+  letter-spacing: 0;
 }
 
 .stat-card-desc {
   font-size: 0.8125rem;
   opacity: 0.72;
   margin-top: 4px;
-  line-height: 1.45;
+  line-height: 1.5;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1807,7 +1807,7 @@ a.api-type-text {
 
 .action-btn {
   font-weight: 600;
-  letter-spacing: 0.3px;
+  letter-spacing: 0;
   text-transform: uppercase;
   transition: all 0.1s ease;
   border: 2px solid rgb(var(--v-theme-on-surface)) !important;
@@ -1924,7 +1924,7 @@ a.api-type-text {
     font-weight: 800 !important;
     line-height: 1.2;
     color: rgb(var(--v-theme-on-surface));
-    letter-spacing: -0.5px;
+    letter-spacing: 0;
   }
 
   .stat-card-label {
@@ -2129,12 +2129,12 @@ a.api-type-text {
 
 .text-body-1,
 .text-body-2 {
-  line-height: 1.55 !important;
+  line-height: 1.6 !important;
 }
 
 .text-caption {
   font-size: 0.8125rem !important;
-  line-height: 1.45 !important;
+  line-height: 1.5 !important;
 }
 
 /* 所有按钮复古像素风格 */
@@ -2142,7 +2142,7 @@ a.api-type-text {
   border-radius: 0 !important;
   text-transform: uppercase !important;
   font-weight: 500 !important;
-  letter-spacing: 0.5px !important;
+  letter-spacing: 0 !important;
 }
 
 /* 所有卡片复古像素风格 */
