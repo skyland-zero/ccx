@@ -431,14 +431,14 @@ func GetChannelKeyMetricsHistory(metricsManager *metrics.MetricsManager, cfgMana
 		} else {
 			duration, err = time.ParseDuration(durationStr)
 			if err != nil {
-				c.JSON(400, gin.H{"error": "Invalid duration parameter. Use: 1h, 6h, 24h, or today"})
+				c.JSON(400, gin.H{"error": "Invalid duration parameter. Use: 1h, 6h, 24h, today, 7d, or 30d"})
 				return
 			}
 		}
 
-		// 限制最大查询范围为 24 小时
-		if duration > 24*time.Hour {
-			duration = 24 * time.Hour
+		// 限制最大查询范围为 30 天
+		if duration > 30*24*time.Hour {
+			duration = 30 * 24 * time.Hour
 		}
 
 		// 解析或自动选择 interval
@@ -460,13 +460,19 @@ func GetChannelKeyMetricsHistory(metricsManager *metrics.MetricsManager, cfgMana
 			// 1h = 60 points (1m interval)
 			// 6h = 72 points (5m interval)
 			// 24h = 96 points (15m interval)
+			// 7d = 84 points (2h interval)
+			// 30d = 90 points (8h interval)
 			switch {
 			case duration <= time.Hour:
 				interval = time.Minute
 			case duration <= 6*time.Hour:
 				interval = 5 * time.Minute
-			default:
+			case duration <= 24*time.Hour:
 				interval = 15 * time.Minute
+			case duration <= 7*24*time.Hour:
+				interval = 2 * time.Hour
+			default:
+				interval = 8 * time.Hour
 			}
 		}
 
@@ -787,14 +793,14 @@ func GetGeminiChannelKeyMetricsHistory(metricsManager *metrics.MetricsManager, c
 		} else {
 			duration, err = time.ParseDuration(durationStr)
 			if err != nil {
-				c.JSON(400, gin.H{"error": "Invalid duration parameter. Use: 1h, 6h, 24h, or today"})
+				c.JSON(400, gin.H{"error": "Invalid duration parameter. Use: 1h, 6h, 24h, today, 7d, or 30d"})
 				return
 			}
 		}
 
-		// 限制最大查询范围为 24 小时
-		if duration > 24*time.Hour {
-			duration = 24 * time.Hour
+		// 限制最大查询范围为 30 天
+		if duration > 30*24*time.Hour {
+			duration = 30 * 24 * time.Hour
 		}
 
 		// 解析或自动选择 interval
