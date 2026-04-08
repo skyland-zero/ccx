@@ -1,6 +1,7 @@
 # 忽略编译产物
 dist/
 *.exe
+ccx
 ccx-*
 stream_verify
 
