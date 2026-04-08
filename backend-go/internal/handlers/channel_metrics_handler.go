@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"log"
 	"sort"
 	"strconv"
@@ -1092,8 +1093,11 @@ func parseExtendedDuration(s string) (time.Duration, error) {
 	if strings.HasSuffix(s, "d") {
 		dayStr := strings.TrimSuffix(s, "d")
 		days, err := strconv.Atoi(dayStr)
-		if err != nil || days <= 0 {
+		if err != nil {
 			return 0, err
+		}
+		if days <= 0 {
+			return 0, fmt.Errorf("invalid duration: days must be positive, got %d", days)
 		}
 		return time.Duration(days) * 24 * time.Hour, nil
 	}
