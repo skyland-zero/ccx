@@ -165,7 +165,6 @@ import {
   mdiRestore,
   mdiKeyRemove,
   mdiKeyAlert,
-  mdiFlaskOutline,
   mdiCashRemove,
 } from '@mdi/js'
 
@@ -347,7 +346,6 @@ const iconMap: Record<string, string> = {
   'restore': mdiRestore,
   'key-remove': mdiKeyRemove,
   'key-alert': mdiKeyAlert,
-  'flask-outline': mdiFlaskOutline,
   'cash-remove': mdiCashRemove,
 }
 

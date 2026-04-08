@@ -2,6 +2,9 @@
 
 ### Changed
 
+- **移除前端批量测试功能** - 删除批量测试入口按钮、对话框组件、相关多语言文案与专用图标，避免在管理界面触发大面积上游访问
+- **精简前端能力测试代码路径** - 清理仅供批量测试使用的前端 capability job 类型与 API 包装，保留单渠道能力测试与常规渠道延迟测试所需能力
+
 - **统一全局 Tooltip 样式** - 将分散在各组件中的 tooltip 样式（`fuzzy-tooltip`、`status-tooltip`）合并为全局 `ccx-tooltip` 类（复古像素主题），所有 `v-tooltip` 统一使用 `content-class="ccx-tooltip"` 避免 Vuetify 默认灰色；拉黑密钥 chip 颜色由 `error` 改为 `warning`
 
 ## [v2.6.47] - 2026-04-06

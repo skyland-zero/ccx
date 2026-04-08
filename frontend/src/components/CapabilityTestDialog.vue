@@ -19,63 +19,7 @@
       <v-divider />
 
       <v-card-text class="pa-4">
-        <!-- 模型选择阶段 -->
-        <div v-if="modelSelectionPhase">
-          <div v-if="fetchingModels" class="d-flex flex-column align-center py-6">
-            <v-progress-circular indeterminate size="36" color="primary" />
-            <p class="text-body-2 mt-3 text-medium-emphasis">{{ t('capability.fetchingModels') }}</p>
-          </div>
-          <div v-else>
-            <div class="d-flex align-center justify-space-between mb-3">
-              <span class="text-body-2 font-weight-medium">{{ t('capability.selectModels') }}</span>
-              <div class="d-flex align-center ga-2">
-                <v-btn size="x-small" variant="tonal" @click="toggleSelectAll">
-                  {{ selectedModels.length === availableModels.length && availableModels.length > 0 ? t('capability.deselectAll') : t('capability.selectAll') }}
-                </v-btn>
-                <v-chip size="x-small" color="primary" variant="tonal">{{ selectedModels.length }} / {{ availableModels.length }}</v-chip>
-              </div>
-            </div>
-            <div v-if="availableModels.length" style="max-height: 300px; overflow-y: auto;" class="mb-3">
-              <v-checkbox
-                v-for="model in availableModels"
-                :key="model"
-                v-model="selectedModels"
-                :label="model"
-                :value="model"
-                density="compact"
-                hide-details
-                class="mb-1"
-              />
-            </div>
-            <div v-else class="text-center py-4 mb-3">
-              <p class="text-body-2 text-medium-emphasis">{{ t('capability.noModelsFound') }}</p>
-            </div>
-            <!-- 手动添加模型 -->
-            <div class="d-flex align-start ga-2 mb-3">
-              <v-text-field
-                v-model="customModelInput"
-                :label="t('capability.addModelLabel')"
-                :placeholder="t('capability.addModelPlaceholder')"
-                variant="outlined"
-                density="compact"
-                hide-details
-                class="flex-grow-1"
-                @keyup.enter="addCustomModel"
-              />
-              <v-btn size="small" color="primary" variant="tonal" :disabled="!customModelInput.trim()" @click="addCustomModel">
-                {{ t('app.actions.add') }}
-              </v-btn>
-            </div>
-            <div class="d-flex justify-end">
-              <v-btn color="primary" variant="elevated" :disabled="selectedModels.length === 0" @click="startSelectedTest">
-                <v-icon start>mdi-play</v-icon>
-                {{ t('capability.startTest') }}
-              </v-btn>
-            </div>
-          </div>
-        </div>
-
-        <div v-else-if="state === 'initializing'" class="d-flex flex-column align-center py-8">
+        <div v-if="state === 'initializing'" class="d-flex flex-column align-center py-8">
           <v-progress-circular indeterminate size="48" color="primary" />
           <p class="text-body-1 mt-4 text-medium-emphasis">{{ t('capability.loadingTitle') }}</p>
           <p class="text-caption text-medium-emphasis">{{ t('capability.loadingBody') }}</p>
@@ -145,7 +89,7 @@
                   <v-icon color="success" size="small">mdi-check-circle</v-icon>
                   <span class="text-body-2 text-success">{{ t('capability.success') }}</span>
                 </div>
-                <v-tooltip v-else :text="test.error || t('capability.failedTooltip')" location="top" content-class="error-tooltip">
+                <v-tooltip v-else :text="test.error || t('capability.failedTooltip')" location="top">
                   <template #activator="{ props }">
                     <div v-bind="props" class="d-flex align-center ga-1">
                       <v-icon color="error" size="small">mdi-close-circle</v-icon>
@@ -398,13 +342,11 @@ import type {
   CapabilityModelJobResult,
   CapabilityModelJobStatus
 } from '../services/api'
-import { api } from '../services/api'
 import { useI18n } from '../i18n'
 
 interface Props {
   modelValue: boolean
   channelName: string
-  channelId: number
   currentTab: string
   capabilityJob: CapabilityTestJob | null
 }
@@ -415,7 +357,6 @@ const emit = defineEmits<{
   'copyToTab': [protocol: string]
   'cancel': []
   'retryModel': [protocol: string, model: string]
-  'startTest': [models: string[]]
 }>()
 
 const { t } = useI18n()
@@ -423,95 +364,12 @@ const { t } = useI18n()
 const errorMessage = ref('')
 const cancelling = ref(false)
 
-// 模型选择相关
-const modelSelectionPhase = ref(true)
-const availableModels = ref<string[]>([])
-const selectedModels = ref<string[]>([])
-const fetchingModels = ref(false)
-const customModelInput = ref('')
-
-watch(() => props.modelValue, async (open) => {
+watch(() => props.modelValue, (open) => {
   if (open) {
     errorMessage.value = ''
     cancelling.value = false
-    // 如果没有正在运行的 job，进入模型选择阶段
-    if (!props.capabilityJob) {
-      modelSelectionPhase.value = true
-      await fetchChannelModels()
-    } else {
-      modelSelectionPhase.value = false
-    }
   }
 })
-
-// 当 job 开始后退出选择阶段
-watch(() => props.capabilityJob, (job) => {
-  if (job) {
-    modelSelectionPhase.value = false
-  }
-})
-
-const fetchChannelModels = async () => {
-  fetchingModels.value = true
-  availableModels.value = []
-  selectedModels.value = []
-  try {
-    const tab = props.currentTab as 'messages' | 'chat' | 'gemini' | 'responses'
-    let channelsResp
-    if (tab === 'chat') channelsResp = await api.getChatChannels()
-    else if (tab === 'gemini') channelsResp = await api.getGeminiChannels()
-    else if (tab === 'responses') channelsResp = await api.getResponsesChannels()
-    else channelsResp = await api.getChannels()
-
-    const channel = channelsResp?.channels?.find(ch => ch.index === props.channelId)
-    if (channel && channel.apiKeys.length > 0) {
-      const key = channel.apiKeys[0]
-      try {
-        let resp: { data?: Array<{ id: string }> } | null = null
-        if (tab === 'messages') resp = await api.getChannelModels(props.channelId, key)
-        else if (tab === 'responses') resp = await api.getResponsesChannelModels(props.channelId, key)
-        else if (tab === 'chat') resp = await api.getChatChannelModels(props.channelId, key)
-        else if (tab === 'gemini') resp = await api.getGeminiChannelModels(props.channelId, key)
-        if (resp?.data?.length) {
-          availableModels.value = resp.data.map(m => m.id)
-          return
-        }
-      } catch { /* 获取失败时 fallback */ }
-      // Fallback: 使用 supportedModels
-      if (channel.supportedModels?.length) {
-        availableModels.value = [...channel.supportedModels]
-      }
-    }
-  } catch {
-    availableModels.value = []
-  } finally {
-    fetchingModels.value = false
-  }
-}
-
-const toggleSelectAll = () => {
-  if (selectedModels.value.length === availableModels.value.length) {
-    selectedModels.value = []
-  } else {
-    selectedModels.value = [...availableModels.value]
-  }
-}
-
-const addCustomModel = () => {
-  const model = customModelInput.value.trim()
-  if (model && !availableModels.value.includes(model)) {
-    availableModels.value.push(model)
-  }
-  if (model && !selectedModels.value.includes(model)) {
-    selectedModels.value.push(model)
-  }
-  customModelInput.value = ''
-}
-
-const startSelectedTest = () => {
-  modelSelectionPhase.value = false
-  emit('startTest', selectedModels.value)
-}
 
 watch(() => props.capabilityJob?.jobId ?? '', (nextJobId, prevJobId) => {
   if (nextJobId !== prevJobId) {

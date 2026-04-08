@@ -297,17 +297,6 @@
               {{ t('app.actions.ping') }}
             </v-btn>
 
-            <v-btn
-              color="success"
-              size="large"
-              prepend-icon="mdi-flask-outline"
-              variant="tonal"
-              class="action-btn"
-              @click="showBatchChannelTestDialog = true"
-            >
-              {{ t('app.actions.batchTest') }}
-            </v-btn>
-
             <v-btn size="large" prepend-icon="mdi-refresh" variant="text" class="action-btn" @click="refreshChannels">
               {{ t('app.actions.refresh') }}
             </v-btn>
@@ -387,20 +376,11 @@
       ref="capabilityTestDialogRef"
       v-model="showCapabilityTestDialog"
       :channel-name="capabilityTestChannelName"
-      :channel-id="capabilityTestChannelId"
       :current-tab="channelStore.activeTab"
       :capability-job="capabilityTestJob"
       @copy-to-tab="handleCopyToTab"
       @cancel="handleCancelCapabilityTest"
       @retry-model="handleRetryCapabilityModel"
-      @start-test="handleStartCapabilityTest"
-    />
-
-    <BatchChannelTestDialog
-      v-model="showBatchChannelTestDialog"
-      :channels="channelStore.currentChannelsData.channels ?? []"
-      :channel-type="channelStore.activeTab"
-      @latency-updated="refreshChannels"
     />
 
     <!-- 添加API密钥对话框 -->
@@ -448,7 +428,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, watch, defineAsyncComponent, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch, defineAsyncComponent } from 'vue'
 import { useTheme } from 'vuetify'
 import { api, fetchHealth, ApiError, type Channel, type CapabilityTestJob, type CapabilityTestJobStartResponse } from './services/api'
 import { versionService } from './services/version'
@@ -460,7 +440,6 @@ import { useSystemStore } from './stores/system'
 import { useI18n } from './i18n'
 import type { SupportedLocale } from './i18n'
 import AddChannelModal from './components/AddChannelModal.vue'
-import BatchChannelTestDialog from './components/BatchChannelTestDialog.vue'
 import CapabilityTestDialog from './components/CapabilityTestDialog.vue'
 // 异步加载图表组件，减少首屏 JS 体积
 const GlobalStatsChart = defineAsyncComponent(() => import('./components/GlobalStatsChart.vue'))
@@ -708,7 +687,6 @@ const pingChannel = async (channelId: number) => {
 // ============== 能力测试 ==============
 
 const showCapabilityTestDialog = ref(false)
-const showBatchChannelTestDialog = ref(false)
 const capabilityTestChannelName = ref('')
 const capabilityTestChannelId = ref(0)
 const capabilityTestDialogRef = ref<InstanceType<typeof CapabilityTestDialog> | null>(null)
@@ -744,25 +722,19 @@ const testChannelCapability = async (channelId: number) => {
 
   if (dialogStore.showAddChannelModal) {
     dialogStore.closeAddChannelModal()
-    await nextTick()
   }
 
-  // 打开对话框，进入模型选择阶段（不立即开始测试）
   showCapabilityTestDialog.value = true
   stopCapabilityTestPolling()
   capabilityTestPreviousJobId.value = capabilityTestJobId.value
   capabilityTestJobId.value = ''
   capabilityTestJob.value = null
-}
-
-// 用户在对话框中选择模型后开始测试
-const handleStartCapabilityTest = async (models: string[]) => {
-  const channelId = capabilityTestChannelId.value
-  stopCapabilityTestPolling()
 
   try {
     const startResp: CapabilityTestJobStartResponse = await api.startChannelCapabilityTest(
-      channelStore.activeTab, channelId, capabilityTestPreviousJobId.value || undefined, models.length > 0 ? models : undefined
+      channelStore.activeTab,
+      channelId,
+      capabilityTestPreviousJobId.value || undefined
     )
     capabilityTestJobId.value = startResp.jobId
 
@@ -770,7 +742,7 @@ const handleStartCapabilityTest = async (models: string[]) => {
       updateCapabilityJob(startResp.job)
     }
 
-    if (startResp.job?.status === 'completed' || startResp.job?.status === 'failed') {
+    if (startResp.job?.status === 'completed' || startResp.job?.status === 'failed' || startResp.job?.status === 'cancelled') {
       return
     }
 
@@ -789,13 +761,11 @@ const handleStartCapabilityTest = async (models: string[]) => {
   }
 }
 
-// 取消能力测试
 const handleCancelCapabilityTest = async () => {
   if (!capabilityTestJobId.value) return
   try {
     await api.cancelCapabilityTest(channelStore.activeTab, capabilityTestChannelId.value, capabilityTestJobId.value)
     stopCapabilityTestPolling()
-    // 获取最新状态以更新 UI
     const latest = await api.getChannelCapabilityTestStatus(channelStore.activeTab, capabilityTestChannelId.value, capabilityTestJobId.value)
     updateCapabilityJob(latest)
   } catch (error) {
@@ -803,12 +773,10 @@ const handleCancelCapabilityTest = async () => {
   }
 }
 
-// 重测单个模型
 const handleRetryCapabilityModel = async (protocol: string, model: string) => {
   if (!capabilityTestJobId.value) return
   try {
     await api.retryCapabilityTestModel(channelStore.activeTab, capabilityTestChannelId.value, capabilityTestJobId.value, protocol, model)
-    // 启动轮询（如果未在运行中）
     if (!capabilityTestPolling.value) {
       capabilityTestPolling.value = setInterval(async () => {
         if (!capabilityTestJobId.value) return
@@ -859,7 +827,6 @@ const handleCopyToTab = async (targetProtocol: string) => {
   }
 
   try {
-    // 根据目标协议调用对应的添加渠道 API
     switch (targetProtocol) {
       case 'messages':
         await api.addChannel(channelConfig)
