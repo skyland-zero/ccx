@@ -2,11 +2,13 @@
 
 ### Changed
 
+- **优化亲和调度优先级让渡规则** - 当存在更高优先级且健康的可用渠道时，trace affinity 不再强制命中旧绑定渠道，优先回到当前最优可用渠道，减少低优先级历史绑定长期占用流量
 - **重构能力测试状态模型与前端展示** - 能力测试后端为 job/protocol/model 三层新增 lifecycle、outcome、reason、runMode 等状态语义字段，统一取消、重试、缓存命中与恢复任务的状态表达；前端同步切换到新状态模型，优化轮询控制、局部重测、协议/模型行级展示与错误提示文案，减少 completed/failed/cancelled 混淆
 - **补充能力测试状态聚合回归测试** - 为 capability job 聚合、取消语义与 reason 映射新增单测，验证 partial / cancelled / timeout / not_run 等关键状态形状
 
 ### Fixed
 
+- **修复 403/429 余额语义误分类** - 后端拉黑逻辑对 403/429 仅在错误消息明确表达余额或额度不足时才标记为 `insufficient_balance`，避免将普通 permission denied 等授权错误误判为永久失效；同步补充中英文额度文案与权限错误回归测试
 - **修复新增渠道表单状态串扰** - 调整 AddChannelModal 对 `channel` 变更的监听逻辑，避免编辑态关闭或触发能力测试时错误切回快速添加，并确保重新新增渠道时 `baseURL` 等表单字段被正确重置
 - **补充弹窗状态回归测试** - 新增 watcher 级别测试覆盖新增重置、编辑回填与编辑态清空 channel 不误切模式等场景
 

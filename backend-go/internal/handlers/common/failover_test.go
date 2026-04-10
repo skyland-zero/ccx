@@ -508,6 +508,67 @@ func TestShouldRetryWithNextKey(t *testing.T) {
 	}
 }
 
+func TestShouldBlacklistKey_BalanceMessages(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+		body       string
+		want       BlacklistResult
+	}{
+		{
+			name:       "403 prededuct quota message should blacklist as insufficient balance",
+			statusCode: 403,
+			body:       `{"error":{"type":"new_api_error","message":"预扣费额度失败, 用户剩余额度: ＄0.411202, 需要预扣费额度: ＄0.553368"},"type":"error"}`,
+			want: BlacklistResult{
+				ShouldBlacklist: true,
+				Reason:          "insufficient_balance",
+				Message:         "预扣费额度失败, 用户剩余额度: ＄0.411202, 需要预扣费额度: ＄0.553368",
+			},
+		},
+		{
+			name:       "429 insufficient quota message should blacklist as insufficient balance",
+			statusCode: 429,
+			body:       `{"error":{"message":"insufficient quota for current billing period"}}`,
+			want: BlacklistResult{
+				ShouldBlacklist: true,
+				Reason:          "insufficient_balance",
+				Message:         "insufficient quota for current billing period",
+			},
+		},
+		{
+			name:       "403 billing not enabled should not be misclassified as balance",
+			statusCode: 403,
+			body:       `{"error":{"message":"billing not enabled for this account"}}`,
+			want:       BlacklistResult{},
+		},
+		{
+			name:       "403 permission denied should not be misclassified as balance",
+			statusCode: 403,
+			body:       `{"error":{"type":"forbidden","message":"permission denied for this resource"}}`,
+			want:       BlacklistResult{},
+		},
+		{
+			name:       "403 explicit permission error should still be permission blacklist",
+			statusCode: 403,
+			body:       `{"error":{"type":"permission_denied","message":"permission denied"}}`,
+			want: BlacklistResult{
+				ShouldBlacklist: true,
+				Reason:          "permission_error",
+				Message:         "permission denied",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ShouldBlacklistKey(tt.statusCode, []byte(tt.body))
+			if got != tt.want {
+				t.Fatalf("ShouldBlacklistKey(%d, %s) = %+v, want %+v", tt.statusCode, tt.body, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestShouldRetryWithNextKey_TopLevelDetailAndAuthMessages(t *testing.T) {
 	tests := []struct {
 		name         string

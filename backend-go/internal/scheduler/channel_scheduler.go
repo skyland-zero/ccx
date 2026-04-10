@@ -188,12 +188,19 @@ func (s *ChannelScheduler) SelectChannel(
 	if userID != "" {
 		compositeKey := string(kind) + ":" + userID
 		if preferredIdx, ok := s.traceAffinity.GetPreferredChannel(compositeKey); ok {
+			bestPriority := s.findBestAvailableChannelPriority(activeChannels, failedChannels, kind)
 			for _, ch := range activeChannels {
 				if ch.Index == preferredIdx && !failedChannels[preferredIdx] {
 					// 检查渠道状态：只有 active 状态才使用亲和性
 					if ch.Status != "active" {
 						prefix := kindSchedulerLogPrefix(kind)
 						log.Printf("[%s-Affinity] 跳过亲和渠道 [%d] %s: 状态为 %s (user: %s)", prefix, preferredIdx, ch.Name, ch.Status, maskUserID(userID))
+						continue
+					}
+					// 如果存在更高优先级且健康的候选渠道，允许优先级覆盖亲和性
+					if bestPriority >= 0 && ch.Priority > bestPriority {
+						prefix := kindSchedulerLogPrefix(kind)
+						log.Printf("[%s-Affinity] 跳过亲和渠道 [%d] %s: 存在更高优先级可用渠道 (亲和优先级: %d, 最优优先级: %d, user: %s)", prefix, preferredIdx, ch.Name, ch.Priority, bestPriority, maskUserID(userID))
 						continue
 					}
 					// 检查渠道是否健康
@@ -320,6 +327,7 @@ func (s *ChannelScheduler) selectFallbackChannel(
 }
 
 // ChannelInfo 渠道信息（用于排序）
+// Priority 约定为非负整数，数字越小优先级越高；0 表示未显式配置，将回退为渠道索引。
 type ChannelInfo struct {
 	Index    int
 	Name     string
@@ -378,6 +386,37 @@ func (s *ChannelScheduler) getActiveChannels(kind ChannelKind, model string) []C
 	})
 
 	return activeChannels
+}
+
+// findBestAvailableChannelPriority 找到当前最佳可用渠道的优先级（用于 affinity 覆盖判断）
+// 返回 -1 表示没有可用渠道
+func (s *ChannelScheduler) findBestAvailableChannelPriority(
+	activeChannels []ChannelInfo,
+	failedChannels map[int]bool,
+	kind ChannelKind,
+) int {
+	metricsManager := s.getMetricsManager(kind)
+	bestPriority := -1
+
+	for _, ch := range activeChannels {
+		if failedChannels[ch.Index] || ch.Status != "active" {
+			continue
+		}
+
+		upstream := s.getUpstreamByIndex(ch.Index, kind)
+		if upstream == nil || len(upstream.APIKeys) == 0 {
+			continue
+		}
+		if !metricsManager.IsChannelHealthyWithKeys(upstream.BaseURL, upstream.APIKeys) {
+			continue
+		}
+
+		if bestPriority == -1 || ch.Priority < bestPriority {
+			bestPriority = ch.Priority
+		}
+	}
+
+	return bestPriority
 }
 
 // getUpstreamByIndex 根据索引获取上游配置

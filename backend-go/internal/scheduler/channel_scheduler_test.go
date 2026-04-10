@@ -556,3 +556,79 @@ func hasMetricsKey(allMetrics []*metrics.KeyMetrics, metricsKey string) bool {
 	}
 	return false
 }
+
+func TestAffinityYieldToHigherPriorityHealthyChannel(t *testing.T) {
+	cfg := config.Config{
+		Upstream: []config.UpstreamConfig{
+			{
+				Name:     "high-priority-channel",
+				BaseURL:  "https://high.example.com",
+				APIKeys:  []string{"sk-high"},
+				Status:   "active",
+				Priority: 1,
+			},
+			{
+				Name:     "affinity-channel",
+				BaseURL:  "https://affinity.example.com",
+				APIKeys:  []string{"sk-affinity"},
+				Status:   "active",
+				Priority: 9,
+			},
+		},
+	}
+
+	scheduler, cleanup := createTestScheduler(t, cfg)
+	defer cleanup()
+
+	scheduler.traceAffinity.SetPreferredChannel(string(ChannelKindMessages)+":test-user", 1)
+
+	result, err := scheduler.SelectChannel(context.Background(), "test-user", map[int]bool{}, ChannelKindMessages, "", "")
+	if err != nil {
+		t.Fatalf("选择渠道失败: %v", err)
+	}
+
+	if result.ChannelIndex != 0 {
+		t.Fatalf("期望选择更高优先级渠道 index=0，实际为 index=%d", result.ChannelIndex)
+	}
+	if result.Reason != "priority_order" {
+		t.Fatalf("期望选择原因为 priority_order，实际为 %s", result.Reason)
+	}
+}
+
+func TestAffinityStillWorksWithoutHigherPriorityAlternative(t *testing.T) {
+	cfg := config.Config{
+		Upstream: []config.UpstreamConfig{
+			{
+				Name:     "affinity-channel",
+				BaseURL:  "https://affinity.example.com",
+				APIKeys:  []string{"sk-affinity"},
+				Status:   "active",
+				Priority: 1,
+			},
+			{
+				Name:     "lower-priority-channel",
+				BaseURL:  "https://low.example.com",
+				APIKeys:  []string{"sk-low"},
+				Status:   "active",
+				Priority: 9,
+			},
+		},
+	}
+
+	scheduler, cleanup := createTestScheduler(t, cfg)
+	defer cleanup()
+
+	scheduler.traceAffinity.SetPreferredChannel(string(ChannelKindMessages)+":test-user", 0)
+
+	result, err := scheduler.SelectChannel(context.Background(), "test-user", map[int]bool{}, ChannelKindMessages, "", "")
+	if err != nil {
+		t.Fatalf("选择渠道失败: %v", err)
+	}
+
+	if result.ChannelIndex != 0 {
+		t.Fatalf("期望继续选择亲和渠道 index=0，实际为 index=%d", result.ChannelIndex)
+	}
+	if result.Reason != "trace_affinity" {
+		t.Fatalf("期望选择原因为 trace_affinity，实际为 %s", result.Reason)
+	}
+}

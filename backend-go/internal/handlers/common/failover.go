@@ -547,7 +547,7 @@ type BlacklistResult struct {
 }
 
 // ShouldBlacklistKey 判断 HTTP 错误响应是否应该永久拉黑该 Key
-// 仅识别明确的错误类型/状态码，不做模糊关键词匹配
+// 对余额不足只识别明确语义，避免将普通 403/429 误判为永久失效
 func ShouldBlacklistKey(statusCode int, bodyBytes []byte) BlacklistResult {
 	// HTTP 402: 明确的付费/余额不足
 	if statusCode == 402 {
@@ -560,7 +560,7 @@ func ShouldBlacklistKey(statusCode int, bodyBytes []byte) BlacklistResult {
 
 	// 解析响应体
 	errType, errMessage := extractErrorInfo(bodyBytes)
-	if errType == "" {
+	if errType == "" && errMessage == "" {
 		return BlacklistResult{}
 	}
 
@@ -593,7 +593,40 @@ func ShouldBlacklistKey(statusCode int, bodyBytes []byte) BlacklistResult {
 		}
 	}
 
+	// 某些上游会返回 HTTP 403/429，但在 message 中携带明确的余额不足语义
+	if (statusCode == 403 || statusCode == 429) && isInsufficientBalanceMessage(errMessage) {
+		return BlacklistResult{
+			ShouldBlacklist: true,
+			Reason:          "insufficient_balance",
+			Message:         truncateMessage(errMessage),
+		}
+	}
+
 	return BlacklistResult{}
+}
+
+func isInsufficientBalanceMessage(msg string) bool {
+	if msg == "" {
+		return false
+	}
+
+	msgLower := strings.ToLower(msg)
+	keywords := []string{
+		"insufficient balance",
+		"insufficient quota",
+		"balance too low",
+		"quota exhausted",
+		"余额不足",
+		"额度不足",
+		"预扣费额度失败",
+		"需要预扣费额度",
+	}
+	for _, keyword := range keywords {
+		if strings.Contains(msgLower, keyword) {
+			return true
+		}
+	}
+	return false
 }
 
 // extractErrorInfo 从 JSON 响应体中提取 error.type 和 error.message
