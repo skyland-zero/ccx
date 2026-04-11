@@ -908,7 +908,12 @@ const handleCancelCapabilityTest = async () => {
 }
 
 const handleRetryCapabilityModel = async (protocol: string, model: string) => {
-  if (!capabilityTestJobId.value) return
+  if (!capabilityTestJobId.value || !capabilityTestJob.value) return
+  if (
+    capabilityTestJob.value.lifecycle === 'pending' ||
+    capabilityTestJob.value.lifecycle === 'active' ||
+    (capabilityTestJob.value.activeOperations && capabilityTestJob.value.activeOperations > 0)
+  ) return
   try {
     const pendingKey = `${protocol}:${model}`
     capabilityRetryPendingUntil.value[pendingKey] = Date.now() + 1000

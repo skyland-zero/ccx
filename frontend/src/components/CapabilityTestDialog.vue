@@ -2,6 +2,7 @@
   <v-dialog
     :model-value="modelValue"
     max-width="960"
+    :scrim="false"
     scrollable
     @update:model-value="$emit('update:modelValue', $event)"
   >
@@ -105,6 +106,7 @@
               <CapabilityModelResults
                 :test="test"
                 :pending-text="getProtocolPendingText(test)"
+                :retry-enabled="!isJobActiveLike"
                 @retry-model="handleRetryModel"
               />
             </div>
@@ -205,6 +207,7 @@
                       <CapabilityModelResults
                         :test="test"
                         :pending-text="getProtocolPendingText(test)"
+                        :retry-enabled="!isJobActiveLike"
                         @retry-model="handleRetryModel"
                       />
                     </div>
