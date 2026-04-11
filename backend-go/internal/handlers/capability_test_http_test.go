@@ -132,3 +132,76 @@ func TestRetryCapabilityTestModel_HTTP_RejectsUnknownModel(t *testing.T) {
 		t.Fatalf("status=%d, want=%d, body=%s", w.Code, http.StatusNotFound, w.Body.String())
 	}
 }
+
+func TestRetryCapabilityTestModel_HTTP_RejectsRunningJob(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	job := newCapabilityTestJob(0, "channel", "messages", "claude", []string{"messages"}, 10*time.Second)
+	job.Status = CapabilityJobStatusRunning
+	job.Lifecycle = CapabilityLifecycleActive
+	job.Tests[0].ModelResults = []CapabilityModelJobResult{
+		{Model: "known", Status: CapabilityModelStatusFailed, Lifecycle: CapabilityLifecycleDone, Outcome: CapabilityOutcomeFailed},
+	}
+	capabilityJobs.create(job)
+
+	tmpDir := t.TempDir()
+	configFile := filepath.Join(tmpDir, "config.json")
+	if err := os.WriteFile(configFile, []byte(`{"upstream":[{"name":"channel","service_type":"claude","base_url":"https://example.com","api_keys":["test"]}]}`), 0644); err != nil {
+		t.Fatalf("write config failed: %v", err)
+	}
+	cfgManager, err := config.NewConfigManager(configFile)
+	if err != nil {
+		t.Fatalf("create config manager failed: %v", err)
+	}
+	defer cfgManager.Close()
+
+	r := gin.New()
+	r.POST("/messages/channels/:id/capability-test/:jobId/retry", RetryCapabilityTestModel(cfgManager, "messages"))
+
+	body := `{"protocol":"messages","model":"known"}`
+	req := httptest.NewRequest(http.MethodPost, "/messages/channels/0/capability-test/"+job.JobID+"/retry", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusConflict {
+		t.Fatalf("status=%d, want=%d, body=%s", w.Code, http.StatusConflict, w.Body.String())
+	}
+}
+
+func TestRetryCapabilityTestModel_HTTP_RejectsNonRetryableModel(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	job := newCapabilityTestJob(0, "channel", "messages", "claude", []string{"messages"}, 10*time.Second)
+	job.Status = CapabilityJobStatusCompleted
+	job.Lifecycle = CapabilityLifecycleDone
+	job.Outcome = CapabilityOutcomeSuccess
+	job.Tests[0].ModelResults = []CapabilityModelJobResult{
+		{Model: "known", Status: CapabilityModelStatusSuccess, Lifecycle: CapabilityLifecycleDone, Outcome: CapabilityOutcomeSuccess, Success: true},
+	}
+	capabilityJobs.create(job)
+
+	tmpDir := t.TempDir()
+	configFile := filepath.Join(tmpDir, "config.json")
+	if err := os.WriteFile(configFile, []byte(`{"upstream":[{"name":"channel","service_type":"claude","base_url":"https://example.com","api_keys":["test"]}]}`), 0644); err != nil {
+		t.Fatalf("write config failed: %v", err)
+	}
+	cfgManager, err := config.NewConfigManager(configFile)
+	if err != nil {
+		t.Fatalf("create config manager failed: %v", err)
+	}
+	defer cfgManager.Close()
+
+	r := gin.New()
+	r.POST("/messages/channels/:id/capability-test/:jobId/retry", RetryCapabilityTestModel(cfgManager, "messages"))
+
+	body := `{"protocol":"messages","model":"known"}`
+	req := httptest.NewRequest(http.MethodPost, "/messages/channels/0/capability-test/"+job.JobID+"/retry", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusConflict {
+		t.Fatalf("status=%d, want=%d, body=%s", w.Code, http.StatusConflict, w.Body.String())
+	}
+}

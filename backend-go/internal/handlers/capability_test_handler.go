@@ -1296,8 +1296,16 @@ func RetryCapabilityTestModel(cfgManager *config.ConfigManager, channelKind stri
 			return
 		}
 
+		// 仅允许在终态 job 上执行单模型重测，避免与主任务并发冲突导致状态抖动
+		if job.Lifecycle == CapabilityLifecyclePending || job.Lifecycle == CapabilityLifecycleActive ||
+			job.Status == CapabilityJobStatusQueued || job.Status == CapabilityJobStatusRunning {
+			c.JSON(http.StatusConflict, gin.H{"error": "Capability test job is still running"})
+			return
+		}
+
 		// 检查模型是否存在于 job 中
 		modelFound := false
+		modelRetryable := false
 		for _, test := range job.Tests {
 			if test.Protocol != req.Protocol {
 				continue
@@ -1305,12 +1313,22 @@ func RetryCapabilityTestModel(cfgManager *config.ConfigManager, channelKind stri
 			for _, mr := range test.ModelResults {
 				if mr.Model == req.Model {
 					modelFound = true
+					if mr.Status == CapabilityModelStatusFailed ||
+						mr.Status == CapabilityModelStatusSkipped ||
+						mr.Outcome == CapabilityOutcomeCancelled ||
+						mr.Lifecycle == CapabilityLifecycleCancelled {
+						modelRetryable = true
+					}
 					break
 				}
 			}
 		}
 		if !modelFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Model not found in job"})
+			return
+		}
+		if !modelRetryable {
+			c.JSON(http.StatusConflict, gin.H{"error": "Model is not retryable"})
 			return
 		}
 
@@ -1326,30 +1344,28 @@ func RetryCapabilityTestModel(cfgManager *config.ConfigManager, channelKind stri
 			timeout = time.Duration(job.TimeoutMilliseconds) * time.Millisecond
 		}
 
-		// 将目标模型状态设为 running
+		// 将 job/协议/模型切换到单模型重测态
+		retryStartedAt := time.Now().Format(time.RFC3339Nano)
 		capabilityJobs.update(jobID, func(j *CapabilityTestJob) {
 			for i := range j.Tests {
 				if j.Tests[i].Protocol != req.Protocol {
 					continue
 				}
-				// 如果协议已完成，重新设为 running
-				if j.Tests[i].Status == CapabilityProtocolStatusCompleted || j.Tests[i].Status == CapabilityProtocolStatusFailed {
-					j.Tests[i].Status = CapabilityProtocolStatusRunning
-				}
-				for k := range j.Tests[i].ModelResults {
-					if j.Tests[i].ModelResults[k].Model == req.Model {
-						j.Tests[i].ModelResults[k].Status = CapabilityModelStatusRunning
-						j.Tests[i].ModelResults[k].Error = nil
-						break
-					}
-				}
+				j.Tests[i].Lifecycle = CapabilityLifecycleActive
+				j.Tests[i].Outcome = CapabilityOutcomeUnknown
+				j.Tests[i].Status = CapabilityProtocolStatusRunning
+				j.Tests[i].Reason = nil
+				j.Tests[i].Error = nil
+				updateCapabilityJobModelResult(j, req.Protocol, req.Model, CapabilityModelStatusRunning, ModelTestResult{
+					Model:     req.Model,
+					StartedAt: retryStartedAt,
+				})
 				break
 			}
-			// 如果 job 已经完成/失败/取消，重设为 running
-			if j.Status == CapabilityJobStatusCompleted || j.Status == CapabilityJobStatusFailed || j.Status == CapabilityJobStatusCancelled {
-				j.Status = CapabilityJobStatusRunning
-				j.FinishedAt = ""
-			}
+			j.Lifecycle = CapabilityLifecycleActive
+			j.Outcome = CapabilityOutcomeUnknown
+			j.Status = CapabilityJobStatusRunning
+			j.FinishedAt = ""
 		})
 
 		// 异步执行单模型测试（使用独立可取消 context）
@@ -1364,44 +1380,11 @@ func RetryCapabilityTestModel(cfgManager *config.ConfigManager, channelKind stri
 			}
 			modelResult := executeModelTest(retryCtx, channel, req.Protocol, req.Model, timeout, jobID, cfgManager, id, channelKind, apiKey)
 
-			// 更新协议和 job 整体状态
+			// 更新协议测试时间戳；协议/任务整体状态由统一重算逻辑维护
 			capabilityJobs.update(jobID, func(j *CapabilityTestJob) {
 				for i := range j.Tests {
 					if j.Tests[i].Protocol != req.Protocol {
 						continue
-					}
-					// 重新统计协议结果
-					allDone := true
-					anySuccess := false
-					successCount := 0
-					var firstSuccessModel string
-					var firstSuccessStreaming bool
-					for _, mr := range j.Tests[i].ModelResults {
-						if mr.Status == CapabilityModelStatusQueued || mr.Status == CapabilityModelStatusRunning {
-							allDone = false
-						}
-						if mr.Status == CapabilityModelStatusSuccess {
-							anySuccess = true
-							successCount++
-							if firstSuccessModel == "" {
-								firstSuccessModel = mr.Model
-								firstSuccessStreaming = mr.StreamingSupported
-							}
-						}
-					}
-					j.Tests[i].SuccessCount = successCount
-					if anySuccess {
-						j.Tests[i].Success = true
-						j.Tests[i].TestedModel = firstSuccessModel
-						j.Tests[i].StreamingSupported = firstSuccessStreaming
-						j.Tests[i].Error = nil
-					}
-					if allDone {
-						if anySuccess {
-							j.Tests[i].Status = CapabilityProtocolStatusCompleted
-						} else {
-							j.Tests[i].Status = CapabilityProtocolStatusFailed
-						}
 					}
 					j.Tests[i].TestedAt = time.Now().Format(time.RFC3339Nano)
 					break
