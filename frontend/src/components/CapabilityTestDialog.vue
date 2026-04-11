@@ -370,6 +370,65 @@ const getProtocolDisplayState = (test: CapabilityProtocolJobResult): 'pending' |
   return 'failed'
 }
 
+const isProtocolFailed = (test: CapabilityProtocolJobResult): boolean => {
+  return getProtocolDisplayState(test) === 'failed'
+}
+
+const getProtocolStatusIcon = (test: CapabilityProtocolJobResult): string => {
+  switch (getProtocolDisplayState(test)) {
+    case 'pending': return 'mdi-timer-sand'
+    case 'running': return 'mdi-progress-clock'
+    case 'success': return 'mdi-check-circle'
+    case 'partial': return 'mdi-alert-circle'
+    case 'cancelled': return 'mdi-stop-circle-outline'
+    default: return 'mdi-close-circle'
+  }
+}
+
+const getProtocolStatusIconColor = (test: CapabilityProtocolJobResult): string => {
+  switch (getProtocolDisplayState(test)) {
+    case 'success': return 'success'
+    case 'partial': return 'warning'
+    case 'failed': return 'error'
+    case 'cancelled': return 'grey'
+    default: return 'primary'
+  }
+}
+
+const getProtocolStatusText = (test: CapabilityProtocolJobResult): string => {
+  switch (getProtocolDisplayState(test)) {
+    case 'pending': return t('capability.modelQueued')
+    case 'running': return t('capability.protocolRunning')
+    case 'success': return t('capability.success')
+    case 'partial': return t('capability.partial')
+    case 'cancelled': return t('capability.cancelled')
+    default: return t('capability.failed')
+  }
+}
+
+const getProtocolStatusTextClass = (test: CapabilityProtocolJobResult): string => {
+  switch (getProtocolDisplayState(test)) {
+    case 'success': return 'text-success'
+    case 'partial': return 'text-warning'
+    case 'failed': return 'text-error'
+    default: return 'text-medium-emphasis'
+  }
+}
+
+const getProtocolErrorText = (test: CapabilityProtocolJobResult): string => {
+  if (test.reason === 'not_run') return t('capability.reasonNotRun')
+  if (test.reason === 'cancelled') return t('capability.reasonCancelled')
+  if (test.error === 'timeout') return t('capability.reasonTimeout')
+  return test.error || t('capability.failedTooltip')
+}
+
+const getProtocolPendingText = (test: CapabilityProtocolJobResult): string => {
+  const displayState = getProtocolDisplayState(test)
+  if (displayState === 'pending') return t('capability.modelQueued')
+  if (displayState === 'running') return t('capability.protocolRunning')
+  return t('capability.modelDetailsUnavailable')
+}
+
 const getAttemptedModels = (test: CapabilityProtocolJobResult): number => {
   if (typeof test.attemptedModels === 'number') return test.attemptedModels
   return Array.isArray(test.modelResults) ? test.modelResults.length : 0
@@ -408,41 +467,6 @@ const handleCancel = () => {
 
 const handleRetryModel = (protocol: string, model: string) => {
   emit('retryModel', protocol, model)
-}
-
-const isModelRetryable = (modelResult: CapabilityModelJobResult): boolean => {
-  const displayState = getModelDisplayState(modelResult)
-  return displayState === 'failed' || displayState === 'cancelled' || displayState === 'skipped'
-}
-
-const isModelPending = (modelResult: CapabilityModelJobResult): boolean => {
-  const displayState = getModelDisplayState(modelResult)
-  return displayState === 'pending' || displayState === 'running'
-}
-
-const getModelTooltipError = (modelResult: CapabilityModelJobResult): string => {
-  if (modelResult.reason === 'not_run') return t('capability.reasonNotRun')
-  if (modelResult.reason === 'cancelled') return t('capability.reasonCancelled')
-  if (modelResult.error === 'timeout') return t('capability.reasonTimeout')
-  return modelResult.error || t('capability.failedTooltip')
-}
-
-const getModelStatusLabel = (status: string, modelResult?: CapabilityModelJobResult) => {
-  if (modelResult?.lifecycle === 'cancelled' || modelResult?.outcome === 'cancelled') return t('capability.cancelled')
-  switch (status) {
-    case 'queued': return t('capability.modelQueued')
-    case 'running': return t('capability.modelRunning')
-    case 'success': return t('capability.modelSuccess')
-    case 'failed': return t('capability.modelFailed')
-    case 'skipped': return t('capability.modelSkipped')
-    default: return status
-  }
-}
-
-const getTooltipClass = (modelResult: CapabilityModelJobResult): string => {
-  if (modelResult.outcome === 'success') return 'success-tooltip'
-  if (modelResult.lifecycle === 'pending' || modelResult.lifecycle === 'active') return ''
-  return 'error-tooltip'
 }
 
 defineExpose({ setError })

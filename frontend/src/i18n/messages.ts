@@ -89,9 +89,11 @@ export type MessageKey =
   | 'capability.runModeCacheHit'
   | 'capability.runModeReusedRunning'
   | 'capability.runModeResumedCancelled'
+  | 'capability.runModeReusedPreviousResults'
   | 'capability.reasonNotRun'
   | 'capability.reasonCancelled'
   | 'capability.reasonTimeout'
+  | 'capability.retryModel'
   | 'capability.noApiKeyError'
   | 'capability.genericJobError'
   | 'orchestration.title'
@@ -802,6 +804,14 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'capability.cancel': 'Batalkan Tes',
     'capability.cancelling': 'Membatalkan...',
     'capability.cancelled': 'Dibatalkan',
+    'capability.partial': 'Sebagian tersedia',
+    'capability.runModeCacheHit': 'Hasil cache',
+    'capability.runModeReusedRunning': 'Gunakan ulang tugas berjalan',
+    'capability.runModeResumedCancelled': 'Lanjutkan tugas yang dibatalkan',
+    'capability.runModeReusedPreviousResults': 'Gunakan hasil sukses sebelumnya',
+    'capability.reasonNotRun': 'Tidak dijalankan pada putaran ini',
+    'capability.reasonCancelled': 'Dibatalkan sebelum selesai',
+    'capability.reasonTimeout': 'Waktu habis',
     'capability.retryModel': 'Coba ulang model ini',
     'capability.noApiKeyError': 'Channel ini tidak memiliki API key dan tidak dapat menjalankan tes kemampuan.',
     'capability.genericJobError': 'Tes kemampuan gagal: {message}',
