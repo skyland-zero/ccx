@@ -106,6 +106,7 @@ export default [
       'vue/no-v-html': 'warn', // 警告使用 v-html
       'vue/require-default-prop': 'off', // 不强制要求 prop 默认值
       'vue/require-explicit-emits': 'warn', // 建议显式声明 emits
+      'vue/no-undef-properties': 'error', // 检测模板中引用了 setup/props 中未定义的属性
       // 代码风格（与 Prettier 不冲突的规则）
       'vue/html-self-closing': [
         'error',
