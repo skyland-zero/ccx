@@ -1,3 +1,9 @@
+## [Unreleased]
+
+### Changed
+
+- **抽取能力测试模型结果子组件** - 将 `CapabilityTestDialog` 中移动端与桌面端重复的模型 tooltip、badge、空状态与 retry 渲染提取为独立 `CapabilityModelResults` 组件，统一模型区交互与样式来源，降低后续状态改动的分叉风险
+
 ## [v2.6.51] - 2026-04-10
 
 ### Changed
