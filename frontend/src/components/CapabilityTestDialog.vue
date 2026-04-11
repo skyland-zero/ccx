@@ -31,7 +31,7 @@
           </v-alert>
         </div>
 
-        <div v-else-if="(state === 'running' || state === 'completed' || state === 'cancelled') && job">
+        <div v-else-if="job">
           <div class="capability-status-bar mb-4">
             <div class="d-flex align-center flex-wrap ga-2">
               <v-chip v-if="runMode !== 'fresh'" color="info" size="small" variant="tonal">
@@ -53,21 +53,21 @@
                 <v-icon start size="small">{{ getProtocolIcon(proto) }}</v-icon>
                 {{ getProtocolDisplayName(proto) }}
               </v-chip>
-              <v-chip v-if="(job?.compatibleProtocols ?? []).length === 0 && (state === 'completed' || state === 'cancelled')" color="grey" size="small" variant="tonal">
+              <v-chip v-if="hasNoCompatibleProtocolsYet && (state === 'completed' || state === 'cancelled')" color="grey" size="small" variant="tonal">
                 {{ t('capability.noCompatibleProtocols') }}
               </v-chip>
-              <v-chip v-else-if="(job?.compatibleProtocols ?? []).length === 0" color="grey" size="small" variant="tonal" class="d-flex align-center ga-2">
+              <v-chip v-else-if="hasNoCompatibleProtocolsYet" color="grey" size="small" variant="tonal" class="d-flex align-center ga-2">
                 <v-progress-circular indeterminate size="12" width="2" color="primary" />
-                <span>{{ job?.lifecycle === 'pending' ? t('capability.modelQueued') : t('capability.protocolRunning') }}</span>
+                <span>{{ state === 'pending' ? t('capability.modelQueued') : t('capability.protocolRunning') }}</span>
               </v-chip>
 
-              <span v-if="job?.progress?.totalModels && state === 'running'" class="text-caption text-medium-emphasis">
+              <span v-if="job?.progress?.totalModels && isJobActiveLike" class="text-caption text-medium-emphasis">
                 {{ t('capability.progressSummary', { done: job.progress.completedModels, total: job.progress.totalModels }) }}
               </span>
             </div>
 
             <v-btn
-              v-if="state === 'running'"
+              v-if="state === 'pending' || state === 'running'"
               color="error"
               variant="tonal"
               size="small"
@@ -86,50 +86,36 @@
                 <v-chip :color="getProtocolColor(test.protocol)" size="small" variant="tonal">
                   {{ getProtocolDisplayName(test.protocol) }}
                 </v-chip>
-                <div v-if="test.lifecycle === 'active'" class="d-flex align-center ga-1">
-                  <v-icon color="info" size="small">mdi-progress-clock</v-icon>
-                  <span class="text-body-2 text-info">{{ t('capability.protocolRunning') }}</span>
-                </div>
-                <div v-else-if="test.lifecycle === 'pending'" class="d-flex align-center ga-1">
-                  <v-icon color="grey" size="small">mdi-timer-sand</v-icon>
-                  <span class="text-body-2 text-medium-emphasis">{{ t('capability.modelQueued') }}</span>
-                </div>
-                <div v-else-if="test.outcome === 'partial'" class="d-flex align-center ga-1">
-                  <v-icon color="warning" size="small">mdi-alert-circle</v-icon>
-                  <span class="text-body-2 text-warning">{{ t('capability.partial') }}</span>
-                </div>
-                <div v-else-if="test.outcome === 'cancelled'" class="d-flex align-center ga-1">
-                  <v-icon color="grey" size="small">mdi-stop-circle-outline</v-icon>
-                  <span class="text-body-2 text-medium-emphasis">{{ t('capability.cancelled') }}</span>
-                </div>
-                <div v-else-if="test.outcome === 'success'" class="d-flex align-center ga-1">
-                  <v-icon color="success" size="small">mdi-check-circle</v-icon>
-                  <span class="text-body-2 text-success">{{ t('capability.success') }}</span>
-                </div>
-                <v-tooltip v-else :text="test.error || t('capability.failedTooltip')" location="top">
+                <template v-if="!isProtocolFailed(test)">
+                  <div class="d-flex align-center ga-1">
+                    <v-icon :color="getProtocolStatusIconColor(test)" size="small">{{ getProtocolStatusIcon(test) }}</v-icon>
+                    <span :class="['text-body-2', getProtocolStatusTextClass(test)]">{{ getProtocolStatusText(test) }}</span>
+                  </div>
+                </template>
+                <v-tooltip v-else :text="getProtocolErrorText(test)" location="top">
                   <template #activator="{ props: activatorProps }">
                     <div v-bind="activatorProps" class="d-flex align-center ga-1">
-                      <v-icon color="error" size="small">mdi-close-circle</v-icon>
-                      <span class="text-body-2 text-error">{{ t('capability.failed') }}</span>
+                      <v-icon :color="getProtocolStatusIconColor(test)" size="small">{{ getProtocolStatusIcon(test) }}</v-icon>
+                      <span :class="['text-body-2', getProtocolStatusTextClass(test)]">{{ getProtocolStatusText(test) }}</span>
                     </div>
                   </template>
                 </v-tooltip>
               </div>
 
-              <div v-if="getModelResults(test).length > 0" class="model-results-section mt-3">
+              <div v-if="shouldShowModelResults(test)" class="model-results-section mt-3">
                 <div class="models-label">{{ t('capability.modelsLabel') }}</div>
                 <div class="model-results-flow">
                   <v-tooltip
                     v-for="modelResult in getModelResults(test)"
                     :key="`${test.protocol}-${modelResult.model}`"
                     location="top"
-                    :content-class="getTooltipClass(modelResult)"
+                    :content-class="getModelTooltipClasses(modelResult)"
                   >
                     <template #activator="{ props: tooltipProps }">
                       <div
                         v-bind="tooltipProps"
-                        :class="['model-result-badge', getModelBadgeClass(modelResult), isModelRetryable(modelResult) ? 'retryable-badge' : '']"
-                        @click="isModelRetryable(modelResult) ? handleRetryModel(test.protocol, modelResult.model) : undefined"
+                        :class="getModelBadgeClasses(modelResult)"
+                        @click="shouldRetryModel(modelResult) ? handleRetryModel(test.protocol, modelResult.model) : undefined"
                       >
                         <span class="model-name">{{ modelResult.model }}</span>
                         <v-icon size="16">
@@ -137,11 +123,11 @@
                         </v-icon>
                       </div>
                     </template>
-                    <div v-if="modelResult.success" class="tooltip-content">
+                    <div v-if="getModelTooltipView(modelResult) === 'success'" class="tooltip-content">
                       <div class="tooltip-title">{{ modelResult.model }}</div>
                       <div class="tooltip-row">
                         <span class="tooltip-label">{{ t('capability.tooltipLatency') }}</span>
-                        <span class="tooltip-value">{{ formatLatency(modelResult.latency) }}</span>
+                        <span class="tooltip-value">{{ getModelTooltipLatencyText(modelResult) }}</span>
                       </div>
                       <div class="tooltip-row">
                         <span class="tooltip-label">{{ t('capability.tooltipStreaming') }}</span>
@@ -149,24 +135,24 @@
                       </div>
                       <div class="tooltip-row">
                         <span class="tooltip-label">{{ t('capability.modelStatus') }}</span>
-                        <span class="tooltip-value">{{ getModelStatusLabel(modelResult.status, modelResult) }}</span>
+                        <span class="tooltip-value">{{ getModelStatusText(modelResult) }}</span>
                       </div>
                     </div>
-                    <div v-else-if="isModelPending(modelResult)" class="tooltip-content">
+                    <div v-else-if="getModelTooltipView(modelResult) === 'pending'" class="tooltip-content">
                       <div class="tooltip-title">{{ modelResult.model }}</div>
                       <div class="tooltip-row">
                         <span class="tooltip-label">{{ t('capability.modelStatus') }}</span>
-                        <span class="tooltip-value">{{ getModelStatusLabel(modelResult.status, modelResult) }}</span>
+                        <span class="tooltip-value">{{ getModelStatusText(modelResult) }}</span>
                       </div>
                     </div>
                     <div v-else class="tooltip-content">
                       <div class="tooltip-title">{{ modelResult.model }}</div>
                       <div class="tooltip-row">
                         <span class="tooltip-label">{{ t('capability.modelStatus') }}</span>
-                        <span class="tooltip-value">{{ getModelStatusLabel(modelResult.status, modelResult) }}</span>
+                        <span class="tooltip-value">{{ getModelStatusText(modelResult) }}</span>
                       </div>
-                      <div class="tooltip-error">{{ modelResult.error || t('capability.failedTooltip') }}</div>
-                      <div v-if="isModelRetryable(modelResult)" class="tooltip-retry">{{ t('capability.retryModel') }}</div>
+                      <div class="tooltip-error">{{ getModelTooltipError(modelResult) }}</div>
+                      <div v-if="getModelRetryHintVisible(modelResult)" class="tooltip-retry">{{ t('capability.retryModel') }}</div>
                     </div>
                   </v-tooltip>
                 </div>
@@ -195,31 +181,17 @@
                     </v-chip>
                   </td>
                   <td>
-                    <div v-if="test.lifecycle === 'active'" class="d-flex align-center ga-1">
-                      <v-icon color="info" size="small">mdi-progress-clock</v-icon>
-                      <span class="text-body-2 text-info">{{ t('capability.protocolRunning') }}</span>
-                    </div>
-                    <div v-else-if="test.lifecycle === 'pending'" class="d-flex align-center ga-1">
-                      <v-icon color="grey" size="small">mdi-timer-sand</v-icon>
-                      <span class="text-body-2 text-medium-emphasis">{{ t('capability.modelQueued') }}</span>
-                    </div>
-                    <div v-else-if="test.outcome === 'partial'" class="d-flex align-center ga-1">
-                      <v-icon color="warning" size="small">mdi-alert-circle</v-icon>
-                      <span class="text-body-2 text-warning">{{ t('capability.partial') }}</span>
-                    </div>
-                    <div v-else-if="test.outcome === 'cancelled'" class="d-flex align-center ga-1">
-                      <v-icon color="grey" size="small">mdi-stop-circle-outline</v-icon>
-                      <span class="text-body-2 text-medium-emphasis">{{ t('capability.cancelled') }}</span>
-                    </div>
-                    <div v-else-if="test.outcome === 'success'" class="d-flex align-center ga-1">
-                      <v-icon color="success" size="small">mdi-check-circle</v-icon>
-                      <span class="text-body-2 text-success">{{ t('capability.success') }}</span>
-                    </div>
-                    <v-tooltip v-else :text="test.error || t('capability.failedTooltip')" location="top" content-class="error-tooltip">
+                    <template v-if="!isProtocolFailed(test)">
+                      <div class="d-flex align-center ga-1">
+                        <v-icon :color="getProtocolStatusIconColor(test)" size="small">{{ getProtocolStatusIcon(test) }}</v-icon>
+                        <span :class="['text-body-2', getProtocolStatusTextClass(test)]">{{ getProtocolStatusText(test) }}</span>
+                      </div>
+                    </template>
+                    <v-tooltip v-else :text="getProtocolErrorText(test)" location="top" content-class="error-tooltip">
                       <template #activator="{ props: activatorProps }">
                         <div v-bind="activatorProps" class="d-flex align-center ga-1">
-                          <v-icon color="error" size="small">mdi-close-circle</v-icon>
-                          <span class="text-body-2 text-error">{{ t('capability.failed') }}</span>
+                          <v-icon :color="getProtocolStatusIconColor(test)" size="small">{{ getProtocolStatusIcon(test) }}</v-icon>
+                          <span :class="['text-body-2', getProtocolStatusTextClass(test)]">{{ getProtocolStatusText(test) }}</span>
                         </div>
                       </template>
                     </v-tooltip>
@@ -280,11 +252,11 @@
                 <tr>
                   <td colspan="6" class="model-results-cell">
                     <div class="model-results-wrapper">
-                      <div v-if="getModelResults(test).length === 0 && (test.lifecycle === 'pending' || test.lifecycle === 'active')" class="d-flex align-center ga-2 py-2">
+                      <div v-if="shouldShowPendingModelPlaceholder(test)" class="d-flex align-center ga-2 py-2">
                         <v-progress-circular indeterminate size="16" width="2" color="primary" />
-                        <span class="text-body-2 text-medium-emphasis">{{ test.lifecycle === 'pending' ? t('capability.modelQueued') : t('capability.protocolRunning') }}</span>
+                        <span class="text-body-2 text-medium-emphasis">{{ getProtocolPendingText(test) }}</span>
                       </div>
-                      <div v-else-if="getModelResults(test).length === 0" class="text-body-2 text-medium-emphasis py-2">
+                      <div v-else-if="shouldShowModelDetailsUnavailable(test)" class="text-body-2 text-medium-emphasis py-2">
                         {{ t('capability.modelDetailsUnavailable') }}
                       </div>
 
@@ -295,7 +267,7 @@
                             v-for="modelResult in getModelResults(test)"
                             :key="`${test.protocol}-${modelResult.model}`"
                             location="top"
-                            :content-class="getTooltipClass(modelResult)"
+                            :content-class="getModelTooltipClasses(modelResult)"
                           >
                             <template #activator="{ props: tooltipProps }">
                               <div
@@ -309,11 +281,11 @@
                                 </v-icon>
                               </div>
                             </template>
-                            <div v-if="modelResult.success" class="tooltip-content">
+                            <div v-if="getModelTooltipView(modelResult) === 'success'" class="tooltip-content">
                               <div class="tooltip-title">{{ modelResult.model }}</div>
                               <div class="tooltip-row">
                                 <span class="tooltip-label">{{ t('capability.tooltipLatency') }}</span>
-                                <span class="tooltip-value">{{ formatLatency(modelResult.latency) }}</span>
+                                <span class="tooltip-value">{{ getModelTooltipLatencyText(modelResult) }}</span>
                               </div>
                               <div class="tooltip-row">
                                 <span class="tooltip-label">{{ t('capability.tooltipStreaming') }}</span>
@@ -321,21 +293,21 @@
                               </div>
                               <div class="tooltip-row">
                                 <span class="tooltip-label">{{ t('capability.modelStatus') }}</span>
-                                <span class="tooltip-value">{{ getModelStatusLabel(modelResult.status, modelResult) }}</span>
+                                <span class="tooltip-value">{{ getModelStatusText(modelResult) }}</span>
                               </div>
                             </div>
-                            <div v-else-if="isModelPending(modelResult)" class="tooltip-content">
+                            <div v-else-if="getModelTooltipView(modelResult) === 'pending'" class="tooltip-content">
                               <div class="tooltip-title">{{ modelResult.model }}</div>
                               <div class="tooltip-row">
                                 <span class="tooltip-label">{{ t('capability.modelStatus') }}</span>
-                                <span class="tooltip-value">{{ getModelStatusLabel(modelResult.status, modelResult) }}</span>
+                                <span class="tooltip-value">{{ getModelStatusText(modelResult) }}</span>
                               </div>
                             </div>
                             <div v-else class="tooltip-content">
                               <div class="tooltip-title">{{ modelResult.model }}</div>
                               <div class="tooltip-row">
                                 <span class="tooltip-label">{{ t('capability.modelStatus') }}</span>
-                                <span class="tooltip-value">{{ getModelStatusLabel(modelResult.status, modelResult) }}</span>
+                                <span class="tooltip-value">{{ getModelStatusText(modelResult) }}</span>
                               </div>
                               <div class="tooltip-error">{{ getModelTooltipError(modelResult) }}</div>
                               <div v-if="isModelRetryable(modelResult)" class="tooltip-retry">{{ t('capability.retryModel') }}</div>
@@ -415,11 +387,14 @@ const state = computed(() => {
   if (!props.capabilityJob) return 'initializing'
   if (props.capabilityJob.lifecycle === 'cancelled') return 'cancelled'
   if (props.capabilityJob.lifecycle === 'done') return 'completed'
+  if (props.capabilityJob.lifecycle === 'pending') return 'pending'
   return 'running'
 })
 
 const displayOutcome = computed(() => props.capabilityJob?.outcome ?? 'unknown')
 const runMode = computed(() => props.capabilityJob?.runMode ?? 'fresh')
+const isJobActiveLike = computed(() => state.value === 'pending' || state.value === 'running')
+const hasNoCompatibleProtocolsYet = computed(() => (job.value?.compatibleProtocols ?? []).length === 0)
 
 // 当状态离开 running 时复位 cancelling（覆盖取消失败、重测恢复等场景）
 watch(state, (newState) => {
@@ -494,6 +469,81 @@ const sortedTests = computed(() => {
     })
 })
 
+const getProtocolDisplayState = (test: CapabilityProtocolJobResult): 'pending' | 'running' | 'success' | 'partial' | 'cancelled' | 'failed' => {
+  if (test.lifecycle === 'active') return 'running'
+  if (test.lifecycle === 'pending') return 'pending'
+  if (test.outcome === 'partial') return 'partial'
+  if (test.outcome === 'cancelled') return 'cancelled'
+  if (test.outcome === 'success') return 'success'
+  return 'failed'
+}
+
+const getModelDisplayState = (modelResult: CapabilityModelJobResult): 'pending' | 'running' | 'success' | 'cancelled' | 'skipped' | 'failed' => {
+  if (modelResult.lifecycle === 'pending') return 'pending'
+  if (modelResult.lifecycle === 'active') return 'running'
+  if (modelResult.lifecycle === 'cancelled' || modelResult.outcome === 'cancelled') return 'cancelled'
+  if (modelResult.status === 'skipped') return 'skipped'
+  if (modelResult.outcome === 'success') return 'success'
+  return 'failed'
+}
+
+const getProtocolStatusIcon = (test: CapabilityProtocolJobResult): string => {
+  switch (getProtocolDisplayState(test)) {
+    case 'running': return 'mdi-progress-clock'
+    case 'pending': return 'mdi-timer-sand'
+    case 'partial': return 'mdi-alert-circle'
+    case 'cancelled': return 'mdi-stop-circle-outline'
+    case 'success': return 'mdi-check-circle'
+    default: return 'mdi-close-circle'
+  }
+}
+
+const getProtocolStatusText = (test: CapabilityProtocolJobResult): string => {
+  switch (getProtocolDisplayState(test)) {
+    case 'running': return t('capability.protocolRunning')
+    case 'pending': return t('capability.modelQueued')
+    case 'partial': return t('capability.partial')
+    case 'cancelled': return t('capability.cancelled')
+    case 'success': return t('capability.success')
+    default: return t('capability.failed')
+  }
+}
+
+const getProtocolStatusTextClass = (test: CapabilityProtocolJobResult): string => {
+  switch (getProtocolDisplayState(test)) {
+    case 'running': return 'text-info'
+    case 'pending': return 'text-medium-emphasis'
+    case 'partial': return 'text-warning'
+    case 'cancelled': return 'text-medium-emphasis'
+    case 'success': return 'text-success'
+    default: return 'text-error'
+  }
+}
+
+const getProtocolStatusIconColor = (test: CapabilityProtocolJobResult): string => {
+  switch (getProtocolDisplayState(test)) {
+    case 'running': return 'info'
+    case 'pending': return 'grey'
+    case 'partial': return 'warning'
+    case 'cancelled': return 'grey'
+    case 'success': return 'success'
+    default: return 'error'
+  }
+}
+
+const isProtocolFailed = (test: CapabilityProtocolJobResult): boolean => getProtocolDisplayState(test) === 'failed'
+
+const isProtocolPendingLike = (test: CapabilityProtocolJobResult): boolean => {
+  const displayState = getProtocolDisplayState(test)
+  return displayState === 'pending' || displayState === 'running'
+}
+
+const getProtocolPendingText = (test: CapabilityProtocolJobResult): string => {
+  return getProtocolDisplayState(test) === 'pending' ? t('capability.modelQueued') : t('capability.protocolRunning')
+}
+
+const getProtocolErrorText = (test: CapabilityProtocolJobResult): string => test.error || t('capability.failedTooltip')
+
 const getModelResults = (test: CapabilityProtocolJobResult): CapabilityModelJobResult[] => {
   return Array.isArray(test.modelResults) ? test.modelResults : []
 }
@@ -530,22 +580,55 @@ const formatLatency = (latency: number): string => {
   return latency >= 0 ? `${latency}ms` : '-'
 }
 
-const getModelBadgeClass = (modelResult: CapabilityModelJobResult): string => {
-  if (modelResult.lifecycle === 'active') return 'running-badge'
-  if (modelResult.lifecycle === 'pending') return 'queued-badge'
-  if (modelResult.outcome === 'success') return 'success-badge'
-  if (modelResult.outcome === 'cancelled') return 'skipped-badge'
-  if (modelResult.status === 'skipped') return 'skipped-badge'
-  return 'error-badge'
+const shouldShowModelResults = (test: CapabilityProtocolJobResult): boolean => getModelResults(test).length > 0
+
+const shouldShowPendingModelPlaceholder = (test: CapabilityProtocolJobResult): boolean => {
+  return getModelResults(test).length === 0 && isProtocolPendingLike(test)
 }
 
+const shouldShowModelDetailsUnavailable = (test: CapabilityProtocolJobResult): boolean => {
+  return getModelResults(test).length === 0 && !isProtocolPendingLike(test)
+}
+
+const isModelSuccessful = (modelResult: CapabilityModelJobResult): boolean => {
+  return getModelDisplayState(modelResult) === 'success'
+}
+
+const getModelTooltipView = (modelResult: CapabilityModelJobResult): 'success' | 'pending' | 'failed' => {
+  if (isModelSuccessful(modelResult)) return 'success'
+  if (isModelPending(modelResult)) return 'pending'
+  return 'failed'
+}
+
+const getModelTooltipErrorText = (modelResult: CapabilityModelJobResult): string => {
+  return modelResult.error || t('capability.failedTooltip')
+}
+
+const getModelStatusText = (modelResult: CapabilityModelJobResult): string => {
+  return getModelStatusLabel(modelResult.status, modelResult)
+}
+
+const getModelBadgeClasses = (modelResult: CapabilityModelJobResult): string[] => {
+  return ['model-result-badge', getModelBadgeClass(modelResult), isModelRetryable(modelResult) ? 'retryable-badge' : '']
+}
+
+const getModelTooltipClasses = (modelResult: CapabilityModelJobResult): string => getTooltipClass(modelResult)
+
+const getModelRetryHintVisible = (modelResult: CapabilityModelJobResult): boolean => isModelRetryable(modelResult)
+
+const shouldRetryModel = (modelResult: CapabilityModelJobResult): boolean => isModelRetryable(modelResult)
+
+const getModelTooltipLatencyText = (modelResult: CapabilityModelJobResult): string => formatLatency(modelResult.latency)
+
 const getModelStatusIcon = (modelResult: CapabilityModelJobResult): string => {
-  if (modelResult.lifecycle === 'pending') return 'mdi-timer-sand'
-  if (modelResult.lifecycle === 'active') return 'mdi-progress-clock'
-  if (modelResult.outcome === 'cancelled') return 'mdi-stop-circle-outline'
-  if (modelResult.status === 'skipped') return 'mdi-skip-next'
-  if (modelResult.outcome === 'success') return 'mdi-check-circle'
-  return 'mdi-close-circle'
+  switch (getModelDisplayState(modelResult)) {
+    case 'pending': return 'mdi-timer-sand'
+    case 'running': return 'mdi-progress-clock'
+    case 'cancelled': return 'mdi-stop-circle-outline'
+    case 'skipped': return 'mdi-skip-next'
+    case 'success': return 'mdi-check-circle'
+    default: return 'mdi-close-circle'
+  }
 }
 
 const setError = (error: string) => {
@@ -562,11 +645,13 @@ const handleRetryModel = (protocol: string, model: string) => {
 }
 
 const isModelRetryable = (modelResult: CapabilityModelJobResult): boolean => {
-  return modelResult.outcome === 'failed' || modelResult.lifecycle === 'cancelled' || modelResult.status === 'skipped'
+  const displayState = getModelDisplayState(modelResult)
+  return displayState === 'failed' || displayState === 'cancelled' || displayState === 'skipped'
 }
 
 const isModelPending = (modelResult: CapabilityModelJobResult): boolean => {
-  return modelResult.lifecycle === 'pending' || modelResult.lifecycle === 'active'
+  const displayState = getModelDisplayState(modelResult)
+  return displayState === 'pending' || displayState === 'running'
 }
 
 const getModelTooltipError = (modelResult: CapabilityModelJobResult): string => {
@@ -586,6 +671,12 @@ const getModelStatusLabel = (status: string, modelResult?: CapabilityModelJobRes
     case 'skipped': return t('capability.modelSkipped')
     default: return status
   }
+}
+
+const getTooltipClass = (modelResult: CapabilityModelJobResult): string => {
+  if (modelResult.outcome === 'success') return 'success-tooltip'
+  if (modelResult.lifecycle === 'pending' || modelResult.lifecycle === 'active') return ''
+  return 'error-tooltip'
 }
 
 defineExpose({ setError })

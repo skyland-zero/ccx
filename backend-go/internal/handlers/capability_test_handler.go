@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"sort"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/BenedictKing/ccx/internal/config"
+	"github.com/BenedictKing/ccx/internal/handlers/common"
 	"github.com/BenedictKing/ccx/internal/httpclient"
 	"github.com/BenedictKing/ccx/internal/metrics"
 	"github.com/BenedictKing/ccx/internal/utils"
@@ -315,7 +317,7 @@ func TestChannelCapability(cfgManager *config.ConfigManager, channelKind string)
 				}
 			})
 
-			go runCapabilityTestJob(job.JobID, channelKind, id, *channel, protocols, timeout, cacheKey, lookupKey, previousResults, normalizedModels)
+			go runCapabilityTestJob(job.JobID, channelKind, id, *channel, protocols, timeout, cacheKey, lookupKey, previousResults, normalizedModels, cfgManager)
 
 			c.JSON(http.StatusOK, gin.H{"jobId": job.JobID, "resumed": true, "job": job})
 			return
@@ -368,7 +370,7 @@ func TestChannelCapability(cfgManager *config.ConfigManager, channelKind string)
 			}
 		}
 
-		go runCapabilityTestJob(job.JobID, channelKind, id, *channel, protocols, timeout, cacheKey, lookupKey, previousResults, normalizedModels)
+		go runCapabilityTestJob(job.JobID, channelKind, id, *channel, protocols, timeout, cacheKey, lookupKey, previousResults, normalizedModels, cfgManager)
 
 		c.JSON(http.StatusOK, gin.H{"jobId": job.JobID, "resumed": false, "job": job})
 		return
@@ -410,7 +412,7 @@ func buildRoundRobinQueue(protocolModels map[string][]string, protocols []string
 	return queue
 }
 
-func runCapabilityTestJob(jobID, channelKind string, channelID int, channel config.UpstreamConfig, protocols []string, timeout time.Duration, cacheKey, lookupKey string, previousResults map[string]map[string]ModelTestResult, userModels []string) {
+func runCapabilityTestJob(jobID, channelKind string, channelID int, channel config.UpstreamConfig, protocols []string, timeout time.Duration, cacheKey, lookupKey string, previousResults map[string]map[string]ModelTestResult, userModels []string, cfgManager *config.ConfigManager) {
 	// 创建可取消的 context，用于支持前端取消操作
 	ctx, cancel := context.WithCancel(context.Background())
 	capabilityJobs.setCancelFunc(jobID, cancel)
@@ -447,7 +449,11 @@ func runCapabilityTestJob(jobID, channelKind string, channelID int, channel conf
 	log.Printf("[CapabilityTest-Job] 开始执行能力测试任务 %s，渠道 %s (ID:%d, 类型:%s)，协议: %v", jobID, channel.Name, channelID, channel.ServiceType, protocols)
 
 	totalStart := time.Now()
-	results := runRoundRobinTests(ctx, &channel, protocols, timeout, jobID, previousResults, userModels)
+	apiKey := ""
+	if len(channel.APIKeys) > 0 {
+		apiKey = channel.APIKeys[0]
+	}
+	results := runRoundRobinTests(ctx, &channel, protocols, timeout, jobID, previousResults, userModels, cfgManager, channelID, channelKind, apiKey)
 	totalDuration := time.Since(totalStart).Milliseconds()
 
 	compatible := make([]string, 0)
@@ -497,7 +503,7 @@ func runCapabilityTestJob(jobID, channelKind string, channelID int, channel conf
 // runRoundRobinTests 核心编排器，串行按 round-robin 顺序逐个调度
 // 所有模型都会被测试，不会在首次成功后跳过后续模型
 // previousResults 可选：上次测试中成功的结果，跳过这些模型
-func runRoundRobinTests(ctx context.Context, channel *config.UpstreamConfig, protocols []string, perModelTimeout time.Duration, jobID string, previousResults map[string]map[string]ModelTestResult, userModels []string) []ProtocolTestResult {
+func runRoundRobinTests(ctx context.Context, channel *config.UpstreamConfig, protocols []string, perModelTimeout time.Duration, jobID string, previousResults map[string]map[string]ModelTestResult, userModels []string, cfgManager *config.ConfigManager, channelID int, channelKind, apiKey string) []ProtocolTestResult {
 	// 1. 收集各协议模型列表，初始化 job 状态
 	protocolModels := make(map[string][]string)
 	protocolTimedOut := make(map[string]bool) // true = 全局超时强制终止
@@ -666,7 +672,7 @@ func runRoundRobinTests(ctx context.Context, channel *config.UpstreamConfig, pro
 		}
 
 		// executeModelTest（单模型测试）
-		modelResult := executeModelTest(globalCtx, channel, item.protocol, item.model, perModelTimeout, jobID)
+		modelResult := executeModelTest(globalCtx, channel, item.protocol, item.model, perModelTimeout, jobID, cfgManager, channelID, channelKind, apiKey)
 		result := results[item.protocol]
 		result.ModelResults[item.index] = modelResult
 		protocolEndTime[item.protocol] = time.Now() // 每次模型完成时更新协议结束时间
@@ -802,7 +808,7 @@ func runRoundRobinTests(ctx context.Context, channel *config.UpstreamConfig, pro
 }
 
 // executeModelTest 单模型测试（不调用 AcquireSendSlot，由编排器负责限流）
-func executeModelTest(ctx context.Context, channel *config.UpstreamConfig, protocol, model string, timeout time.Duration, jobID string) ModelTestResult {
+func executeModelTest(ctx context.Context, channel *config.UpstreamConfig, protocol, model string, timeout time.Duration, jobID string, cfgManager *config.ConfigManager, channelID int, channelKind, apiKey string) ModelTestResult {
 	startedAt := time.Now()
 	modelResult := ModelTestResult{
 		Model:     model,
@@ -834,9 +840,22 @@ func executeModelTest(ctx context.Context, channel *config.UpstreamConfig, proto
 	startTime := time.Now()
 	log.Printf("[CapabilityTest-Model] 渠道 %s 启动 %s 协议模型测试 (模型: %s, startedAt: %s)",
 		channel.Name, protocol, model, modelResult.StartedAt)
-	success, streamingSupported, statusCode, sendErr := sendAndCheckStream(reqCtx, client, req)
+	success, streamingSupported, statusCode, respBody, sendErr := sendAndCheckStream(reqCtx, client, req)
 	modelResult.Latency = time.Since(startTime).Milliseconds()
 	modelResult.TestedAt = time.Now().Format(time.RFC3339Nano)
+
+	// 拉黑判定：非 2xx 响应时检查是否需要永久拉黑该 Key
+	if !success && cfgManager != nil && apiKey != "" && respBody != nil {
+		blacklistResult := common.ShouldBlacklistKey(statusCode, respBody)
+		if blacklistResult.ShouldBlacklist {
+			apiType := channelKindToApiType(channelKind)
+			log.Printf("[CapabilityTest-Blacklist] 渠道 %s 的 %s 协议触发 Key 拉黑 (模型: %s, 原因: %s, 状态码: %d)",
+				channel.Name, protocol, model, blacklistResult.Reason, statusCode)
+			if err := cfgManager.BlacklistKey(apiType, channelID, apiKey, blacklistResult.Reason, blacklistResult.Message); err != nil {
+				log.Printf("[CapabilityTest-Blacklist] 拉黑 Key 失败: %v", err)
+			}
+		}
+	}
 
 	if success {
 		modelResult.Success = true
@@ -862,13 +881,13 @@ func executeModelTest(ctx context.Context, channel *config.UpstreamConfig, proto
 // testProtocolCompatibility 并发测试多个协议的兼容性（已废弃，保留用于兼容）
 func testProtocolCompatibility(ctx context.Context, channel *config.UpstreamConfig, protocols []string, timeout time.Duration, jobID string) []ProtocolTestResult {
 	// 已废弃，直接调用新实现
-	return runRoundRobinTests(ctx, channel, protocols, timeout, jobID, nil, nil)
+	return runRoundRobinTests(ctx, channel, protocols, timeout, jobID, nil, nil, nil, 0, "", "")
 }
 
 // testSingleProtocol 已废弃，保留用于兼容
 func testSingleProtocol(ctx context.Context, channel *config.UpstreamConfig, protocol string, timeout time.Duration, jobID string) ProtocolTestResult {
 	// 已废弃，直接调用新实现
-	results := runRoundRobinTests(ctx, channel, []string{protocol}, timeout, jobID, nil, nil)
+	results := runRoundRobinTests(ctx, channel, []string{protocol}, timeout, jobID, nil, nil, nil, 0, "", "")
 	if len(results) > 0 {
 		return results[0]
 	}
@@ -878,7 +897,7 @@ func testSingleProtocol(ctx context.Context, channel *config.UpstreamConfig, pro
 // testSingleModel 已废弃，保留用于兼容
 func testSingleModel(ctx context.Context, channel *config.UpstreamConfig, protocol, model string, timeout time.Duration, jobID string) ModelTestResult {
 	// 已废弃，直接调用 executeModelTest
-	return executeModelTest(ctx, channel, protocol, model, timeout, jobID)
+	return executeModelTest(ctx, channel, protocol, model, timeout, jobID, nil, 0, "", "")
 }
 
 func updateCapabilityJobModelResult(job *CapabilityTestJob, protocol, model string, status CapabilityModelStatus, result ModelTestResult) {
@@ -927,6 +946,22 @@ func updateCapabilityJobModelResult(job *CapabilityTestJob, protocol, model stri
 			}
 			return
 		}
+	}
+}
+
+// channelKindToApiType 将小写 channelKind 转为 BlacklistKey 需要的大写 apiType
+func channelKindToApiType(channelKind string) string {
+	switch channelKind {
+	case "messages":
+		return "Messages"
+	case "chat":
+		return "Chat"
+	case "gemini":
+		return "Gemini"
+	case "responses":
+		return "Responses"
+	default:
+		return "Messages"
 	}
 }
 
@@ -1106,17 +1141,18 @@ func buildTestRequest(protocol string, channel *config.UpstreamConfig) (*http.Re
 // ============== 流式响应检测 ==============
 
 // sendAndCheckStream 发送请求并检查流式响应能力
-// 返回: success（HTTP 2xx）, streamingSupported（能解析 SSE chunk）, statusCode, error
-func sendAndCheckStream(ctx context.Context, client *http.Client, req *http.Request) (bool, bool, int, error) {
+// 返回: success（HTTP 2xx）, streamingSupported（能解析 SSE chunk）, statusCode, responseBody, error
+func sendAndCheckStream(ctx context.Context, client *http.Client, req *http.Request) (bool, bool, int, []byte, error) {
 	resp, err := client.Do(req)
 	if err != nil {
-		return false, false, 0, err
+		return false, false, 0, nil, err
 	}
 	defer resp.Body.Close()
 
-	// 非 2xx 视为不兼容
+	// 非 2xx 视为不兼容，读取响应体用于拉黑判定
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return false, false, resp.StatusCode, fmt.Errorf("HTTP %d", resp.StatusCode)
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return false, false, resp.StatusCode, bodyBytes, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 
 	// HTTP 2xx，尝试读取第一个 SSE chunk 检测流式支持
@@ -1157,7 +1193,7 @@ func sendAndCheckStream(ctx context.Context, client *http.Client, req *http.Requ
 		streamingSupported = false
 	}
 
-	return true, streamingSupported, resp.StatusCode, nil
+	return true, streamingSupported, resp.StatusCode, nil, nil
 }
 
 // ============== 取消与重测 ==============
@@ -1322,7 +1358,11 @@ func RetryCapabilityTestModel(cfgManager *config.ConfigManager, channelKind stri
 
 		go func() {
 			defer retryCancel()
-			modelResult := executeModelTest(retryCtx, channel, req.Protocol, req.Model, timeout, jobID)
+			apiKey := ""
+			if len(channel.APIKeys) > 0 {
+				apiKey = channel.APIKeys[0]
+			}
+			modelResult := executeModelTest(retryCtx, channel, req.Protocol, req.Model, timeout, jobID, cfgManager, id, channelKind, apiKey)
 
 			// 更新协议和 job 整体状态
 			capabilityJobs.update(jobID, func(j *CapabilityTestJob) {

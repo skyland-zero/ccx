@@ -209,6 +209,9 @@ func (p *ResponsesProvider) buildResponsesRequestFromClaude(bodyBytes []byte, up
 		"input":  input,
 		"stream": claudeReq.Stream,
 	}
+	if effort := config.ResolveReasoningEffort(claudeReq.Model, upstream); effort != "" {
+		responsesReq["reasoning"] = map[string]interface{}{"effort": effort}
+	}
 	if instructions := extractResponsesInstructions(claudeReq.System); instructions != "" {
 		responsesReq["instructions"] = instructions
 	}

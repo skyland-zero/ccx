@@ -430,7 +430,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch, defineAsyncComponent } from 'vue'
 import { useTheme } from 'vuetify'
-import { api, fetchHealth, ApiError, type Channel, type CapabilityTestJob, type CapabilityTestJobStartResponse } from './services/api'
+import { api, fetchHealth, ApiError, type Channel, type CapabilityTestJob, type CapabilityTestJobStartResponse, type CapabilityProtocolJobResult, type CapabilityModelJobResult } from './services/api'
 import { versionService } from './services/version'
 import { useAuthStore } from './stores/auth'
 import { useChannelStore } from './stores/channel'
@@ -694,10 +694,131 @@ const capabilityTestJobId = ref('')
 const capabilityTestPolling = ref<ReturnType<typeof setInterval> | null>(null)
 const capabilityTestJob = ref<CapabilityTestJob | null>(null)
 const capabilityTestPreviousJobId = ref('') // 记录上一次的 jobId，用于复用成功结果
+const capabilityRetryPendingUntil = ref<Record<string, number>>({})
+
+const capabilityPlaceholderModels: Record<string, string[]> = {
+  // 需与后端 capability_probe_models.go 保持一致，用于开始接口返回前的首屏占位
+  messages: ['claude-opus-4-6', 'claude-opus-4-5-20251101', 'claude-sonnet-4-6', 'claude-sonnet-4-5-20250929', 'claude-haiku-4-5-20251001'],
+  chat: ['gpt-5.4', 'gpt-5.3-codex', 'gpt-5.2', 'gpt-5.2-codex', 'gpt-5.1-codex-max'],
+  responses: ['gpt-5.4', 'gpt-5.3-codex', 'gpt-5.2', 'gpt-5.2-codex', 'gpt-5.1-codex-max'],
+  gemini: ['gemini-3.1-pro-preview', 'gemini-3.1-pro', 'gemini-3-pro-preview', 'gemini-3-pro', 'gemini-3-flash-preview', 'gemini-3-flash']
+}
+
+const capabilityProtocolOrder = ['messages', 'chat', 'responses', 'gemini'] as const
+
+const buildPendingCapabilityModels = (protocol: string): CapabilityModelJobResult[] => {
+  const now = new Date().toISOString()
+  return (capabilityPlaceholderModels[protocol] ?? []).map(model => ({
+    model,
+    status: 'queued',
+    lifecycle: 'pending',
+    outcome: 'unknown',
+    success: false,
+    latency: 0,
+    streamingSupported: false,
+    testedAt: now
+  }))
+}
+
+const toRetryingCapabilityModel = (modelResult: CapabilityModelJobResult): CapabilityModelJobResult => ({
+  ...modelResult,
+  status: 'running',
+  lifecycle: 'active',
+  outcome: 'unknown',
+  success: false,
+  error: undefined,
+  reason: undefined,
+})
+
+const markCapabilityModelRetrying = (job: CapabilityTestJob, protocol: string, model: string): CapabilityTestJob => ({
+  ...job,
+  tests: job.tests.map(test => {
+    if (test.protocol !== protocol) return test
+    return {
+      ...test,
+      modelResults: (test.modelResults ?? []).map(modelResult => {
+        if (modelResult.model !== model) return modelResult
+        return toRetryingCapabilityModel(modelResult)
+      })
+    }
+  })
+})
+
+const applyCapabilityRetryPending = (
+  job: CapabilityTestJob,
+  pendingMap: Record<string, number>,
+  now: number
+): CapabilityTestJob => ({
+  ...job,
+  tests: job.tests.map(test => ({
+    ...test,
+    modelResults: (test.modelResults ?? []).map(modelResult => {
+      const key = `${test.protocol}:${modelResult.model}`
+      const pendingUntil = pendingMap[key]
+      if (!pendingUntil || now >= pendingUntil) {
+        delete pendingMap[key]
+        return modelResult
+      }
+      if (modelResult.lifecycle === 'pending' || modelResult.lifecycle === 'active') {
+        return modelResult
+      }
+      return toRetryingCapabilityModel(modelResult)
+    })
+  }))
+})
+
+const buildCapabilityPlaceholderJob = (channelId: number, channelName: string): CapabilityTestJob => {
+  const now = new Date().toISOString()
+  const tests: CapabilityProtocolJobResult[] = capabilityProtocolOrder.map(protocol => {
+    const modelResults = buildPendingCapabilityModels(protocol)
+    return {
+      protocol,
+      status: 'queued',
+      lifecycle: 'pending',
+      outcome: 'unknown',
+      success: false,
+      latency: 0,
+      streamingSupported: false,
+      testedModel: '',
+      modelResults,
+      successCount: 0,
+      attemptedModels: modelResults.length,
+      testedAt: now
+    }
+  })
+
+  const totalModels = tests.reduce((sum, test) => sum + (test.modelResults?.length ?? 0), 0)
+
+  return {
+    jobId: '',
+    channelId,
+    channelName,
+    channelKind: channelStore.activeTab,
+    sourceType: '',
+    status: 'queued',
+    lifecycle: 'pending',
+    outcome: 'unknown',
+    runMode: 'fresh',
+    tests,
+    compatibleProtocols: [],
+    totalDuration: 0,
+    updatedAt: now,
+    progress: {
+      totalModels,
+      queuedModels: totalModels,
+      runningModels: 0,
+      successModels: 0,
+      failedModels: 0,
+      skippedModels: 0,
+      completedModels: 0
+    }
+  }
+}
 
 watch(showCapabilityTestDialog, (open) => {
   if (!open) {
     stopCapabilityTestPolling()
+    capabilityRetryPendingUntil.value = {}
   }
 })
 
@@ -727,9 +848,11 @@ const startCapabilityPolling = (channelId: number, jobId: string) => {
 }
 
 const updateCapabilityJob = (job: CapabilityTestJob) => {
-  capabilityTestJob.value = job
+  const mergedJob = applyCapabilityRetryPending(job, capabilityRetryPendingUntil.value, Date.now())
+
+  capabilityTestJob.value = mergedJob
   capabilityTestJobId.value = job.jobId
-  if (isCapabilityJobTerminal(job) && !(job.activeOperations && job.activeOperations > 0)) {
+  if (isCapabilityJobTerminal(mergedJob) && !(mergedJob.activeOperations && mergedJob.activeOperations > 0)) {
     stopCapabilityTestPolling()
   }
 }
@@ -747,6 +870,7 @@ const testChannelCapability = async (channelId: number) => {
   stopCapabilityTestPolling()
   capabilityTestPreviousJobId.value = capabilityTestJobId.value
   capabilityTestJobId.value = ''
+  capabilityTestJob.value = buildCapabilityPlaceholderJob(channelId, capabilityTestChannelName.value)
 
   try {
     const startResp: CapabilityTestJobStartResponse = await api.startChannelCapabilityTest(
@@ -786,6 +910,13 @@ const handleCancelCapabilityTest = async () => {
 const handleRetryCapabilityModel = async (protocol: string, model: string) => {
   if (!capabilityTestJobId.value) return
   try {
+    const pendingKey = `${protocol}:${model}`
+    capabilityRetryPendingUntil.value[pendingKey] = Date.now() + 1000
+
+    if (capabilityTestJob.value) {
+      capabilityTestJob.value = markCapabilityModelRetrying(capabilityTestJob.value, protocol, model)
+    }
+
     await api.retryCapabilityTestModel(channelStore.activeTab, capabilityTestChannelId.value, capabilityTestJobId.value, protocol, model)
     startCapabilityPolling(capabilityTestChannelId.value, capabilityTestJobId.value)
   } catch (error) {

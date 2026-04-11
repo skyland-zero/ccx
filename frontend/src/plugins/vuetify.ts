@@ -26,7 +26,7 @@ import { VBtn } from 'vuetify/components/VBtn'
 import { VBtnToggle } from 'vuetify/components/VBtnToggle'
 
 // 列表组件
-import { VList, VListItem, VListItemTitle } from 'vuetify/components/VList'
+import { VList, VListItem, VListItemTitle, VListItemSubtitle } from 'vuetify/components/VList'
 import { VMenu } from 'vuetify/components/VMenu'
 
 // 反馈组件
@@ -72,6 +72,7 @@ import {
   mdiRocketLaunch,
   mdiPauseCircle,
   mdiStopCircle,
+  mdiStopCircleOutline,
   mdiDelete,
   mdiPlaylistRemove,
   mdiArchiveOutline,
@@ -241,6 +242,7 @@ const iconMap: Record<string, string> = {
   'play-circle': mdiPlayCircle,
   'pause-circle': mdiPauseCircle,
   'stop-circle': mdiStopCircle,
+  'stop-circle-outline': mdiStopCircleOutline,
   'check-circle': mdiCheckCircle,
   'alert-circle': mdiAlertCircle,
   'alert-circle-outline': mdiAlertCircleOutline,
@@ -471,6 +473,7 @@ export default createVuetify({
     VList,
     VListItem,
     VListItemTitle,
+    VListItemSubtitle,
     VMenu,
     // 反馈
     VAlert,
