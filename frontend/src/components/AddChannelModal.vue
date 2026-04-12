@@ -226,18 +226,18 @@
                       variant="tonal"
                       color="secondary"
                       prepend-icon="mdi-lightning-bolt"
-                      @click="applyModelMappingPreset('gpt-5.2-codex')"
+                      @click="applyModelMappingPreset('gpt-5.3-codex')"
                     >
-                      gpt-5.2 / gpt-5.2-codex
+                     gpt-5.3-codex
                     </v-btn>
                     <v-btn
                       size="small"
                       variant="tonal"
                       color="secondary"
                       prepend-icon="mdi-lightning-bolt"
-                      @click="applyModelMappingPreset('gpt-5.3-codex')"
+                      @click="applyModelMappingPreset('gpt-5.2-codex')"
                     >
-                      gpt-5.3 / gpt-5.3-codex
+                      gpt-5.2 / gpt-5.2-codex
                     </v-btn>
                   </div>
 
