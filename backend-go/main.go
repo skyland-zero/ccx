@@ -162,7 +162,7 @@ func main() {
 		// Messages 多渠道调度 API
 		apiGroup.POST("/messages/channels/reorder", messages.ReorderChannels(cfgManager))
 		apiGroup.PATCH("/messages/channels/:id/status", messages.SetChannelStatus(cfgManager))
-		apiGroup.POST("/messages/channels/:id/resume", handlers.ResumeChannel(channelScheduler, false))
+		apiGroup.POST("/messages/channels/:id/resume", handlers.ResumeChannel(channelScheduler, cfgManager, false))
 		apiGroup.POST("/messages/channels/:id/promotion", messages.SetChannelPromotion(cfgManager))
 		apiGroup.GET("/messages/channels/metrics", handlers.GetChannelMetricsWithConfig(messagesMetricsManager, cfgManager, false))
 		apiGroup.GET("/messages/channels/metrics/history", handlers.GetChannelMetricsHistory(messagesMetricsManager, cfgManager, false))
@@ -194,7 +194,7 @@ func main() {
 		// Responses 多渠道调度 API
 		apiGroup.POST("/responses/channels/reorder", responses.ReorderChannels(cfgManager))
 		apiGroup.PATCH("/responses/channels/:id/status", responses.SetChannelStatus(cfgManager))
-		apiGroup.POST("/responses/channels/:id/resume", handlers.ResumeChannel(channelScheduler, true))
+		apiGroup.POST("/responses/channels/:id/resume", handlers.ResumeChannel(channelScheduler, cfgManager, true))
 		apiGroup.POST("/responses/channels/:id/promotion", handlers.SetResponsesChannelPromotion(cfgManager))
 		apiGroup.GET("/responses/channels/metrics", handlers.GetChannelMetricsWithConfig(responsesMetricsManager, cfgManager, true))
 		apiGroup.GET("/responses/channels/metrics/history", handlers.GetChannelMetricsHistory(responsesMetricsManager, cfgManager, true))
@@ -224,6 +224,7 @@ func main() {
 		// Gemini 多渠道调度 API
 		apiGroup.POST("/gemini/channels/reorder", gemini.ReorderChannels(cfgManager))
 		apiGroup.PATCH("/gemini/channels/:id/status", gemini.SetChannelStatus(cfgManager))
+		apiGroup.POST("/gemini/channels/:id/resume", handlers.ResumeChannelWithKind(channelScheduler, cfgManager, scheduler.ChannelKindGemini))
 		apiGroup.POST("/gemini/channels/:id/promotion", gemini.SetChannelPromotion(cfgManager))
 		apiGroup.GET("/gemini/channels/metrics", handlers.GetGeminiChannelMetrics(geminiMetricsManager, cfgManager))
 		apiGroup.GET("/gemini/channels/metrics/history", handlers.GetGeminiChannelMetricsHistory(geminiMetricsManager, cfgManager))
@@ -253,7 +254,7 @@ func main() {
 		// Chat 多渠道调度 API
 		apiGroup.POST("/chat/channels/reorder", chat.ReorderChannels(cfgManager))
 		apiGroup.PATCH("/chat/channels/:id/status", chat.SetChannelStatus(cfgManager))
-		apiGroup.POST("/chat/channels/:id/resume", handlers.ResumeChannelWithKind(channelScheduler, scheduler.ChannelKindChat))
+		apiGroup.POST("/chat/channels/:id/resume", handlers.ResumeChannelWithKind(channelScheduler, cfgManager, scheduler.ChannelKindChat))
 		apiGroup.POST("/chat/channels/:id/promotion", chat.SetChannelPromotion(cfgManager))
 		apiGroup.GET("/chat/channels/metrics", handlers.GetChatChannelMetrics(chatMetricsManager, cfgManager))
 		apiGroup.GET("/chat/channels/metrics/history", handlers.GetChatChannelMetricsHistory(chatMetricsManager, cfgManager))

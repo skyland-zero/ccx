@@ -157,9 +157,9 @@ func GetResponsesChannelMetrics(metricsManager *metrics.MetricsManager) gin.Hand
 	return GetChannelMetrics(metricsManager)
 }
 
-// ResumeChannel 恢复熔断渠道（重置熔断状态，保留历史统计）
+// ResumeChannel 恢复熔断渠道（重置熔断状态、恢复拉黑 Key，保留历史统计）
 // isResponses 参数指定是 Messages 渠道还是 Responses 渠道
-func ResumeChannel(sch *scheduler.ChannelScheduler, isResponses bool) gin.HandlerFunc {
+func ResumeChannel(sch *scheduler.ChannelScheduler, cfgManager *config.ConfigManager, isResponses bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		idStr := c.Param("id")
 		id, err := strconv.Atoi(idStr)
@@ -168,16 +168,30 @@ func ResumeChannel(sch *scheduler.ChannelScheduler, isResponses bool) gin.Handle
 			return
 		}
 
-		// 重置渠道所有 Key 的熔断状态（保留历史统计）
+		apiType := "Messages"
 		kind := scheduler.ChannelKindMessages
 		if isResponses {
+			apiType = "Responses"
 			kind = scheduler.ChannelKindResponses
+		}
+
+		// 先恢复被拉黑的 Key，再重置渠道所有 Key 的熔断状态，确保恢复出来的 Key 也被重置
+		restoredCount, err := cfgManager.RestoreAllKeys(apiType, id)
+		if err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
 		}
 		sch.ResetChannelMetrics(id, kind)
 
+		message := "渠道已恢复，熔断状态已重置（历史统计保留）"
+		if restoredCount > 0 {
+			message = fmt.Sprintf("渠道已恢复，熔断状态已重置，同时恢复了 %d 个被拉黑的 Key", restoredCount)
+		}
+
 		c.JSON(200, gin.H{
-			"success": true,
-			"message": "渠道已恢复，熔断状态已重置（历史统计保留）",
+			"success":      true,
+			"message":      message,
+			"restoredKeys": restoredCount,
 		})
 	}
 }
@@ -1016,16 +1030,39 @@ func GetChatChannelKeyMetricsHistory(metricsManager *metrics.MetricsManager, cfg
 	}
 }
 
-// ResumeChannelWithKind 恢复指定类型的熔断渠道
-func ResumeChannelWithKind(sch *scheduler.ChannelScheduler, kind scheduler.ChannelKind) gin.HandlerFunc {
+// ResumeChannelWithKind 恢复指定类型的熔断渠道（重置熔断状态、恢复拉黑 Key，保留历史统计）
+func ResumeChannelWithKind(sch *scheduler.ChannelScheduler, cfgManager *config.ConfigManager, kind scheduler.ChannelKind) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, err := strconv.Atoi(c.Param("id"))
 		if err != nil {
 			c.JSON(400, gin.H{"error": "Invalid channel ID"})
 			return
 		}
+
+		apiType := "Messages"
+		switch kind {
+		case scheduler.ChannelKindResponses:
+			apiType = "Responses"
+		case scheduler.ChannelKindGemini:
+			apiType = "Gemini"
+		case scheduler.ChannelKindChat:
+			apiType = "Chat"
+		}
+
+		// 先恢复被拉黑的 Key，再重置渠道所有 Key 的熔断状态，确保恢复出来的 Key 也被重置
+		restoredCount, err := cfgManager.RestoreAllKeys(apiType, id)
+		if err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
 		sch.ResetChannelMetrics(id, kind)
-		c.JSON(200, gin.H{"success": true, "message": "渠道已恢复，熔断状态已重置（历史统计保留）"})
+
+		message := "渠道已恢复，熔断状态已重置（历史统计保留）"
+		if restoredCount > 0 {
+			message = fmt.Sprintf("渠道已恢复，熔断状态已重置，同时恢复了 %d 个被拉黑的 Key", restoredCount)
+		}
+
+		c.JSON(200, gin.H{"success": true, "message": message, "restoredKeys": restoredCount})
 	}
 }
 

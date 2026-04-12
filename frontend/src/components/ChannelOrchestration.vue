@@ -542,7 +542,8 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import draggable from 'vuedraggable'
-import { api, type Channel, type ChannelMetrics, type ChannelStatus, type TimeWindowStats, type ChannelRecentActivity, expandSparseSegments } from '../services/api'
+import { api, type Channel, type ChannelMetrics, type ChannelStatus, type TimeWindowStats, type ChannelRecentActivity, type SchedulerStatsResponse, expandSparseSegments } from '../services/api'
+import { getChannelTypeApi } from '../utils/channelTypeApi'
 import { useI18n } from '../i18n'
 import ChannelStatusBadge from './ChannelStatusBadge.vue'
 // Lazy-load chart components to reduce initial JS bundle size
@@ -555,15 +556,7 @@ const props = defineProps<{
   channelType: 'messages' | 'chat' | 'responses' | 'gemini'
   // Optional: metrics and stats passed from the parent component (when using the dashboard API)
   dashboardMetrics?: ChannelMetrics[]
-  dashboardStats?: {
-    multiChannelMode: boolean
-    activeChannelCount: number
-    traceAffinityCount: number
-    traceAffinityTTL: string
-    failureThreshold: number
-    windowSize: number
-    circuitRecoveryTime?: string
-  }
+  dashboardStats?: SchedulerStatsResponse
   // Optional: realtime activity data passed from the parent component
   dashboardRecentActivity?: ChannelRecentActivity[]
 }>()
@@ -578,6 +571,7 @@ const emit = defineEmits<{
   (_e: 'success', _message: string): void
 }>()
 const { t } = useI18n()
+const getCurrentChannelTypeApi = () => getChannelTypeApi(api, props.channelType)
 
 // State
 const metrics = ref<ChannelMetrics[]>([])
@@ -597,14 +591,7 @@ const matchesSearch = (channel: Channel) => {
   )
 }
 
-const schedulerStats = ref<{
-  multiChannelMode: boolean
-  activeChannelCount: number
-  traceAffinityCount: number
-  traceAffinityTTL: string
-  failureThreshold: number
-  windowSize: number
-} | null>(null)
+const schedulerStats = ref<SchedulerStatsResponse | null>(null)
 const isLoadingMetrics = ref(false)
 const isSavingOrder = ref(false)
 
@@ -1238,15 +1225,10 @@ const hasActivityData = (channelIndex: number): boolean => {
 const refreshMetrics = async () => {
   isLoadingMetrics.value = true
   try {
+    const channelTypeApi = getCurrentChannelTypeApi()
     const [metricsData, statsData] = await Promise.all([
-      props.channelType === 'chat'
-        ? api.getChatChannelMetrics()
-        : props.channelType === 'gemini'
-          ? api.getGeminiChannelMetrics()
-          : props.channelType === 'responses'
-            ? api.getResponsesChannelMetrics()
-            : api.getChannelMetrics(),
-      api.getSchedulerStats(props.channelType)
+      channelTypeApi.getMetrics(),
+      channelTypeApi.getSchedulerStats()
     ])
     metrics.value = metricsData
     schedulerStats.value = statsData
@@ -1268,15 +1250,7 @@ const saveOrder = async () => {
   isSavingOrder.value = true
   try {
     const order = activeChannels.value.map(ch => ch.index)
-    if (props.channelType === 'chat') {
-      await api.reorderChatChannels(order)
-    } else if (props.channelType === 'gemini') {
-      await api.reorderGeminiChannels(order)
-    } else if (props.channelType === 'responses') {
-      await api.reorderResponsesChannels(order)
-    } else {
-      await api.reorderChannels(order)
-    }
+    await getCurrentChannelTypeApi().reorder(order)
     // Do not call emit('refresh') to avoid list flicker caused by parent refresh
   } catch (error) {
     console.error('Failed to save order:', error)
@@ -1311,19 +1285,22 @@ const moveChannelToBottom = async (channelIndex: number) => {
   await saveOrder()
 }
 
+const setChannelStatusInternal = async (
+  channelId: number,
+  status: ChannelStatus,
+  options: { refresh?: boolean } = {}
+) => {
+  const { refresh = true } = options
+  await getCurrentChannelTypeApi().setStatus(channelId, status)
+  if (refresh) {
+    emit('refresh')
+  }
+}
+
 // Set channel status
 const setChannelStatus = async (channelId: number, status: ChannelStatus) => {
   try {
-    if (props.channelType === 'chat') {
-      await api.setChatChannelStatus(channelId, status)
-    } else if (props.channelType === 'gemini') {
-      await api.setGeminiChannelStatus(channelId, status)
-    } else if (props.channelType === 'responses') {
-      await api.setResponsesChannelStatus(channelId, status)
-    } else {
-      await api.setChannelStatus(channelId, status)
-    }
-    emit('refresh')
+    await setChannelStatusInternal(channelId, status)
   } catch (error) {
     console.error('Failed to set channel status:', error)
     const errorMessage = error instanceof Error ? error.message : t('addChannel.unknownError')
@@ -1336,22 +1313,40 @@ const enableChannel = async (channelId: number) => {
   await setChannelStatus(channelId, 'active')
 }
 
+const resumeChannelInternal = async (
+  channelId: number,
+  options: { refresh?: boolean, notify?: boolean } = {}
+) => {
+  const { refresh = true, notify = true } = options
+
+  const result = await getCurrentChannelTypeApi().resume(channelId)
+  await setChannelStatusInternal(channelId, 'active', { refresh })
+
+  if (notify) {
+    if ((result?.restoredKeys || 0) > 0) {
+      emit('success', t('orchestration.resumeSuccessWithKeys', { count: result?.restoredKeys || 0 }))
+    } else {
+      emit('success', t('orchestration.resumeSuccess'))
+    }
+  }
+
+  return result
+}
+
 // Resume channel (reset metrics and set it to active)
 const resumeChannel = async (channelId: number) => {
   try {
-    if (props.channelType === 'chat') {
-      await api.resumeChatChannel(channelId)
-    } else if (props.channelType === 'gemini') {
-      await api.resumeGeminiChannel(channelId)
-    } else if (props.channelType === 'responses') {
-      await api.resumeResponsesChannel(channelId)
-    } else {
-      await api.resumeChannel(channelId)
-    }
-    await setChannelStatus(channelId, 'active')
+    await resumeChannelInternal(channelId)
   } catch (error) {
     console.error('Failed to resume channel:', error)
+    const errorMessage = error instanceof Error ? error.message : t('addChannel.unknownError')
+    emit('error', t('toast.operationFailed', { message: errorMessage }))
   }
+}
+
+// Set channel promotion via the correct API for the current channel type
+const setChannelPromotionInternal = async (channelId: number, durationSeconds: number) => {
+  await getCurrentChannelTypeApi().promote(channelId, durationSeconds)
 }
 
 // Set the channel promotion period (boost priority)
@@ -1361,31 +1356,15 @@ const setPromotion = async (channel: Channel) => {
 
     // If the channel is in a tripped state, resume it first
     if (channel.status === 'suspended') {
-      if (props.channelType === 'chat') {
-        await api.resumeChatChannel(channel.index)
-      } else if (props.channelType === 'gemini') {
-        await api.resumeGeminiChannel(channel.index)
-      } else if (props.channelType === 'responses') {
-        await api.resumeResponsesChannel(channel.index)
-      } else {
-        await api.resumeChannel(channel.index)
-      }
-      await setChannelStatus(channel.index, 'active')
+      await resumeChannelInternal(channel.index, { refresh: false, notify: false })
     }
 
-    if (props.channelType === 'chat') {
-      await api.setChatChannelPromotion(channel.index, PROMOTION_DURATION)
-    } else if (props.channelType === 'gemini') {
-      await api.setGeminiChannelPromotion(channel.index, PROMOTION_DURATION)
-    } else if (props.channelType === 'responses') {
-      await api.setResponsesChannelPromotion(channel.index, PROMOTION_DURATION)
-    } else {
-      await api.setChannelPromotion(channel.index, PROMOTION_DURATION)
-    }
+    await setChannelPromotionInternal(channel.index, PROMOTION_DURATION)
     emit('refresh')
     // Notify the user
     emit('success', t('orchestration.promotionSuccess', { name: channel.name }))
   } catch (error) {
+    emit('refresh')
     console.error('Failed to set promotion:', error)
     const errorMessage = error instanceof Error ? error.message : t('addChannel.unknownError')
     emit('error', t('toast.operationFailed', { message: errorMessage }))

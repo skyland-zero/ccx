@@ -138,6 +138,8 @@ export type MessageKey =
   | 'orchestration.copied'
   | 'orchestration.copyFailed'
   | 'orchestration.promotionSuccess'
+  | 'orchestration.resumeSuccess'
+  | 'orchestration.resumeSuccessWithKeys'
   | 'orchestration.deleteActiveGuard'
   | 'addChannel.editTitle'
   | 'addChannel.createTitle'
@@ -498,6 +500,8 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'orchestration.copied': 'Copied',
     'orchestration.copyFailed': 'Failed to copy channel config',
     'orchestration.promotionSuccess': 'Channel {name} is now top priority and will be preferred for the next 5 minutes',
+    'orchestration.resumeSuccess': 'Channel resumed and metrics reset',
+    'orchestration.resumeSuccessWithKeys': 'Channel resumed, metrics reset, and {count} blacklisted key(s) restored',
     'orchestration.deleteActiveGuard': 'Cannot delete: keep at least one active channel in the failover sequence',
     'addChannel.editTitle': 'Edit channel',
     'addChannel.createTitle': 'Add new channel',
@@ -857,6 +861,8 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'orchestration.copied': 'Tersalin',
     'orchestration.copyFailed': 'Gagal menyalin konfigurasi channel',
     'orchestration.promotionSuccess': 'Channel {name} menjadi prioritas tertinggi dan akan diprioritaskan selama 5 menit ke depan',
+    'orchestration.resumeSuccess': 'Channel dilanjutkan dan metrik direset',
+    'orchestration.resumeSuccessWithKeys': 'Channel dilanjutkan, metrik direset, dan {count} key blacklist dipulihkan',
     'orchestration.deleteActiveGuard': 'Tidak bisa dihapus: urutan failover harus menyisakan minimal satu channel aktif',
     'addChannel.editTitle': 'Edit channel',
     'addChannel.createTitle': 'Tambah channel baru',
@@ -1216,6 +1222,8 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'orchestration.copied': '已复制',
     'orchestration.copyFailed': '复制渠道配置失败',
     'orchestration.promotionSuccess': '渠道 {name} 已设为最高优先级，5分钟内优先使用',
+    'orchestration.resumeSuccess': '渠道已恢复，熔断指标已重置',
+    'orchestration.resumeSuccessWithKeys': '渠道已恢复，熔断指标已重置，并恢复了 {count} 个拉黑密钥',
     'orchestration.deleteActiveGuard': '无法删除：故障转移序列中至少需要保留一个活跃渠道',
     'addChannel.editTitle': '编辑渠道',
     'addChannel.createTitle': '添加新渠道',

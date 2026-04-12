@@ -135,16 +135,18 @@ export interface ChannelsResponse {
 export interface ChannelDashboardResponse {
   channels: Channel[]
   metrics: ChannelMetrics[]
-  stats: {
-    multiChannelMode: boolean
-    activeChannelCount: number
-    traceAffinityCount: number
-    traceAffinityTTL: string
-    failureThreshold: number
-    windowSize: number
-    circuitRecoveryTime: string
-  }
+  stats: SchedulerStatsResponse
   recentActivity?: ChannelRecentActivity[]  // 最近 15 分钟分段活跃度
+}
+
+export interface SchedulerStatsResponse {
+  multiChannelMode: boolean
+  activeChannelCount: number
+  traceAffinityCount: number
+  traceAffinityTTL: string
+  failureThreshold: number
+  windowSize: number
+  circuitRecoveryTime?: string
 }
 
 export interface PingResult {
@@ -152,6 +154,12 @@ export interface PingResult {
   latency: number
   status: string
   error?: string
+}
+
+export interface ResumeChannelResponse {
+  success: boolean
+  message: string
+  restoredKeys?: number
 }
 
 // ============== 能力测试类型 ==============
@@ -801,8 +809,8 @@ export class ApiService {
   }
 
   // 恢复熔断渠道（重置错误计数）
-  async resumeChannel(channelId: number): Promise<void> {
-    await this.request(`/messages/channels/${channelId}/resume`, {
+  async resumeChannel(channelId: number): Promise<ResumeChannelResponse> {
+    return this.request(`/messages/channels/${channelId}/resume`, {
       method: 'POST'
     })
   }
@@ -813,14 +821,7 @@ export class ApiService {
   }
 
   // 获取调度器统计信息
-  async getSchedulerStats(type?: 'messages' | 'responses' | 'gemini' | 'chat'): Promise<{
-    multiChannelMode: boolean
-    activeChannelCount: number
-    traceAffinityCount: number
-    traceAffinityTTL: string
-    failureThreshold: number
-    windowSize: number
-  }> {
+  async getSchedulerStats(type?: 'messages' | 'responses' | 'gemini' | 'chat'): Promise<SchedulerStatsResponse> {
     // Gemini 暂无调度器统计，返回默认值
     if (type === 'gemini') {
       return {
@@ -861,8 +862,8 @@ export class ApiService {
   }
 
   // 恢复 Responses 熔断渠道
-  async resumeResponsesChannel(channelId: number): Promise<void> {
-    await this.request(`/responses/channels/${channelId}/resume`, {
+  async resumeResponsesChannel(channelId: number): Promise<ResumeChannelResponse> {
+    return this.request(`/responses/channels/${channelId}/resume`, {
       method: 'POST'
     })
   }
@@ -1041,8 +1042,8 @@ export class ApiService {
     })
   }
 
-  async resumeChatChannel(channelId: number): Promise<void> {
-    await this.request(`/chat/channels/${channelId}/resume`, {
+  async resumeChatChannel(channelId: number): Promise<ResumeChannelResponse> {
+    return this.request(`/chat/channels/${channelId}/resume`, {
       method: 'POST'
     })
   }
@@ -1163,9 +1164,11 @@ export class ApiService {
     })
   }
 
-  // Gemini 恢复渠道（降级实现：后端未实现 resume 端点，直接设置状态为 active）
-  async resumeGeminiChannel(channelId: number): Promise<void> {
-    await this.setGeminiChannelStatus(channelId, 'active')
+  // Gemini 恢复渠道（重置熔断并恢复被拉黑的 Key）
+  async resumeGeminiChannel(channelId: number): Promise<ResumeChannelResponse> {
+    return this.request(`/gemini/channels/${channelId}/resume`, {
+      method: 'POST'
+    })
   }
 
   async getGeminiChannelMetrics(): Promise<ChannelMetrics[]> {

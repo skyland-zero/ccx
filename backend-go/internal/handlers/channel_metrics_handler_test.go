@@ -1,10 +1,20 @@
 package handlers
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/BenedictKing/ccx/internal/config"
 	"github.com/BenedictKing/ccx/internal/metrics"
+	"github.com/BenedictKing/ccx/internal/scheduler"
+	"github.com/BenedictKing/ccx/internal/session"
+	"github.com/BenedictKing/ccx/internal/warmup"
+	"github.com/gin-gonic/gin"
 )
 
 type fakePersistenceStore struct {
@@ -51,5 +61,233 @@ func TestFilterBucketsByURLsIsolatesChannelsByMetricsKey(t *testing.T) {
 	}
 	if len(channelBBuckets) != 1 || channelBBuckets[0].TotalRequests != 2 {
 		t.Fatalf("channel B buckets = %+v, want only keyB data", channelBBuckets)
+	}
+}
+
+func TestResumeChannel_RestoresBlacklistedKeys(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name        string
+		path        string
+		register    func(r *gin.Engine, sch *scheduler.ChannelScheduler, cfgManager *config.ConfigManager)
+		buildConfig func() config.Config
+		checkResult func(t *testing.T, got config.Config)
+	}{
+		{
+			name: "messages",
+			path: "/messages/channels/0/resume",
+			register: func(r *gin.Engine, sch *scheduler.ChannelScheduler, cfgManager *config.ConfigManager) {
+				r.POST("/messages/channels/:id/resume", ResumeChannel(sch, cfgManager, false))
+			},
+			buildConfig: func() config.Config {
+				return config.Config{Upstream: []config.UpstreamConfig{{
+					Name:        "msg-test",
+					ServiceType: "claude",
+					BaseURL:     "https://example.com",
+					Status:      "suspended",
+					APIKeys:     []string{"sk-active"},
+					DisabledAPIKeys: []config.DisabledKeyInfo{{
+						Key:        "sk-disabled",
+						Reason:     "insufficient_balance",
+						Message:    "no balance",
+						DisabledAt: "2026-04-11T00:00:00Z",
+					}},
+				}}}
+			},
+			checkResult: func(t *testing.T, got config.Config) {
+				t.Helper()
+				if len(got.Upstream[0].DisabledAPIKeys) != 0 {
+					t.Fatalf("disabledApiKeys=%v, want empty", got.Upstream[0].DisabledAPIKeys)
+				}
+				foundActive := false
+				for _, key := range got.Upstream[0].APIKeys {
+					if key == "sk-disabled" {
+						foundActive = true
+						break
+					}
+				}
+				if !foundActive {
+					t.Fatalf("restored key not found in apiKeys: %v", got.Upstream[0].APIKeys)
+				}
+			},
+		},
+		{
+			name: "responses",
+			path: "/responses/channels/0/resume",
+			register: func(r *gin.Engine, sch *scheduler.ChannelScheduler, cfgManager *config.ConfigManager) {
+				r.POST("/responses/channels/:id/resume", ResumeChannel(sch, cfgManager, true))
+			},
+			buildConfig: func() config.Config {
+				return config.Config{ResponsesUpstream: []config.UpstreamConfig{{
+					Name:        "resp-test",
+					ServiceType: "responses",
+					BaseURL:     "https://example.com",
+					Status:      "suspended",
+					APIKeys:     []string{"sk-active"},
+					DisabledAPIKeys: []config.DisabledKeyInfo{{
+						Key:        "sk-disabled",
+						Reason:     "insufficient_balance",
+						Message:    "no balance",
+						DisabledAt: "2026-04-11T00:00:00Z",
+					}},
+				}}}
+			},
+			checkResult: func(t *testing.T, got config.Config) {
+				t.Helper()
+				if len(got.ResponsesUpstream[0].DisabledAPIKeys) != 0 {
+					t.Fatalf("disabledApiKeys=%v, want empty", got.ResponsesUpstream[0].DisabledAPIKeys)
+				}
+				foundActive := false
+				for _, key := range got.ResponsesUpstream[0].APIKeys {
+					if key == "sk-disabled" {
+						foundActive = true
+						break
+					}
+				}
+				if !foundActive {
+					t.Fatalf("restored key not found in apiKeys: %v", got.ResponsesUpstream[0].APIKeys)
+				}
+			},
+		},
+		{
+			name: "chat",
+			path: "/chat/channels/0/resume",
+			register: func(r *gin.Engine, sch *scheduler.ChannelScheduler, cfgManager *config.ConfigManager) {
+				r.POST("/chat/channels/:id/resume", ResumeChannelWithKind(sch, cfgManager, scheduler.ChannelKindChat))
+			},
+			buildConfig: func() config.Config {
+				return config.Config{ChatUpstream: []config.UpstreamConfig{{
+					Name:        "chat-test",
+					ServiceType: "openai",
+					BaseURL:     "https://example.com",
+					Status:      "suspended",
+					APIKeys:     []string{"sk-active"},
+					DisabledAPIKeys: []config.DisabledKeyInfo{{
+						Key:        "sk-disabled",
+						Reason:     "insufficient_balance",
+						Message:    "no balance",
+						DisabledAt: "2026-04-11T00:00:00Z",
+					}},
+				}}}
+			},
+			checkResult: func(t *testing.T, got config.Config) {
+				t.Helper()
+				if len(got.ChatUpstream[0].DisabledAPIKeys) != 0 {
+					t.Fatalf("disabledApiKeys=%v, want empty", got.ChatUpstream[0].DisabledAPIKeys)
+				}
+				foundActive := false
+				for _, key := range got.ChatUpstream[0].APIKeys {
+					if key == "sk-disabled" {
+						foundActive = true
+						break
+					}
+				}
+				if !foundActive {
+					t.Fatalf("restored key not found in apiKeys: %v", got.ChatUpstream[0].APIKeys)
+				}
+			},
+		},
+		{
+			name: "gemini",
+			path: "/gemini/channels/0/resume",
+			register: func(r *gin.Engine, sch *scheduler.ChannelScheduler, cfgManager *config.ConfigManager) {
+				r.POST("/gemini/channels/:id/resume", ResumeChannelWithKind(sch, cfgManager, scheduler.ChannelKindGemini))
+			},
+			buildConfig: func() config.Config {
+				return config.Config{GeminiUpstream: []config.UpstreamConfig{{
+					Name:        "gemini-test",
+					ServiceType: "gemini",
+					BaseURL:     "https://example.com",
+					Status:      "suspended",
+					APIKeys:     []string{"sk-active"},
+					DisabledAPIKeys: []config.DisabledKeyInfo{{
+						Key:        "sk-disabled",
+						Reason:     "insufficient_balance",
+						Message:    "no balance",
+						DisabledAt: "2026-04-11T00:00:00Z",
+					}},
+				}}}
+			},
+			checkResult: func(t *testing.T, got config.Config) {
+				t.Helper()
+				if len(got.GeminiUpstream[0].DisabledAPIKeys) != 0 {
+					t.Fatalf("disabledApiKeys=%v, want empty", got.GeminiUpstream[0].DisabledAPIKeys)
+				}
+				foundActive := false
+				for _, key := range got.GeminiUpstream[0].APIKeys {
+					if key == "sk-disabled" {
+						foundActive = true
+						break
+					}
+				}
+				if !foundActive {
+					t.Fatalf("restored key not found in apiKeys: %v", got.GeminiUpstream[0].APIKeys)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := tt.buildConfig()
+
+			configFile := filepath.Join(t.TempDir(), "config.json")
+			data, err := json.MarshalIndent(cfg, "", "  ")
+			if err != nil {
+				t.Fatalf("marshal config: %v", err)
+			}
+			if err := os.WriteFile(configFile, data, 0644); err != nil {
+				t.Fatalf("write config: %v", err)
+			}
+
+			cfgManager, err := config.NewConfigManager(configFile)
+			if err != nil {
+				t.Fatalf("new config manager: %v", err)
+			}
+			defer cfgManager.Close()
+
+			messagesMetrics := metrics.NewMetricsManager()
+			responsesMetrics := metrics.NewMetricsManager()
+			geminiMetrics := metrics.NewMetricsManager()
+			chatMetrics := metrics.NewMetricsManager()
+			defer messagesMetrics.Stop()
+			defer responsesMetrics.Stop()
+			defer geminiMetrics.Stop()
+			defer chatMetrics.Stop()
+
+			traceAffinity := session.NewTraceAffinityManager()
+			defer traceAffinity.Stop()
+			urlManager := warmup.NewURLManager(30*time.Second, 3)
+			sch := scheduler.NewChannelScheduler(cfgManager, messagesMetrics, responsesMetrics, geminiMetrics, chatMetrics, traceAffinity, urlManager)
+
+			r := gin.New()
+			tt.register(r, sch, cfgManager)
+
+			req := httptest.NewRequest(http.MethodPost, tt.path, nil)
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+
+			if w.Code != http.StatusOK {
+				t.Fatalf("status=%d, want=200, body=%s", w.Code, w.Body.String())
+			}
+
+			var resp struct {
+				Success      bool   `json:"success"`
+				Message      string `json:"message"`
+				RestoredKeys int    `json:"restoredKeys"`
+			}
+			if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+				t.Fatalf("unmarshal response: %v", err)
+			}
+			if !resp.Success {
+				t.Fatalf("success=%v, want=true", resp.Success)
+			}
+			if resp.RestoredKeys != 1 {
+				t.Fatalf("restoredKeys=%d, want=1", resp.RestoredKeys)
+			}
+
+			tt.checkResult(t, cfgManager.GetConfig())
+		})
 	}
 }
