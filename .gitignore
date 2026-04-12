@@ -238,3 +238,5 @@ docs/claude-code-investigation-*.md
 !backend-go/frontend/
 !backend-go/frontend/dist/
 !backend-go/frontend/dist/.keep
+
+.planning/
