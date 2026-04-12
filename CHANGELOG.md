@@ -3,6 +3,11 @@
 ### Changed
 
 - **抽取能力测试模型结果子组件** - 将 `CapabilityTestDialog` 中移动端与桌面端重复的模型 tooltip、badge、空状态与 retry 渲染提取为独立 `CapabilityModelResults` 组件，统一模型区交互与样式来源，降低后续状态改动的分叉风险
+- **恢复渠道时同步恢复被拉黑 Key** - `resume` 系列管理接口在重置渠道熔断状态时，同步恢复对应渠道 `DisabledAPIKeys` 中的全部 Key，并返回 `restoredKeys` 数量，避免仅清除熔断却遗漏渠道级 Key 恢复
+
+### Fixed
+
+- **对齐能力测试与代理空流判定** - 能力测试改为复用 provider 规范化后的流事件和代理侧 `PreflightStreamEvents` 预检逻辑，要求上游必须返回实际文本或语义内容才判定成功，并将流读取超时统一为 30 秒，避免空 SSE 流被误判为模型可用
 
 ## [v2.6.51] - 2026-04-10
 
