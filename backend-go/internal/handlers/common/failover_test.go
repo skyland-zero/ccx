@@ -516,6 +516,36 @@ func TestShouldBlacklistKey_BalanceMessages(t *testing.T) {
 		want       BlacklistResult
 	}{
 		{
+			name:       "403 top level code insufficient balance should blacklist",
+			statusCode: 403,
+			body:       `{"code":"INSUFFICIENT_BALANCE","message":"Insufficient account balance"}`,
+			want: BlacklistResult{
+				ShouldBlacklist: true,
+				Reason:          "insufficient_balance",
+				Message:         "Insufficient account balance",
+			},
+		},
+		{
+			name:       "403 nested error code insufficient balance should blacklist",
+			statusCode: 403,
+			body:       `{"error":{"code":"INSUFFICIENT_BALANCE","message":"Insufficient account balance"}}`,
+			want: BlacklistResult{
+				ShouldBlacklist: true,
+				Reason:          "insufficient_balance",
+				Message:         "Insufficient account balance",
+			},
+		},
+		{
+			name:       "403 top level insufficient account balance message should blacklist",
+			statusCode: 403,
+			body:       `{"message":"Insufficient account balance"}`,
+			want: BlacklistResult{
+				ShouldBlacklist: true,
+				Reason:          "insufficient_balance",
+				Message:         "Insufficient account balance",
+			},
+		},
+		{
 			name:       "403 prededuct quota message should blacklist as insufficient balance",
 			statusCode: 403,
 			body:       `{"error":{"type":"new_api_error","message":"预扣费额度失败, 用户剩余额度: ＄0.411202, 需要预扣费额度: ＄0.553368"},"type":"error"}`,

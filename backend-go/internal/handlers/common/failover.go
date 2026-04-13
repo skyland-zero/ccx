@@ -613,6 +613,7 @@ func isInsufficientBalanceMessage(msg string) bool {
 	msgLower := strings.ToLower(msg)
 	keywords := []string{
 		"insufficient balance",
+		"insufficient account balance",
 		"insufficient quota",
 		"balance too low",
 		"quota exhausted",
@@ -629,18 +630,21 @@ func isInsufficientBalanceMessage(msg string) bool {
 	return false
 }
 
-// extractErrorInfo 从 JSON 响应体中提取 error.type 和 error.message
-// 支持嵌套格式 {"error":{"type":"...","message":"..."}} 和扁平格式 {"type":"...","message":"..."}
+// extractErrorInfo 从 JSON 响应体中提取错误类型和错误消息
+// 支持嵌套格式 {"error":{"type":"...","code":"...","message":"..."}}
+// 和扁平格式 {"type":"...","code":"...","message":"..."}
 func extractErrorInfo(bodyBytes []byte) (errType string, errMessage string) {
 	var resp map[string]interface{}
 	if err := json.Unmarshal(bodyBytes, &resp); err != nil {
 		return "", ""
 	}
 
-	// 优先尝试嵌套格式: {"error": {"type": "...", "message": "..."}}
+	// 优先尝试嵌套格式: {"error": {"type": "...", "code": "...", "message": "..."}}
 	if errObj, ok := resp["error"].(map[string]interface{}); ok {
 		if t, ok := errObj["type"].(string); ok {
 			errType = t
+		} else if c, ok := errObj["code"].(string); ok {
+			errType = c
 		}
 		if m, ok := errObj["message"].(string); ok {
 			errMessage = m
@@ -648,9 +652,11 @@ func extractErrorInfo(bodyBytes []byte) (errType string, errMessage string) {
 		return
 	}
 
-	// fallback: 扁平格式 {"type": "...", "message": "..."} (Anthropic 部分接口)
+	// fallback: 扁平格式 {"type": "...", "code": "...", "message": "..."}
 	if t, ok := resp["type"].(string); ok {
 		errType = t
+	} else if c, ok := resp["code"].(string); ok {
+		errType = c
 	}
 	if m, ok := resp["message"].(string); ok {
 		errMessage = m

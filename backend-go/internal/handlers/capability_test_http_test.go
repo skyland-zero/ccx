@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -206,5 +207,60 @@ func TestRetryCapabilityTestModel_HTTP_RejectsNonRetryableModel(t *testing.T) {
 
 	if w.Code != http.StatusConflict {
 		t.Fatalf("status=%d, want=%d, body=%s", w.Code, http.StatusConflict, w.Body.String())
+	}
+}
+
+func TestExecuteModelTest_RespectsAutoBlacklistBalance(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	job := newCapabilityTestJob(0, "channel", "messages", "claude", []string{"messages"}, 10*time.Second)
+	capabilityJobs.create(job)
+
+	tmpDir := t.TempDir()
+	configFile := filepath.Join(tmpDir, "config.json")
+	initialConfig := `{
+		"upstream": [{
+			"name": "channel",
+			"baseUrl": "REPLACE_ME",
+			"apiKeys": ["test-key"],
+			"serviceType": "claude",
+			"autoBlacklistBalance": false
+		}]
+	}`
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"code":"INSUFFICIENT_BALANCE","message":"Insufficient account balance"}`))
+	}))
+	defer server.Close()
+
+	initialConfig = strings.Replace(initialConfig, "REPLACE_ME", server.URL, 1)
+	if err := os.WriteFile(configFile, []byte(initialConfig), 0644); err != nil {
+		t.Fatalf("write config failed: %v", err)
+	}
+
+	cfgManager, err := config.NewConfigManager(configFile)
+	if err != nil {
+		t.Fatalf("create config manager failed: %v", err)
+	}
+	defer cfgManager.Close()
+
+	cfg := cfgManager.GetConfig()
+	if len(cfg.Upstream) != 1 {
+		t.Fatalf("upstream count=%d, want 1", len(cfg.Upstream))
+	}
+
+	result := executeModelTest(context.Background(), &cfg.Upstream[0], "messages", "claude-test", 5*time.Second, job.JobID, cfgManager, 0, "messages", "test-key")
+	if result.Success {
+		t.Fatalf("result.Success=true, want false")
+	}
+
+	updated := cfgManager.GetConfig()
+	if len(updated.Upstream[0].DisabledAPIKeys) != 0 {
+		t.Fatalf("DisabledAPIKeys=%+v, want empty when autoBlacklistBalance=false", updated.Upstream[0].DisabledAPIKeys)
+	}
+	if len(updated.Upstream[0].APIKeys) != 1 || updated.Upstream[0].APIKeys[0] != "test-key" {
+		t.Fatalf("APIKeys=%v, want original key preserved", updated.Upstream[0].APIKeys)
 	}
 }
