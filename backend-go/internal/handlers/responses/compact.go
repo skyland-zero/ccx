@@ -3,17 +3,21 @@ package responses
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"log"
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/BenedictKing/ccx/internal/config"
 	"github.com/BenedictKing/ccx/internal/handlers/common"
+	"github.com/BenedictKing/ccx/internal/metrics"
 	"github.com/BenedictKing/ccx/internal/middleware"
 	"github.com/BenedictKing/ccx/internal/scheduler"
 	"github.com/BenedictKing/ccx/internal/session"
+	"github.com/BenedictKing/ccx/internal/types"
 	"github.com/BenedictKing/ccx/internal/utils"
 	"github.com/gin-gonic/gin"
 )
@@ -23,6 +27,23 @@ type compactError struct {
 	status         int
 	body           []byte
 	shouldFailover bool
+	err            error
+}
+
+func (e *compactError) errorInfo() string {
+	if e == nil {
+		return ""
+	}
+	if len(e.body) > 0 {
+		return strings.TrimSpace(string(e.body))
+	}
+	if e.err != nil {
+		return e.err.Error()
+	}
+	if e.status != 0 {
+		return http.StatusText(e.status)
+	}
+	return ""
 }
 
 // CompactHandler Responses API compact 端点处理器
@@ -56,7 +77,7 @@ func CompactHandler(
 		if isMultiChannel {
 			handleMultiChannelCompact(c, envCfg, cfgManager, channelScheduler, bodyBytes, userID)
 		} else {
-			handleSingleChannelCompact(c, envCfg, cfgManager, bodyBytes)
+			handleSingleChannelCompact(c, envCfg, cfgManager, channelScheduler, bodyBytes)
 		}
 	})
 }
@@ -66,9 +87,10 @@ func handleSingleChannelCompact(
 	c *gin.Context,
 	envCfg *config.EnvConfig,
 	cfgManager *config.ConfigManager,
+	channelScheduler *scheduler.ChannelScheduler,
 	bodyBytes []byte,
 ) {
-	upstream, err := cfgManager.GetCurrentResponsesUpstream()
+	upstream, channelIndex, err := cfgManager.GetCurrentResponsesUpstreamWithIndex()
 	if err != nil {
 		c.JSON(503, gin.H{"error": "未配置任何 Responses 渠道"})
 		return
@@ -78,6 +100,9 @@ func handleSingleChannelCompact(
 		c.JSON(503, gin.H{"error": "当前渠道未配置 API 密钥"})
 		return
 	}
+
+	requestModel := extractCompactRequestModel(bodyBytes)
+	channelLogStore := channelScheduler.GetChannelLogStore(scheduler.ChannelKindResponses)
 
 	// Key 轮转：尝试所有可用 key
 	failedKeys := make(map[string]bool)
@@ -89,8 +114,11 @@ func handleSingleChannelCompact(
 			break
 		}
 
+		attemptStart := time.Now()
 		success, compactErr := tryCompactWithKey(c, upstream, apiKey, bodyBytes, envCfg, cfgManager)
 		if success {
+			common.RecordChannelLog(channelLogStore, channelIndex, requestModel, "", http.StatusOK, time.Since(attemptStart).Milliseconds(), true, apiKey, upstream.BaseURL, "", "Responses", attempt > 0)
+			channelScheduler.RecordSuccessWithUsage(upstream.BaseURL, apiKey, nil, scheduler.ChannelKindResponses)
 			return
 		}
 
@@ -99,9 +127,12 @@ func handleSingleChannelCompact(
 			if compactErr.shouldFailover {
 				failedKeys[apiKey] = true
 				cfgManager.MarkKeyAsFailed(apiKey, "Responses")
+				channelScheduler.RecordFailure(upstream.BaseURL, apiKey, scheduler.ChannelKindResponses)
+				common.RecordChannelLog(channelLogStore, channelIndex, requestModel, "", compactErr.status, time.Since(attemptStart).Milliseconds(), false, apiKey, upstream.BaseURL, compactErr.errorInfo(), "Responses", attempt > 0)
 				continue
 			}
 			// 非故障转移错误，直接返回
+			common.RecordChannelLog(channelLogStore, channelIndex, requestModel, "", compactErr.status, time.Since(attemptStart).Milliseconds(), false, apiKey, upstream.BaseURL, compactErr.errorInfo(), "Responses", attempt > 0)
 			c.Data(compactErr.status, "application/json", compactErr.body)
 			return
 		}
@@ -138,6 +169,8 @@ func handleMultiChannelCompact(
 	failedChannels := make(map[int]bool)
 	maxAttempts := channelScheduler.GetActiveChannelCount(scheduler.ChannelKindResponses)
 	var lastErr *compactError
+	requestModel := extractCompactRequestModel(bodyBytes)
+	channelLogStore := channelScheduler.GetChannelLogStore(scheduler.ChannelKindResponses)
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		selection, err := channelScheduler.SelectChannel(c.Request.Context(), userID, failedChannels, scheduler.ChannelKindResponses, "", c.Param("routePrefix"))
@@ -149,13 +182,10 @@ func handleMultiChannelCompact(
 		channelIndex := selection.ChannelIndex
 
 		// 每个渠道尝试所有 key
-		success, successKey, compactErr := tryCompactChannelWithAllKeys(c, upstream, cfgManager, channelScheduler, bodyBytes, envCfg)
-
+		success, successKey, compactErr := tryCompactChannelWithAllKeys(c, upstream, channelIndex, requestModel, cfgManager, channelScheduler, channelLogStore, bodyBytes, envCfg)
 		if success {
-			// compact 不产生 usage，但仍需记录成功以更新熔断器/权重
+			// 只有真正成功的请求才设置 Trace 亲和
 			if successKey != "" {
-				channelScheduler.RecordSuccessWithUsage(upstream.BaseURL, successKey, nil, scheduler.ChannelKindResponses)
-				// 只有真正成功的请求才设置 Trace 亲和
 				channelScheduler.SetTraceAffinity(userID, channelIndex, scheduler.ChannelKindResponses)
 			}
 			return
@@ -190,8 +220,11 @@ func handleMultiChannelCompact(
 func tryCompactChannelWithAllKeys(
 	c *gin.Context,
 	upstream *config.UpstreamConfig,
+	channelIndex int,
+	requestModel string,
 	cfgManager *config.ConfigManager,
 	channelScheduler *scheduler.ChannelScheduler,
+	channelLogStore *metrics.ChannelLogStore,
 	bodyBytes []byte,
 	envCfg *config.EnvConfig,
 ) (bool, string, *compactError) {
@@ -223,8 +256,11 @@ func tryCompactChannelWithAllKeys(
 			continue
 		}
 
+		attemptStart := time.Now()
 		success, compactErr := tryCompactWithKey(c, upstream, apiKey, bodyBytes, envCfg, cfgManager)
 		if success {
+			common.RecordChannelLog(channelLogStore, channelIndex, requestModel, "", http.StatusOK, time.Since(attemptStart).Milliseconds(), true, apiKey, upstream.BaseURL, "", "Responses", attempt > 0)
+			channelScheduler.RecordSuccessWithUsage(upstream.BaseURL, apiKey, nil, scheduler.ChannelKindResponses)
 			return true, apiKey, nil
 		}
 
@@ -234,9 +270,11 @@ func tryCompactChannelWithAllKeys(
 				failedKeys[apiKey] = true
 				cfgManager.MarkKeyAsFailed(apiKey, "Responses")
 				channelScheduler.RecordFailure(upstream.BaseURL, apiKey, scheduler.ChannelKindResponses)
+				common.RecordChannelLog(channelLogStore, channelIndex, requestModel, "", compactErr.status, time.Since(attemptStart).Milliseconds(), false, apiKey, upstream.BaseURL, compactErr.errorInfo(), "Responses", attempt > 0)
 				continue
 			}
 			// 非故障转移错误，返回但标记渠道成功（请求已处理）
+			common.RecordChannelLog(channelLogStore, channelIndex, requestModel, "", compactErr.status, time.Since(attemptStart).Milliseconds(), false, apiKey, upstream.BaseURL, compactErr.errorInfo(), "Responses", attempt > 0)
 			c.Data(compactErr.status, "application/json", compactErr.body)
 			return true, "", nil
 		}
@@ -257,7 +295,7 @@ func tryCompactWithKey(
 	targetURL := buildCompactURL(upstream)
 	req, err := http.NewRequestWithContext(c.Request.Context(), "POST", targetURL, bytes.NewReader(bodyBytes))
 	if err != nil {
-		return false, &compactError{status: 500, body: []byte(`{"error":"创建请求失败"}`), shouldFailover: true}
+		return false, &compactError{status: 500, body: []byte(`{"error":"创建请求失败"}`), shouldFailover: true, err: err}
 	}
 
 	req.Header = utils.PrepareUpstreamHeaders(c, req.URL.Host)
@@ -269,7 +307,7 @@ func tryCompactWithKey(
 
 	resp, err := common.SendRequest(req, upstream, envCfg, false, "Responses")
 	if err != nil {
-		return false, &compactError{status: 502, body: []byte(`{"error":"上游请求失败"}`), shouldFailover: true}
+		return false, &compactError{status: 502, body: []byte(`{"error":"上游请求失败"}`), shouldFailover: true, err: err}
 	}
 	defer resp.Body.Close()
 
@@ -286,6 +324,18 @@ func tryCompactWithKey(
 	utils.ForwardResponseHeaders(resp.Header, c.Writer)
 	c.Data(resp.StatusCode, "application/json", respBody)
 	return true, nil
+}
+
+func extractCompactRequestModel(bodyBytes []byte) string {
+	if len(bodyBytes) == 0 {
+		return ""
+	}
+
+	var req types.ResponsesRequest
+	if err := json.Unmarshal(bodyBytes, &req); err != nil {
+		return ""
+	}
+	return req.Model
 }
 
 // buildCompactURL 构建 compact 端点 URL
