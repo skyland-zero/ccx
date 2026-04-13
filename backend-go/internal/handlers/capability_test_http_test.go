@@ -105,6 +105,9 @@ func TestRetryCapabilityTestModel_HTTP_RejectsUnknownModel(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	job := newCapabilityTestJob(0, "channel", "messages", "claude", []string{"messages"}, 10*time.Second)
+	job.Status = CapabilityJobStatusCompleted
+	job.Lifecycle = CapabilityLifecycleDone
+	job.Outcome = CapabilityOutcomeFailed
 	job.Tests[0].ModelResults = []CapabilityModelJobResult{{Model: "known", Status: CapabilityModelStatusFailed, Lifecycle: CapabilityLifecycleDone, Outcome: CapabilityOutcomeFailed}}
 	capabilityJobs.create(job)
 

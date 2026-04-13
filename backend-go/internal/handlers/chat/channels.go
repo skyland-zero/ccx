@@ -122,7 +122,7 @@ func DeleteUpstream(cfgManager *config.ConfigManager, channelScheduler *schedule
 			return
 		}
 
-		_, err = cfgManager.RemoveChatUpstream(id)
+		removed, err := cfgManager.RemoveChatUpstream(id)
 		if err != nil {
 			if strings.Contains(err.Error(), "无效的") {
 				c.JSON(404, gin.H{"error": "Upstream not found"})
@@ -132,7 +132,8 @@ func DeleteUpstream(cfgManager *config.ConfigManager, channelScheduler *schedule
 			return
 		}
 
-		channelScheduler.GetChannelLogStore(scheduler.ChannelKindChat).ClearAll()
+		channelScheduler.GetChannelLogStore(scheduler.ChannelKindChat).RemoveAndShift(id)
+		channelScheduler.DeleteChannelMetrics(removed, scheduler.ChannelKindChat)
 
 		c.JSON(200, gin.H{"message": "Chat upstream deleted successfully"})
 	}

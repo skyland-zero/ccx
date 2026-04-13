@@ -125,7 +125,7 @@ func DeleteUpstream(cfgManager *config.ConfigManager, channelScheduler *schedule
 			return
 		}
 
-		_, err = cfgManager.RemoveGeminiUpstream(id)
+		removed, err := cfgManager.RemoveGeminiUpstream(id)
 		if err != nil {
 			if strings.Contains(err.Error(), "无效的") {
 				c.JSON(404, gin.H{"error": "Upstream not found"})
@@ -135,7 +135,8 @@ func DeleteUpstream(cfgManager *config.ConfigManager, channelScheduler *schedule
 			return
 		}
 
-		channelScheduler.GetChannelLogStore(scheduler.ChannelKindGemini).ClearAll()
+		channelScheduler.GetChannelLogStore(scheduler.ChannelKindGemini).RemoveAndShift(id)
+		channelScheduler.DeleteChannelMetrics(removed, scheduler.ChannelKindGemini)
 
 		c.JSON(200, gin.H{"message": "Gemini upstream deleted successfully"})
 	}
