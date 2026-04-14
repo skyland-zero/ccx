@@ -1620,8 +1620,18 @@ func DetectStreamBlacklistError(event string) (reason string, message string) {
 					return "insufficient_balance", truncateMsg(errMsg)
 				}
 				// 已知的余额不足错误码（如 Kimi 的 1113）
-				if isInsufficientBalanceCode(errCode) {
+				if isInsufficientBalanceCode(errCode) || isInsufficientBalanceMessage(errMsg) {
 					return "insufficient_balance", truncateMsg(errMsg)
+				}
+			}
+			if errStr, ok := data["error"].(string); ok {
+				if isInsufficientBalanceMessage(errStr) {
+					return "insufficient_balance", truncateMsg(errStr)
+				}
+			}
+			if msg, ok := data["message"].(string); ok {
+				if isInsufficientBalanceMessage(msg) {
+					return "insufficient_balance", truncateMsg(msg)
 				}
 			}
 		}

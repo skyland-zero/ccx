@@ -536,6 +536,26 @@ func TestShouldBlacklistKey_BalanceMessages(t *testing.T) {
 			},
 		},
 		{
+			name:       "403 string error field with insufficient balance should blacklist",
+			statusCode: 403,
+			body:       `{"error":"API Key额度不足，请访问https://right.codes查看详情"}`,
+			want: BlacklistResult{
+				ShouldBlacklist: true,
+				Reason:          "insufficient_balance",
+				Message:         "API Key额度不足，请访问https://right.codes查看详情",
+			},
+		},
+		{
+			name:       "401 string error should still honor top level authentication type",
+			statusCode: 401,
+			body:       `{"error":"认证失败","type":"authentication_error"}`,
+			want: BlacklistResult{
+				ShouldBlacklist: true,
+				Reason:          "authentication_error",
+				Message:         "认证失败",
+			},
+		},
+		{
 			name:       "403 top level insufficient account balance message should blacklist",
 			statusCode: 403,
 			body:       `{"message":"Insufficient account balance"}`,

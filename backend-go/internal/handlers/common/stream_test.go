@@ -577,3 +577,49 @@ func TestProcessStreamEvent_MessageStopInjectsUsageWhenMessageDeltaMissing(t *te
 		t.Fatalf("expected message_stop event to be forwarded, body=%s", body)
 	}
 }
+
+func TestDetectStreamBlacklistError_BalanceMessages(t *testing.T) {
+	tests := []struct {
+		name        string
+		event       string
+		wantReason  string
+		wantMessage string
+	}{
+		{
+			name: "nested error message semantic balance",
+			event: `event: error
+data: {"type":"error","error":{"type":"new_api_error","message":"预扣费额度失败, 用户剩余额度: ¥0.053950, 需要预扣费额度: ¥0.191160"}}
+
+`,
+			wantReason:  "insufficient_balance",
+			wantMessage: "预扣费额度失败, 用户剩余额度: ¥0.053950, 需要预扣费额度: ¥0.191160",
+		},
+		{
+			name: "string error field semantic balance",
+			event: `event: error
+data: {"type":"error","error":"API Key额度不足，请访问https://right.codes查看详情"}
+
+`,
+			wantReason:  "insufficient_balance",
+			wantMessage: "API Key额度不足，请访问https://right.codes查看详情",
+		},
+		{
+			name: "top level message semantic balance",
+			event: `event: error
+data: {"type":"error","message":"API Key额度不足，请访问https://right.codes查看详情"}
+
+`,
+			wantReason:  "insufficient_balance",
+			wantMessage: "API Key额度不足，请访问https://right.codes查看详情",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotReason, gotMessage := DetectStreamBlacklistError(tt.event)
+			if gotReason != tt.wantReason || gotMessage != tt.wantMessage {
+				t.Fatalf("DetectStreamBlacklistError() = (%q, %q), want (%q, %q)", gotReason, gotMessage, tt.wantReason, tt.wantMessage)
+			}
+		})
+	}
+}

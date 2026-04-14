@@ -652,6 +652,11 @@ func extractErrorInfo(bodyBytes []byte) (errType string, errMessage string) {
 		return
 	}
 
+	// 兼容字符串格式: {"error": "..."}
+	if errStr, ok := resp["error"].(string); ok {
+		errMessage = errStr
+	}
+
 	// fallback: 扁平格式 {"type": "...", "code": "...", "message": "..."}
 	if t, ok := resp["type"].(string); ok {
 		errType = t
