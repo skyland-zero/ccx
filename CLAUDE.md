@@ -136,6 +136,7 @@ go test -v -run TestName ./internal/...    # 单个测试
 ### 前端注意事项
 - Vuetify 组件使用**手动按需导入**（在 `src/plugins/vuetify.ts` 注册），未注册会报 `Unknown custom element`
 - 图标使用 `@mdi/js` SVG 按需导入，需在 `src/plugins/vuetify.ts` 的 `iconMap` 中注册
+- **重点：前端新增 `mdi-xxx` 图标时，必须同时完成 `@mdi/js` 导入 + `iconMap` 映射，不能只在模板里写 `mdi-xxx`**
 - 前端构建产物通过 `embed.FS` 嵌入 Go 二进制，无需独立部署
 
 ## Git 命令注意事项

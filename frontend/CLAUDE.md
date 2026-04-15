@@ -75,6 +75,15 @@ export default createVuetify({
 
 **配置文件**: `src/plugins/vuetify.ts`
 
+### 重要规则（必须遵守）
+
+- 在模板里写了 `<v-icon>mdi-xxx</v-icon>` **并不代表可直接使用**
+- **每新增一个图标，必须同时完成两步**，缺一不可：
+  1. 从 `@mdi/js` 添加导入（驼峰命名）
+  2. 在 `iconMap` 中添加映射（kebab-case）
+- 只写模板、不补 `iconMap`，运行时会走到 `src/plugins/vuetify.ts` 的未找到图标分支，开发环境会报警告，界面可能显示占位文本而不是图标
+- 修改前端图标相关代码时，应顺手检查新增的 `mdi-xxx` 是否已在 `iconMap` 中注册
+
 **新增图标步骤**:
 1. 从 `@mdi/js` 添加导入（驼峰命名）
 2. 在 `iconMap` 中添加映射（kebab-case）
