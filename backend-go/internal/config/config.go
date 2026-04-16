@@ -264,6 +264,26 @@ func (cm *ConfigManager) GetNextAPIKey(upstream *UpstreamConfig, failedKeys map[
 	return selectedKey, nil
 }
 
+// GetAdminAPIKey 获取管理/探测场景下的 API 密钥。
+// 优先使用活跃 APIKeys；若活跃密钥不可用，则临时借用 DisabledAPIKeys 中的密钥。
+// 返回值 fallback=true 表示本次借用了已拉黑密钥。
+func (cm *ConfigManager) GetAdminAPIKey(upstream *UpstreamConfig, failedKeys map[string]bool, apiType string) (apiKey string, fallback bool, err error) {
+	apiKey, err = cm.GetNextAPIKey(upstream, failedKeys, apiType)
+	if err == nil {
+		return apiKey, false, nil
+	}
+
+	for _, disabledKey := range upstream.DisabledAPIKeys {
+		if failedKeys[disabledKey.Key] {
+			continue
+		}
+		log.Printf("[%s-Key] 警告: 活跃密钥不可用，临时借用已拉黑密钥用于管理操作: %s", apiType, utils.MaskAPIKey(disabledKey.Key))
+		return disabledKey.Key, true, nil
+	}
+
+	return "", false, err
+}
+
 // MarkKeyAsFailed 标记密钥失败
 // apiType: 接口类型（Messages/Responses/Gemini/Chat），用于日志标签前缀和缓存键隔离
 func (cm *ConfigManager) MarkKeyAsFailed(apiKey string, apiType string) {

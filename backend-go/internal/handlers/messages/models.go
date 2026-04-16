@@ -3,10 +3,12 @@ package messages
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
 	"net/http"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -19,6 +21,8 @@ import (
 )
 
 const modelsRequestTimeout = 30 * time.Second
+
+var errNoChannelWithDisabledKeys = errors.New("no channel with disabled keys")
 
 // ModelsResponse OpenAI 兼容的 models 响应格式
 type ModelsResponse struct {
@@ -171,30 +175,30 @@ func tryModelsRequest(c *gin.Context, cfgManager *config.ConfigManager, channelS
 			kind = scheduler.ChannelKindResponses
 		}
 
-		// 使用调度器选择渠道
 		selection, err := channelScheduler.SelectChannel(c.Request.Context(), "", failedChannels, kind, "", c.Param("routePrefix"))
 		if err != nil {
-			log.Printf("[%s-Models] 渠道无可用: %v", channelType, err)
-			break
+			fallbackSelection, fallbackErr := selectChannelWithDisabledKeys(cfgManager, failedChannels, kind, c.Param("routePrefix"))
+			if fallbackErr != nil {
+				log.Printf("[%s-Models] 渠道无可用: %v", channelType, err)
+				break
+			}
+			selection = fallbackSelection
+			log.Printf("[%s-Models] 活跃渠道不可用，回退到挂起渠道查询模型: channel=%s, reason=%s", channelType, selection.Upstream.Name, selection.Reason)
 		}
 
 		upstream := selection.Upstream
 
-		// 尝试该渠道的第一个 key
-		if len(upstream.APIKeys) == 0 {
-			failedChannels[selection.ChannelIndex] = true
-			continue
-		}
-
 		url := buildModelsURL(upstream.BaseURL) + suffix
 		client := httpclient.GetManager().GetStandardClient(modelsRequestTimeout, upstream.InsecureSkipVerify)
 
-		// 获取第一个可用的 key
-		apiKey, err := cfgManager.GetNextAPIKey(upstream, nil, channelType)
+		apiKey, usedDisabledFallback, err := cfgManager.GetAdminAPIKey(upstream, nil, channelType)
 		if err != nil {
 			log.Printf("[%s-Models] 获取 API Key 失败: channel=%s, error=%v", channelType, upstream.Name, err)
 			failedChannels[selection.ChannelIndex] = true
 			continue
+		}
+		if usedDisabledFallback {
+			log.Printf("[%s-Models] 使用已拉黑密钥查询模型列表: channel=%s, key=%s", channelType, upstream.Name, utils.MaskAPIKey(apiKey))
 		}
 
 		req, err := http.NewRequestWithContext(c.Request.Context(), method, url, nil)
@@ -235,6 +239,69 @@ func tryModelsRequest(c *gin.Context, cfgManager *config.ConfigManager, channelS
 
 	log.Printf("[%s-Models] 所有渠道均失败: method=%s, suffix=%s", channelType, method, suffix)
 	return nil, false
+}
+
+func selectChannelWithDisabledKeys(cfgManager *config.ConfigManager, failedChannels map[int]bool, kind scheduler.ChannelKind, routePrefix string) (*scheduler.SelectionResult, error) {
+	cfg := cfgManager.GetConfig()
+
+	var upstreams []config.UpstreamConfig
+	switch kind {
+	case scheduler.ChannelKindResponses:
+		upstreams = cfg.ResponsesUpstream
+	case scheduler.ChannelKindGemini:
+		upstreams = cfg.GeminiUpstream
+	case scheduler.ChannelKindChat:
+		upstreams = cfg.ChatUpstream
+	default:
+		upstreams = cfg.Upstream
+	}
+
+	type candidate struct {
+		index    int
+		upstream config.UpstreamConfig
+		priority int
+	}
+
+	candidates := make([]candidate, 0)
+	for i, upstream := range upstreams {
+		if failedChannels[i] {
+			continue
+		}
+		if config.GetChannelStatus(&upstream) == "disabled" {
+			continue
+		}
+		if len(upstream.APIKeys) > 0 || len(upstream.DisabledAPIKeys) == 0 {
+			continue
+		}
+		if routePrefix != "" {
+			if upstream.RoutePrefix != routePrefix {
+				continue
+			}
+		} else if upstream.RoutePrefix != "" {
+			continue
+		}
+		candidates = append(candidates, candidate{
+			index:    i,
+			upstream: upstream,
+			priority: config.GetChannelPriority(&upstream, i),
+		})
+	}
+
+	if len(candidates) == 0 {
+		return nil, errNoChannelWithDisabledKeys
+	}
+
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].priority < candidates[j].priority
+	})
+
+	selected := candidates[0]
+	upstreamCopy := selected.upstream
+	return &scheduler.SelectionResult{
+		Upstream:     &upstreamCopy,
+		ChannelIndex: selected.index,
+		Reason:       "disabled_key_fallback",
+	}, nil
 }
 
 // buildModelsURL 构建 models 端点的 URL

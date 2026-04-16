@@ -6,6 +6,60 @@ import (
 	"testing"
 )
 
+func TestGetAdminAPIKeyPrefersActiveKey(t *testing.T) {
+	cm := &ConfigManager{}
+	upstream := &UpstreamConfig{
+		Name:    "test-channel",
+		APIKeys: []string{"sk-active"},
+		DisabledAPIKeys: []DisabledKeyInfo{{
+			Key: "sk-disabled",
+		}},
+	}
+
+	got, fallback, err := cm.GetAdminAPIKey(upstream, nil, "Messages")
+	if err != nil {
+		t.Fatalf("GetAdminAPIKey() error = %v", err)
+	}
+	if fallback {
+		t.Fatal("fallback = true, want false")
+	}
+	if got != "sk-active" {
+		t.Fatalf("apiKey = %q, want sk-active", got)
+	}
+}
+
+func TestGetAdminAPIKeyFallsBackToDisabledKey(t *testing.T) {
+	cm := &ConfigManager{}
+	upstream := &UpstreamConfig{
+		Name:    "test-channel",
+		APIKeys: nil,
+		DisabledAPIKeys: []DisabledKeyInfo{{
+			Key: "sk-disabled",
+		}},
+	}
+
+	got, fallback, err := cm.GetAdminAPIKey(upstream, nil, "Messages")
+	if err != nil {
+		t.Fatalf("GetAdminAPIKey() error = %v", err)
+	}
+	if !fallback {
+		t.Fatal("fallback = false, want true")
+	}
+	if got != "sk-disabled" {
+		t.Fatalf("apiKey = %q, want sk-disabled", got)
+	}
+}
+
+func TestGetAdminAPIKeyReturnsErrorWhenNoKeysAvailable(t *testing.T) {
+	cm := &ConfigManager{}
+	upstream := &UpstreamConfig{Name: "test-channel"}
+
+	_, _, err := cm.GetAdminAPIKey(upstream, nil, "Messages")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
 func TestAddAPIKeyRemovesDisabledEntryAndRestoreAvoidsDuplicate(t *testing.T) {
 	tempDir := t.TempDir()
 	configPath := filepath.Join(tempDir, "config.json")

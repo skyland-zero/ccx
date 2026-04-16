@@ -1,3 +1,10 @@
+## [Unreleased]
+
+### Fixed
+
+- **全黑名单 Key 场景下的模型列表与编辑态回退一致性** - 聚合 `/v1/models` 与编辑弹窗在活跃 API Key 全部被拉黑后，允许临时借用 `disabledApiKeys` 获取模型列表，并在回退时保留 routePrefix 隔离与运行时全黑名单渠道支持，同时保持正常调度不使用已拉黑 key
+- **补充黑名单借 key 管理场景回归测试** - 新增管理场景 key 选择与模型列表聚合 fallback 的后端回归测试，覆盖 active key 优先、disabled key 回退与无 key 失败路径
+
 ## [v2.6.60] - 2026-04-15
 
 ### Fixed

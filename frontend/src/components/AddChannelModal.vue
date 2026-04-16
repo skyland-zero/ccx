@@ -405,12 +405,12 @@
 
             <!-- API密钥管理 -->
             <v-col cols="12">
-              <v-card variant="outlined" rounded="lg" :color="form.apiKeys.length === 0 ? 'error' : undefined">
+              <v-card variant="outlined" rounded="lg" :color="hasConfigurableKeys ? undefined : 'error'">
                 <v-card-title class="d-flex align-center justify-space-between pa-4 pb-2">
                   <div class="d-flex align-center ga-2">
-                    <v-icon :color="form.apiKeys.length > 0 ? 'primary' : 'error'">mdi-key</v-icon>
+                    <v-icon :color="hasConfigurableKeys ? 'primary' : 'error'">mdi-key</v-icon>
                     <span class="section-title">{{ t('channelCard.apiKeyManagement') }} *</span>
-                    <v-chip v-if="form.apiKeys.length === 0" size="x-small" color="error" variant="tonal">
+                    <v-chip v-if="!hasConfigurableKeys" size="x-small" color="error" variant="tonal">
                       {{ t('addChannel.apiKeyRequired') }}
                     </v-chip>
                   </div>
@@ -1617,6 +1617,8 @@ const rules = {
 // 计算属性
 const dialogMode = ref<'create' | 'edit'>('create')
 const isEditing = computed(() => dialogMode.value === 'edit')
+const hasDisabledKeysAvailable = computed(() => visibleDisabledKeys.value.length > 0)
+const hasConfigurableKeys = computed(() => form.apiKeys.length > 0 || (isEditing.value && hasDisabledKeysAvailable.value))
 
 const commonSupportedModelFilters = ['claude-*', 'gpt-5*', 'grok-4*', 'gemini-3*']
 
@@ -1644,7 +1646,7 @@ const subtitleClasses = computed(() => {
 
 const isFormValid = computed(() => {
   return (
-    form.name.trim() && form.serviceType && form.baseUrl.trim() && isValidUrl(form.baseUrl) && form.apiKeys.length > 0
+    form.name.trim() && form.serviceType && form.baseUrl.trim() && isValidUrl(form.baseUrl) && hasConfigurableKeys.value
   )
 })
 
@@ -1971,13 +1973,17 @@ const handleTargetModelClick = () => {
 }
 
 const fetchTargetModels = async () => {
-  if (!form.baseUrl || form.apiKeys.length === 0) {
+  const candidateKeys = form.apiKeys.length > 0
+    ? form.apiKeys
+    : (isEditing.value ? visibleDisabledKeys.value.map(dk => dk.key) : [])
+
+  if (!form.baseUrl || candidateKeys.length === 0) {
     fetchModelsError.value = t('addChannel.fillBaseUrlAndApiKey')
     return
   }
 
   // 仅为未检测过的 API Key 发起请求
-  const uncheckedKeys = form.apiKeys.filter(key => !keyModelsStatus.value.has(key))
+  const uncheckedKeys = candidateKeys.filter(key => !keyModelsStatus.value.has(key))
 
   if (uncheckedKeys.length === 0) {
     return
@@ -2063,7 +2069,7 @@ const fetchTargetModels = async () => {
     targetModelOptions.value = sortModelNamesDesc(Array.from(allModels)).map(id => ({ title: id, value: id }))
 
     // 所有 key（含已有记录）都失败时才显示错误
-    const allFailed = form.apiKeys.every(key => {
+    const allFailed = candidateKeys.every(key => {
       const s = keyModelsStatus.value.get(key)
       return s && !s.success
     })
