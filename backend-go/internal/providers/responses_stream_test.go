@@ -146,3 +146,36 @@ data: {"type":"response.completed","response":{"status":"completed","usage":{"in
 		t.Fatalf("cache_ttl mismatch: %#v", usage)
 	}
 }
+
+func TestResponsesProvider_HandleStreamResponse_LeavesResponsesTotalPromptTokensInUsage(t *testing.T) {
+	body := `event: response.output_text.delta
+data: {"type":"response.output_text.delta","delta":"hello"}
+
+event: response.completed
+data: {"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":114931,"output_tokens":100,"cache_read_input_tokens":112256}}}
+
+`
+
+	provider := &ResponsesProvider{}
+	eventChan, errChan, err := provider.HandleStreamResponse(io.NopCloser(strings.NewReader(body)))
+	if err != nil {
+		t.Fatalf("HandleStreamResponse returned error: %v", err)
+	}
+
+	events := collectStreamEvents(eventChan)
+	select {
+	case streamErr := <-errChan:
+		if streamErr != nil {
+			t.Fatalf("unexpected stream error: %v", streamErr)
+		}
+	default:
+	}
+
+	usage := extractMessageDeltaUsage(t, events)
+	if int(usage["input_tokens"].(float64)) != 114931 {
+		t.Fatalf("input_tokens = %v, want 114931", usage["input_tokens"])
+	}
+	if int(usage["cache_read_input_tokens"].(float64)) != 112256 {
+		t.Fatalf("cache_read_input_tokens = %v, want 112256", usage["cache_read_input_tokens"])
+	}
+}

@@ -410,9 +410,44 @@ func TestResponsesProvider_ConvertToClaudeResponse_UsesInputTokensDetailsCachedT
 		claudeResp.Usage.InputTokens != 12 ||
 		claudeResp.Usage.OutputTokens != 34 ||
 		claudeResp.Usage.CacheReadInputTokens != 7 ||
+		claudeResp.Usage.PromptTokensTotal != 12 ||
 		claudeResp.Usage.CacheCreation5mInputTokens != 3 ||
 		claudeResp.Usage.CacheTTL != "5m" {
 		t.Fatalf("usage = %#v, want cached_tokens mapped to cache_read_input_tokens", claudeResp.Usage)
+	}
+}
+
+func TestResponsesProvider_ConvertToClaudeResponse_RecordsPromptTokensTotalForResponsesUsage(t *testing.T) {
+	provider := &ResponsesProvider{}
+	providerResp := &types.ProviderResponse{
+		StatusCode: http.StatusOK,
+		Headers:    map[string][]string{"Content-Type": {"application/json"}},
+		Body: []byte(`{
+			"id":"resp_125",
+			"status":"completed",
+			"output":[
+				{"type":"message","content":[{"type":"output_text","text":"hello world"}]}
+			],
+			"usage":{
+				"input_tokens":114931,
+				"output_tokens":100,
+				"cache_read_input_tokens":112256
+			}
+		}`),
+	}
+
+	claudeResp, err := provider.ConvertToClaudeResponse(providerResp)
+	if err != nil {
+		t.Fatalf("ConvertToClaudeResponse() err = %v", err)
+	}
+	if claudeResp.Usage == nil {
+		t.Fatal("usage is nil")
+	}
+	if claudeResp.Usage.InputTokens != 114931 || claudeResp.Usage.CacheReadInputTokens != 112256 {
+		t.Fatalf("usage = %#v, want input/cache read preserved", claudeResp.Usage)
+	}
+	if claudeResp.Usage.PromptTokensTotal != 114931 {
+		t.Fatalf("PromptTokensTotal = %d, want 114931", claudeResp.Usage.PromptTokensTotal)
 	}
 }
 

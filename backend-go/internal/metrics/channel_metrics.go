@@ -452,12 +452,19 @@ func extractUsageTokens(usage *types.Usage) (int64, int64, int64, int64) {
 		return 0, 0, 0, 0
 	}
 	inputTokens := int64(usage.InputTokens)
+	cacheReadTokens := int64(usage.CacheReadInputTokens)
+	if usage.PromptTokensTotal > 0 && cacheReadTokens > 0 {
+		normalizedInput := usage.PromptTokensTotal - usage.CacheReadInputTokens
+		if normalizedInput < 0 {
+			normalizedInput = 0
+		}
+		inputTokens = int64(normalizedInput)
+	}
 	outputTokens := int64(usage.OutputTokens)
 	cacheCreationTokens := int64(usage.CacheCreationInputTokens)
 	if cacheCreationTokens <= 0 {
 		cacheCreationTokens = int64(usage.CacheCreation5mInputTokens + usage.CacheCreation1hInputTokens)
 	}
-	cacheReadTokens := int64(usage.CacheReadInputTokens)
 	return inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens
 }
 

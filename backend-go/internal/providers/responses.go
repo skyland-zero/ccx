@@ -419,6 +419,7 @@ func (p *ResponsesProvider) ConvertToClaudeResponse(providerResp *types.Provider
 		claudeResp.Usage = &types.Usage{}
 		if v, ok := usageRaw["input_tokens"].(float64); ok {
 			claudeResp.Usage.InputTokens = int(v)
+			claudeResp.Usage.PromptTokensTotal = int(v)
 		}
 		if v, ok := usageRaw["output_tokens"].(float64); ok {
 			claudeResp.Usage.OutputTokens = int(v)

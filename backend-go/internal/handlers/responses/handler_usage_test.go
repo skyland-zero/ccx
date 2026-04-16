@@ -33,3 +33,18 @@ func TestPatchResponsesUsage_RecalculateTotalIncludesCacheTokens(t *testing.T) {
 		t.Fatalf("TotalTokens = %d, want 160", resp.Usage.TotalTokens)
 	}
 }
+
+func TestMetricsUsageFromResponsesUsage_UsesCachedTokensFallback(t *testing.T) {
+	usage := metricsUsageFromResponsesUsage(types.ResponsesUsage{
+		InputTokens:        114931,
+		OutputTokens:       100,
+		InputTokensDetails: &types.InputTokensDetails{CachedTokens: 112256},
+	}, "responses")
+
+	if usage.CacheReadInputTokens != 112256 {
+		t.Fatalf("CacheReadInputTokens = %d, want 112256", usage.CacheReadInputTokens)
+	}
+	if usage.PromptTokensTotal != 114931 {
+		t.Fatalf("PromptTokensTotal = %d, want 114931", usage.PromptTokensTotal)
+	}
+}

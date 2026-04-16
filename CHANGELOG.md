@@ -1,3 +1,9 @@
+## [Unreleased]
+
+### Fixed
+
+- **统一 Responses 来源的缓存命中率统计口径** - 在内部 usage 统计中保留 Responses/OpenAI 风格的总 prompt token 数，并在 dashboard metrics 聚合前归一化为未命中输入 token，修复 messages→responses 以及 direct responses 渠道缓存率被重复计入分母、前端显示约减半的问题；同时兼容 `input_tokens_details.cached_tokens` 回退并补充 bridge、stream、metrics、handler 回归测试
+
 ## [v2.6.63] - 2026-04-16
 
 ### Changed

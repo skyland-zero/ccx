@@ -341,15 +341,30 @@ func handleSuccess(
 	c.JSON(200, responsesResp)
 
 	// 返回 usage 数据用于指标记录
+	return metricsUsageFromResponsesUsage(responsesResp.Usage, upstreamType), nil
+}
+
+func metricsUsageFromResponsesUsage(usage types.ResponsesUsage, upstreamType string) *types.Usage {
+	cacheReadTokens := usage.CacheReadInputTokens
+	if cacheReadTokens == 0 && usage.InputTokensDetails != nil && usage.InputTokensDetails.CachedTokens > 0 {
+		cacheReadTokens = usage.InputTokensDetails.CachedTokens
+	}
+
+	promptTokensTotal := 0
+	if upstreamType == "responses" && usage.InputTokens > 0 {
+		promptTokensTotal = usage.InputTokens
+	}
+
 	return &types.Usage{
-		InputTokens:                responsesResp.Usage.InputTokens,
-		OutputTokens:               responsesResp.Usage.OutputTokens,
-		CacheCreationInputTokens:   responsesResp.Usage.CacheCreationInputTokens,
-		CacheReadInputTokens:       responsesResp.Usage.CacheReadInputTokens,
-		CacheCreation5mInputTokens: responsesResp.Usage.CacheCreation5mInputTokens,
-		CacheCreation1hInputTokens: responsesResp.Usage.CacheCreation1hInputTokens,
-		CacheTTL:                   responsesResp.Usage.CacheTTL,
-	}, nil
+		InputTokens:                usage.InputTokens,
+		OutputTokens:               usage.OutputTokens,
+		CacheCreationInputTokens:   usage.CacheCreationInputTokens,
+		CacheReadInputTokens:       cacheReadTokens,
+		PromptTokensTotal:          promptTokensTotal,
+		CacheCreation5mInputTokens: usage.CacheCreation5mInputTokens,
+		CacheCreation1hInputTokens: usage.CacheCreation1hInputTokens,
+		CacheTTL:                   usage.CacheTTL,
+	}
 }
 
 // patchResponsesUsage 补全 Responses 响应的 Token 统计
@@ -844,7 +859,7 @@ func handleStreamSuccess(
 	}
 
 	// 返回收集到的 usage 数据
-	return &types.Usage{
+	return metricsUsageFromResponsesUsage(types.ResponsesUsage{
 		InputTokens:                collectedUsage.InputTokens,
 		OutputTokens:               collectedUsage.OutputTokens,
 		CacheCreationInputTokens:   collectedUsage.CacheCreationInputTokens,
@@ -852,7 +867,7 @@ func handleStreamSuccess(
 		CacheCreation5mInputTokens: collectedUsage.CacheCreation5mInputTokens,
 		CacheCreation1hInputTokens: collectedUsage.CacheCreation1hInputTokens,
 		CacheTTL:                   collectedUsage.CacheTTL,
-	}, nil
+	}, upstreamType), nil
 }
 
 // responsesStreamUsage 流式响应 usage 收集结构

@@ -957,7 +957,21 @@ func HandleStreamResponse(
 		ProcessStreamEvent(c, w, flusher, bufferedEvent, ctx, envCfg, requestBody)
 	}
 
-	return ProcessStreamEvents(c, w, flusher, eventChan, errChan, ctx, envCfg, startTime, requestBody)
+	usage, err := ProcessStreamEvents(c, w, flusher, eventChan, errChan, ctx, envCfg, startTime, requestBody)
+	if err != nil {
+		return nil, err
+	}
+	return annotatePromptTokensTotalForProvider(provider, usage), nil
+}
+
+func annotatePromptTokensTotalForProvider(provider providers.Provider, usage *types.Usage) *types.Usage {
+	if usage == nil {
+		return nil
+	}
+	if _, ok := provider.(*providers.ResponsesProvider); ok && usage.InputTokens > 0 {
+		usage.PromptTokensTotal = usage.InputTokens
+	}
+	return usage
 }
 
 // ========== Token 检测和修补相关函数 ==========

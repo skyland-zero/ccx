@@ -50,6 +50,39 @@ func TestToResponse_TimeWindowsIncludesCacheStats(t *testing.T) {
 	}
 }
 
+func TestRecordSuccessWithUsage_NormalizesResponsesPromptTotalsForCacheHitRate(t *testing.T) {
+	m := NewMetricsManagerWithConfig(10, 0.5)
+
+	baseURL := "https://example.com"
+	key := "k1"
+
+	m.RecordSuccessWithUsage(baseURL, key, &types.Usage{
+		InputTokens:          114931,
+		PromptTokensTotal:    114931,
+		OutputTokens:         100,
+		CacheReadInputTokens: 112256,
+	})
+
+	resp := m.ToResponse(0, baseURL, []string{key}, 0)
+	stats, ok := resp.TimeWindows["15m"]
+	if !ok {
+		t.Fatalf("expected timeWindows[15m] to exist")
+	}
+
+	wantInput := int64(114931 - 112256)
+	if stats.InputTokens != wantInput {
+		t.Fatalf("expected normalized inputTokens=%d, got %d", wantInput, stats.InputTokens)
+	}
+	if stats.CacheReadTokens != 112256 {
+		t.Fatalf("expected cacheReadTokens=112256, got %d", stats.CacheReadTokens)
+	}
+
+	wantHitRate := float64(112256) / float64(114931) * 100
+	if math.Abs(stats.CacheHitRate-wantHitRate) > 0.01 {
+		t.Fatalf("expected cacheHitRate=%.4f, got %.4f", wantHitRate, stats.CacheHitRate)
+	}
+}
+
 func TestRecordSuccessWithUsage_CacheCreationFallbackFromTTLBreakdown(t *testing.T) {
 	m := NewMetricsManagerWithConfig(10, 0.5)
 

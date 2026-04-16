@@ -122,6 +122,9 @@ type Usage struct {
 	OutputTokens             int `json:"output_tokens,omitempty"`
 	CacheCreationInputTokens int `json:"cache_creation_input_tokens,omitempty"`
 	CacheReadInputTokens     int `json:"cache_read_input_tokens,omitempty"`
+	// PromptTokensTotal 仅供内部统计使用，用于保留上游返回的总 prompt tokens 口径。
+	// 例如 Responses/OpenAI 风格的 input_tokens 可能已包含 cached tokens，metrics 层会据此归一化未命中输入。
+	PromptTokensTotal int `json:"-"`
 	// 缓存 TTL 细分（参考 claude-code-hub）
 	CacheCreation5mInputTokens int    `json:"cache_creation_5m_input_tokens,omitempty"` // 5分钟 TTL
 	CacheCreation1hInputTokens int    `json:"cache_creation_1h_input_tokens,omitempty"` // 1小时 TTL
