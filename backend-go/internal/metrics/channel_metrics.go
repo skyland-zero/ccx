@@ -62,7 +62,7 @@ func ParseCircuitState(text string) CircuitState {
 
 const (
 	consecutiveRetryableFailuresThreshold int64         = 3
-	halfOpenSuccessThreshold              int           = 2
+	halfOpenSuccessThreshold              int           = 1
 	defaultCircuitBackoffBase             time.Duration = 30 * time.Second
 	defaultCircuitBackoffMax              time.Duration = 10 * time.Minute
 )

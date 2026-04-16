@@ -89,8 +89,8 @@ func TestGetChannelDashboard_IncludesBreakerFields(t *testing.T) {
 	if _, ok := resp.Metrics[0]["nextRetryAt"]; !ok {
 		t.Fatalf("缺少 nextRetryAt 字段: %v", resp.Metrics[0])
 	}
-	if _, ok := resp.Stats["halfOpenSuccessTarget"]; !ok {
-		t.Fatalf("stats 缺少 halfOpenSuccessTarget: %v", resp.Stats)
+	if got := resp.Stats["halfOpenSuccessTarget"]; got != float64(1) {
+		t.Fatalf("halfOpenSuccessTarget=%v, want=1", got)
 	}
 }
 

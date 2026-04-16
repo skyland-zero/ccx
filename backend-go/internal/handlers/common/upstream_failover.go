@@ -233,6 +233,10 @@ func TryUpstreamWithAllKeys(
 					if markURLFailure != nil {
 						markURLFailure(currentBaseURL)
 					}
+					errorSummary := truncateMessage(strings.ReplaceAll(strings.ReplaceAll(strings.TrimSpace(string(respBodyBytes)), "\n", " "), "\r", " "))
+					if errorSummary != "" {
+						log.Printf("[%s-Key] 上游错误详情摘要: channel=[%d] %s, key=%s, summary=%s", apiType, channelIndex, upstream.Name, utils.MaskAPIKey(apiKey), errorSummary)
+					}
 					log.Printf("[%s-Key] 警告: API密钥失败 (状态: %d)，尝试下一个密钥", apiType, resp.StatusCode)
 
 					lastFailoverError = &FailoverError{

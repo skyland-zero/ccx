@@ -27,7 +27,7 @@
 
 - **完整强化版熔断器** - 实现显式三态熔断状态机（closed/open/half_open），支持指数退避、单探针恢复和失败分类
   - 引入失败分类机制（retryable/non_retryable/quota/client_cancel），只有可重试故障触发熔断
-  - 实现 half-open 单探针恢复机制，成功 2 次才完全恢复
+  - 实现 half-open 单探针恢复机制，成功 1 次即完全恢复
   - 实现指数退避机制（30s base, 10min max），避免频繁重试
   - 新增 circuit_states 表持久化熔断状态，服务重启后保留
   - 调度器禁止 open 渠道被 fallback 选回，解决连续 500 仍打到坏渠道的问题
