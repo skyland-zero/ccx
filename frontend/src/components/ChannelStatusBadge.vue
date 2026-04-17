@@ -44,7 +44,7 @@ const { t } = useI18n()
 
 const effectiveStatus = computed<DisplayStatus>(() => {
   if (props.status === 'disabled') return 'disabled'
-  if (props.status === 'suspended' || props.metrics?.circuitState === 'open') return 'tripped'
+  if (props.status === 'suspended' || props.metrics?.circuitState === 'open' || props.metrics?.circuitState === 'half_open') return 'tripped'
   if (props.status === 'error') return 'error'
   if (props.status === 'unknown') return 'unknown'
   return 'normal'
