@@ -312,6 +312,8 @@ func handleSuccess(
 	}
 
 	// Token 补全逻辑
+	originalUsage := responsesResp.Usage
+
 	patchResponsesUsage(responsesResp, originalRequestJSON, envCfg)
 
 	// 更新会话
@@ -341,18 +343,35 @@ func handleSuccess(
 	c.JSON(200, responsesResp)
 
 	// 返回 usage 数据用于指标记录
-	return metricsUsageFromResponsesUsage(responsesResp.Usage, upstreamType), nil
+	promptTokensTotal := promptTokensTotalFromResponsesInput(
+		originalUsage.InputTokens,
+		upstreamType,
+		responsesUsageHasClaudeCache(originalUsage),
+	)
+	return metricsUsageFromResponsesUsage(responsesResp.Usage, promptTokensTotal), nil
 }
 
-func metricsUsageFromResponsesUsage(usage types.ResponsesUsage, upstreamType string) *types.Usage {
+func responsesUsageHasClaudeCache(usage types.ResponsesUsage) bool {
+	return usage.CacheCreationInputTokens > 0 ||
+		usage.CacheReadInputTokens > 0 ||
+		usage.CacheCreation5mInputTokens > 0 ||
+		usage.CacheCreation1hInputTokens > 0
+}
+
+func promptTokensTotalFromResponsesInput(inputTokens int, upstreamType string, hasClaudeCache bool) int {
+	if upstreamType != "responses" || inputTokens <= 0 {
+		return 0
+	}
+	if inputTokens <= 1 && !hasClaudeCache {
+		return 0
+	}
+	return inputTokens
+}
+
+func metricsUsageFromResponsesUsage(usage types.ResponsesUsage, promptTokensTotal int) *types.Usage {
 	cacheReadTokens := usage.CacheReadInputTokens
 	if cacheReadTokens == 0 && usage.InputTokensDetails != nil && usage.InputTokensDetails.CachedTokens > 0 {
 		cacheReadTokens = usage.InputTokensDetails.CachedTokens
-	}
-
-	promptTokensTotal := 0
-	if upstreamType == "responses" && usage.InputTokens > 0 {
-		promptTokensTotal = usage.InputTokens
 	}
 
 	return &types.Usage{
@@ -705,6 +724,7 @@ func handleStreamSuccess(
 	hasUsage := false
 	needTokenPatch := false
 	clientGone := false
+	promptTokensTotal := 0
 
 	// processLine 处理单行数据（复用于缓冲行回放和后续读取）
 	processLine := func(line string) {
@@ -763,6 +783,16 @@ func handleStreamSuccess(
 					}
 				}
 				updateResponsesStreamUsage(&collectedUsage, usageData)
+				if !needConvert {
+					candidatePromptTokensTotal := promptTokensTotalFromResponsesInput(
+						usageData.InputTokens,
+						upstreamType,
+						usageData.HasClaudeCache,
+					)
+					if candidatePromptTokensTotal > promptTokensTotal {
+						promptTokensTotal = candidatePromptTokensTotal
+					}
+				}
 			}
 
 			// 在 response.completed 事件前注入/修补 usage
@@ -867,7 +897,7 @@ func handleStreamSuccess(
 		CacheCreation5mInputTokens: collectedUsage.CacheCreation5mInputTokens,
 		CacheCreation1hInputTokens: collectedUsage.CacheCreation1hInputTokens,
 		CacheTTL:                   collectedUsage.CacheTTL,
-	}, upstreamType), nil
+	}, promptTokensTotal), nil
 }
 
 // responsesStreamUsage 流式响应 usage 收集结构

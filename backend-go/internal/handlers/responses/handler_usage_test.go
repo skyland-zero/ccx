@@ -34,12 +34,60 @@ func TestPatchResponsesUsage_RecalculateTotalIncludesCacheTokens(t *testing.T) {
 	}
 }
 
+func TestPromptTokensTotalFromResponsesInput(t *testing.T) {
+	tests := []struct {
+		name           string
+		inputTokens    int
+		upstreamType   string
+		hasClaudeCache bool
+		want           int
+	}{
+		{
+			name:           "responses total preserved when input is valid",
+			inputTokens:    114931,
+			upstreamType:   "responses",
+			hasClaudeCache: false,
+			want:           114931,
+		},
+		{
+			name:           "patched tiny input without claude cache is ignored",
+			inputTokens:    1,
+			upstreamType:   "responses",
+			hasClaudeCache: false,
+			want:           0,
+		},
+		{
+			name:           "claude cache backed tiny input keeps total",
+			inputTokens:    1,
+			upstreamType:   "responses",
+			hasClaudeCache: true,
+			want:           1,
+		},
+		{
+			name:           "non responses upstream never records total",
+			inputTokens:    114931,
+			upstreamType:   "chat",
+			hasClaudeCache: false,
+			want:           0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := promptTokensTotalFromResponsesInput(tt.inputTokens, tt.upstreamType, tt.hasClaudeCache)
+			if got != tt.want {
+				t.Fatalf("promptTokensTotalFromResponsesInput() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestMetricsUsageFromResponsesUsage_UsesCachedTokensFallback(t *testing.T) {
 	usage := metricsUsageFromResponsesUsage(types.ResponsesUsage{
 		InputTokens:        114931,
 		OutputTokens:       100,
 		InputTokensDetails: &types.InputTokensDetails{CachedTokens: 112256},
-	}, "responses")
+	}, 114931)
 
 	if usage.CacheReadInputTokens != 112256 {
 		t.Fatalf("CacheReadInputTokens = %d, want 112256", usage.CacheReadInputTokens)

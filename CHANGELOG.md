@@ -2,6 +2,7 @@
 
 ### Fixed
 
+- **修正 Responses prompt total 保留逻辑避免缓存命中率误判** - 在非流式与直连 Responses 流式 handler 中改为仅基于 patch 前原始 usage 保留 `PromptTokensTotal`，避免把 patched `input_tokens` 误当总 prompt tokens 导致 dashboard 缓存命中率虚高到 100%，并补充 handlers/providers 回归测试
 - **统一 Responses 来源的缓存命中率统计口径** - 在内部 usage 统计中保留 Responses/OpenAI 风格的总 prompt token 数，并在 dashboard metrics 聚合前归一化为未命中输入 token，修复 messages→responses 以及 direct responses 渠道缓存率被重复计入分母、前端显示约减半的问题；同时兼容 `input_tokens_details.cached_tokens` 回退并补充 bridge、stream、metrics、handler 回归测试
 
 ## [v2.6.63] - 2026-04-16
