@@ -8,6 +8,7 @@ import (
 // ChannelLog 单次上游请求日志
 type ChannelLog struct {
 	RequestID     string    `json:"requestId"` // 请求唯一标识
+	ChannelIndex  int       `json:"-"`         // 创建时的渠道索引（不序列化，仅用于内部验证）
 	Timestamp     time.Time `json:"timestamp"`
 	Model         string    `json:"model"`                   // 实际使用的模型（重定向后）
 	OriginalModel string    `json:"originalModel,omitempty"` // 原始请求模型（仅当重定向时有值）
@@ -111,7 +112,9 @@ func (s *ChannelLogStore) Get(channelIndex int) []*ChannelLog {
 }
 
 // Update 更新指定渠道的日志条目（通过 RequestID 匹配）
-func (s *ChannelLogStore) Update(channelIndex int, requestID string, updateFn func(*ChannelLog)) bool {
+// Update 更新指定渠道的指定请求日志
+// 返回 (是否找到并更新, 日志创建时的渠道索引)
+func (s *ChannelLogStore) Update(channelIndex int, requestID string, updateFn func(*ChannelLog)) (bool, int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -119,8 +122,8 @@ func (s *ChannelLogStore) Update(channelIndex int, requestID string, updateFn fu
 	for i := range logs {
 		if logs[i].RequestID == requestID {
 			updateFn(logs[i])
-			return true
+			return true, logs[i].ChannelIndex
 		}
 	}
-	return false
+	return false, -1
 }

@@ -37,6 +37,7 @@ func CreatePendingLog(
 
 	channelLogStore.Record(channelIndex, &metrics.ChannelLog{
 		RequestID:     requestID,
+		ChannelIndex:  channelIndex, // 记录创建时的渠道索引
 		Timestamp:     now,
 		StartTime:     now,
 		Model:         model,
@@ -102,7 +103,7 @@ func CompleteLog(
 	}
 
 	now := time.Now()
-	updated := channelLogStore.Update(channelIndex, requestID, func(log *metrics.ChannelLog) {
+	updated, originalChannelIndex := channelLogStore.Update(channelIndex, requestID, func(log *metrics.ChannelLog) {
 		log.StatusCode = statusCode
 		log.Success = success
 		log.ErrorInfo = errorInfo
@@ -117,10 +118,12 @@ func CompleteLog(
 		}
 	})
 
-	// 如果 Update 失败（日志已被淘汰），补写一条终态日志确保生命周期完整
-	if !updated {
+	// 如果 Update 失败且索引匹配（日志被环形缓冲淘汰），补写一条终态日志
+	// 如果索引不匹配（渠道已删除或索引漂移），不补写以避免污染其他渠道
+	if !updated && originalChannelIndex == channelIndex {
 		channelLogStore.Record(channelIndex, &metrics.ChannelLog{
 			RequestID:     requestID,
+			ChannelIndex:  channelIndex,
 			Timestamp:     now,
 			StatusCode:    statusCode,
 			Success:       success,
@@ -207,6 +210,7 @@ func RecordChannelLogWithSource(
 
 	channelLogStore.Record(channelIndex, &metrics.ChannelLog{
 		RequestID:     requestID,
+		ChannelIndex:  channelIndex, // 记录创建时的渠道索引
 		Timestamp:     now,
 		StartTime:     startTime,
 		Model:         model,
