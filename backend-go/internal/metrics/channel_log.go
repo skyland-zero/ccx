@@ -80,6 +80,22 @@ func (s *ChannelLogStore) RemoveAndShift(channelIndex int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if len(s.logs) == 0 && len(s.requestLocations) == 0 {
+		return
+	}
+
+	// 先修正所有在途请求的索引：
+	// - 指向被删除渠道的请求直接移除（包括已被环形缓冲淘汰但仍在途的请求）
+	// - 指向其后渠道的请求索引前移一位
+	for requestID, idx := range s.requestLocations {
+		switch {
+		case idx == channelIndex:
+			delete(s.requestLocations, requestID)
+		case idx > channelIndex:
+			s.requestLocations[requestID] = idx - 1
+		}
+	}
+
 	if len(s.logs) == 0 {
 		return
 	}
@@ -88,21 +104,11 @@ func (s *ChannelLogStore) RemoveAndShift(channelIndex int) {
 	for idx, logs := range s.logs {
 		switch {
 		case idx == channelIndex:
-			for _, log := range logs {
-				if log != nil && log.RequestID != "" {
-					delete(s.requestLocations, log.RequestID)
-				}
-			}
 			continue
 		case idx > channelIndex:
 			for _, log := range logs {
 				if log != nil {
 					log.ChannelIndex = idx - 1
-					if log.RequestID != "" {
-						if _, tracking := s.requestLocations[log.RequestID]; tracking {
-							s.requestLocations[log.RequestID] = idx - 1
-						}
-					}
 				}
 			}
 			shifted[idx-1] = logs

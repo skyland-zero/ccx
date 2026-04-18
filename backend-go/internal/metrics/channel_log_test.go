@@ -55,3 +55,21 @@ func TestChannelLogStoreUpdateReturnsEvictedWhileStillTracked(t *testing.T) {
 		t.Fatalf("status = %v, want %v", status, UpdateMissingEvicted)
 	}
 }
+
+func TestChannelLogStoreRemoveAndShiftClearsEvictedInFlightRequestAtDeletedIndex(t *testing.T) {
+	store := NewChannelLogStore()
+	store.Record(1, &ChannelLog{RequestID: "req-stale", Status: StatusPending})
+
+	store.mu.Lock()
+	store.logs[1] = []*ChannelLog{}
+	store.mu.Unlock()
+
+	store.RemoveAndShift(1)
+
+	status := store.Update(1, "req-stale", func(log *ChannelLog) {
+		log.Status = StatusCompleted
+	})
+	if status != UpdateMissingDeleted {
+		t.Fatalf("status = %v, want %v", status, UpdateMissingDeleted)
+	}
+}
