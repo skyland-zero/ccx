@@ -103,7 +103,7 @@ func CompleteLog(
 	}
 
 	now := time.Now()
-	updated, originalChannelIndex := channelLogStore.Update(channelIndex, requestID, func(log *metrics.ChannelLog) {
+	updateStatus := channelLogStore.Update(channelIndex, requestID, func(log *metrics.ChannelLog) {
 		log.StatusCode = statusCode
 		log.Success = success
 		log.ErrorInfo = errorInfo
@@ -118,9 +118,8 @@ func CompleteLog(
 		}
 	})
 
-	// 如果 Update 失败且索引匹配（日志被环形缓冲淘汰），补写一条终态日志
-	// 如果索引不匹配（渠道已删除或索引漂移），不补写以避免污染其他渠道
-	if !updated && originalChannelIndex == channelIndex {
+	// 仅在确认是环形缓冲淘汰时补写终态日志；若渠道已删除则不补写，避免污染其他渠道。
+	if updateStatus == metrics.UpdateMissingEvicted {
 		channelLogStore.Record(channelIndex, &metrics.ChannelLog{
 			RequestID:     requestID,
 			ChannelIndex:  channelIndex,
@@ -130,9 +129,9 @@ func CompleteLog(
 			ErrorInfo:     errorInfo,
 			IsRetry:       isRetry,
 			Status:        getStatusFromSuccess(success),
-			StartTime:     now, // 无法获取原始 StartTime，使用当前时间
+			StartTime:     now,
 			CompletedAt:   &now,
-			DurationMs:    0, // 无法计算准确耗时
+			DurationMs:    0,
 		})
 	}
 }
