@@ -178,9 +178,6 @@ func TryUpstreamWithAllKeys(
 			// TCP 建连开始即计数：将活跃度统计提前到发起上游请求之前
 			requestID := metricsManager.RecordRequestConnected(currentBaseURL, apiKey, redirectedModel)
 
-			// 更新日志状态为 connecting
-			UpdateLogStatus(channelLogStore, channelIndex, logRequestID, metrics.StatusConnecting)
-
 			resp, err := SendRequest(req, upstream, envCfg, isStream, apiType)
 			if err != nil {
 				lastError = err
@@ -209,7 +206,9 @@ func TryUpstreamWithAllKeys(
 				continue
 			}
 
-			// 收到响应，更新日志状态为 first_byte
+			// 收到响应，更新日志状态为 connecting（连接已建立）
+			UpdateLogStatus(channelLogStore, channelIndex, logRequestID, metrics.StatusConnecting)
+			// 更新日志状态为 first_byte（首字节到达）
 			UpdateLogStatus(channelLogStore, channelIndex, logRequestID, metrics.StatusFirstByte)
 			if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 				respBodyBytes, _ := io.ReadAll(resp.Body)

@@ -102,7 +102,7 @@ func CompleteLog(
 	}
 
 	now := time.Now()
-	channelLogStore.Update(channelIndex, requestID, func(log *metrics.ChannelLog) {
+	updated := channelLogStore.Update(channelIndex, requestID, func(log *metrics.ChannelLog) {
 		log.StatusCode = statusCode
 		log.Success = success
 		log.ErrorInfo = errorInfo
@@ -116,6 +116,29 @@ func CompleteLog(
 			log.Status = metrics.StatusFailed
 		}
 	})
+
+	// 如果 Update 失败（日志已被淘汰），补写一条终态日志确保生命周期完整
+	if !updated {
+		channelLogStore.Record(channelIndex, &metrics.ChannelLog{
+			RequestID:     requestID,
+			Timestamp:     now,
+			StatusCode:    statusCode,
+			Success:       success,
+			ErrorInfo:     errorInfo,
+			IsRetry:       isRetry,
+			Status:        getStatusFromSuccess(success),
+			StartTime:     now, // 无法获取原始 StartTime，使用当前时间
+			CompletedAt:   &now,
+			DurationMs:    0, // 无法计算准确耗时
+		})
+	}
+}
+
+func getStatusFromSuccess(success bool) string {
+	if success {
+		return metrics.StatusCompleted
+	}
+	return metrics.StatusFailed
 }
 
 // RecordChannelLog 统一记录渠道尝试日志。
