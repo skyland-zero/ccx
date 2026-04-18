@@ -46,15 +46,15 @@ const (
 
 // ChannelLogStore 渠道日志存储（内存环形缓冲区）
 type ChannelLogStore struct {
-	mu                sync.RWMutex
-	logs              map[int][]*ChannelLog   // key: channelIndex
-	deletedRequestIDs map[string]struct{}     // 被删除渠道上的请求，避免终态补写污染其他渠道
+	mu               sync.RWMutex
+	logs             map[int][]*ChannelLog // key: channelIndex
+	requestLocations map[string]int        // requestID -> current channelIndex；仅跟踪在途请求
 }
 
 func NewChannelLogStore() *ChannelLogStore {
 	return &ChannelLogStore{
-		logs:              make(map[int][]*ChannelLog),
-		deletedRequestIDs: make(map[string]struct{}),
+		logs:             make(map[int][]*ChannelLog),
+		requestLocations: make(map[string]int),
 	}
 }
 
@@ -62,16 +62,15 @@ func (s *ChannelLogStore) Record(channelIndex int, log *ChannelLog) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if log != nil && log.RequestID != "" {
-		delete(s.deletedRequestIDs, log.RequestID)
+		log.ChannelIndex = channelIndex
+		if log.Status != StatusCompleted && log.Status != StatusFailed {
+			s.requestLocations[log.RequestID] = channelIndex
+		} else {
+			delete(s.requestLocations, log.RequestID)
+		}
 	}
 	s.logs[channelIndex] = append(s.logs[channelIndex], log)
 	if len(s.logs[channelIndex]) > maxChannelLogs {
-		evicted := s.logs[channelIndex][:len(s.logs[channelIndex])-maxChannelLogs]
-		for _, item := range evicted {
-			if item != nil && item.RequestID != "" {
-				delete(s.deletedRequestIDs, item.RequestID)
-			}
-		}
 		s.logs[channelIndex] = s.logs[channelIndex][len(s.logs[channelIndex])-maxChannelLogs:]
 	}
 }
@@ -91,7 +90,7 @@ func (s *ChannelLogStore) RemoveAndShift(channelIndex int) {
 		case idx == channelIndex:
 			for _, log := range logs {
 				if log != nil && log.RequestID != "" {
-					s.deletedRequestIDs[log.RequestID] = struct{}{}
+					delete(s.requestLocations, log.RequestID)
 				}
 			}
 			continue
@@ -99,6 +98,11 @@ func (s *ChannelLogStore) RemoveAndShift(channelIndex int) {
 			for _, log := range logs {
 				if log != nil {
 					log.ChannelIndex = idx - 1
+					if log.RequestID != "" {
+						if _, tracking := s.requestLocations[log.RequestID]; tracking {
+							s.requestLocations[log.RequestID] = idx - 1
+						}
+					}
 				}
 			}
 			shifted[idx-1] = logs
@@ -114,14 +118,8 @@ func (s *ChannelLogStore) RemoveAndShift(channelIndex int) {
 func (s *ChannelLogStore) ClearAll() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for _, logs := range s.logs {
-		for _, log := range logs {
-			if log != nil && log.RequestID != "" {
-				s.deletedRequestIDs[log.RequestID] = struct{}{}
-			}
-		}
-	}
 	s.logs = make(map[int][]*ChannelLog)
+	s.requestLocations = make(map[string]int)
 }
 
 func (s *ChannelLogStore) Get(channelIndex int) []*ChannelLog {
@@ -151,36 +149,36 @@ const (
 )
 
 // Update 更新指定请求日志（通过 RequestID 匹配）
-// 若渠道删除导致索引漂移，会跨索引查找并更新；返回值用于区分淘汰与删除。
+// 优先使用在途请求索引定位；若请求已不在途，则区分为淘汰或删除。
 func (s *ChannelLogStore) Update(channelIndex int, requestID string, updateFn func(*ChannelLog)) UpdateStatus {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if requestID == "" {
-		return UpdateMissingEvicted
-	}
-
-	if logs, ok := s.logs[channelIndex]; ok {
-		for i := range logs {
-			if logs[i].RequestID == requestID {
-				updateFn(logs[i])
-				return UpdateFound
-			}
-		}
-	}
-
-	for _, logs := range s.logs {
-		for i := range logs {
-			if logs[i].RequestID == requestID {
-				updateFn(logs[i])
-				return UpdateFound
-			}
-		}
-	}
-
-	if _, deleted := s.deletedRequestIDs[requestID]; deleted {
 		return UpdateMissingDeleted
 	}
 
+	actualIndex, tracking := s.requestLocations[requestID]
+	if !tracking {
+		return UpdateMissingDeleted
+	}
+
+	logs, ok := s.logs[actualIndex]
+	if !ok {
+		delete(s.requestLocations, requestID)
+		return UpdateMissingDeleted
+	}
+
+	for i := range logs {
+		if logs[i].RequestID == requestID {
+			updateFn(logs[i])
+			if logs[i].Status == StatusCompleted || logs[i].Status == StatusFailed {
+				delete(s.requestLocations, requestID)
+			}
+			return UpdateFound
+		}
+	}
+
+	// 仍被标记为在途，但已不在缓冲区中，说明是环形缓冲淘汰。
 	return UpdateMissingEvicted
 }

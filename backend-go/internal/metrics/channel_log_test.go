@@ -24,3 +24,34 @@ func TestChannelLogStoreRemoveAndShift(t *testing.T) {
 		t.Fatalf("channel 2 logs = %#v, want nil", got)
 	}
 }
+
+func TestChannelLogStoreUpdateReturnsDeletedAfterRemoveAndShift(t *testing.T) {
+	store := NewChannelLogStore()
+	log := &ChannelLog{RequestID: "req-delete", Status: StatusPending}
+	store.Record(0, log)
+
+	store.RemoveAndShift(0)
+
+	status := store.Update(0, "req-delete", func(log *ChannelLog) {
+		log.Status = StatusCompleted
+	})
+	if status != UpdateMissingDeleted {
+		t.Fatalf("status = %v, want %v", status, UpdateMissingDeleted)
+	}
+}
+
+func TestChannelLogStoreUpdateReturnsEvictedWhileStillTracked(t *testing.T) {
+	store := NewChannelLogStore()
+	store.Record(0, &ChannelLog{RequestID: "req-evicted", Status: StatusPending})
+
+	store.mu.Lock()
+	store.logs[0] = []*ChannelLog{}
+	store.mu.Unlock()
+
+	status := store.Update(0, "req-evicted", func(log *ChannelLog) {
+		log.Status = StatusCompleted
+	})
+	if status != UpdateMissingEvicted {
+		t.Fatalf("status = %v, want %v", status, UpdateMissingEvicted)
+	}
+}
