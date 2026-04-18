@@ -1,3 +1,20 @@
+## [Unreleased]
+
+### Added
+
+- **渠道日志实时显示请求生命周期状态** - 扩展 `ChannelLog` 结构支持请求状态追踪（pending/connecting/first_byte/streaming/completed/failed），在请求各阶段实时更新日志状态，前端显示状态标签、各阶段耗时（连接耗时、首字节耗时、总耗时）和进行中请求的脉动动画效果
+- **渠道日志默认自动刷新** - 前端日志对话框打开时自动开始 3 秒轮询，移除手动刷新按钮，关闭对话框时自动停止查询
+
+### Changed
+
+- **优化渠道日志记录机制** - 新增 `CreatePendingLog`、`UpdateLogStatus`、`CompleteLog` 函数支持日志生命周期管理，`ChannelLogStore` 新增 `Update` 方法支持通过 `requestID` 更新已存在的日志条目
+
+### Fixed
+
+- **修复客户端取消请求的日志终态缺失** - 在客户端取消分支（`context.Canceled`）中补充 `CompleteLog` 调用，避免日志永久停留在进行中状态
+- **修复日志并发读写安全问题** - `ChannelLogStore.Get` 方法返回深拷贝而非共享指针，避免 HTTP 序列化与日志更新并发时的数据竞争
+- **修复前端进行中请求误标为失败** - 仅在 `status === 'failed'` 时显示错误背景，`statusCode === 0` 时显示 `-` 而非 `ERR`，避免 pending/connecting 请求被误判为失败
+
 ## [v2.6.64] - 2026-04-16
 
 ### Fixed

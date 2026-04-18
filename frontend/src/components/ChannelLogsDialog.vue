@@ -3,14 +3,9 @@
     <v-card>
       <v-card-title class="d-flex align-center justify-space-between">
         <span class="dialog-title">{{ t('channelLogs.title', { channel: channelName }) }}</span>
-        <div class="d-flex align-center ga-2">
-          <v-btn class="auto-refresh-btn" size="x-small" :variant="autoRefresh ? 'flat' : 'outlined'" :color="autoRefresh ? 'primary' : ''" @click="autoRefresh = !autoRefresh">
-            {{ autoRefresh ? t('channelLogs.autoRefreshing') : t('channelLogs.autoRefresh') }}
-          </v-btn>
-          <v-btn icon size="small" variant="text" @click="$emit('update:modelValue', false)">
-            <v-icon>mdi-close</v-icon>
-          </v-btn>
-        </div>
+        <v-btn icon size="small" variant="text" @click="$emit('update:modelValue', false)">
+          <v-icon>mdi-close</v-icon>
+        </v-btn>
       </v-card-title>
       <v-divider />
       <v-card-text class="pa-0 channel-logs-scroll">
@@ -28,14 +23,20 @@
         <!-- Log list -->
         <v-list v-else density="comfortable" class="pa-0">
           <template v-for="(log, i) in logs" :key="i">
-            <v-list-item :class="['log-item', { 'bg-error-subtle': !log.success }]" @click="toggleExpand(i)">
+            <v-list-item :class="['log-item', { 'bg-error-subtle': log.status === 'failed', 'log-in-progress': isInProgress(log.status) }]" @click="toggleExpand(i)">
               <template #prepend>
-                <v-chip :color="statusColor(log.statusCode)" size="small" variant="flat" class="mr-2 font-weight-bold log-status-chip">
-                  {{ log.statusCode || 'ERR' }}
+                <v-chip v-if="log.statusCode > 0" :color="statusColor(log.statusCode)" size="small" variant="flat" class="mr-2 font-weight-bold log-status-chip">
+                  {{ log.statusCode }}
+                </v-chip>
+                <v-chip v-else size="small" color="default" variant="flat" class="mr-2 font-weight-bold log-status-chip">
+                  -
                 </v-chip>
               </template>
               <v-list-item-title class="d-flex align-center ga-2 flex-wrap log-summary">
                 <span class="text-medium-emphasis log-meta">{{ formatTime(log.timestamp) }}</span>
+                <v-chip v-if="log.status" size="small" :color="requestStatusColor(log.status)" variant="tonal" class="text-uppercase">
+                  {{ requestStatusText(log.status) }}
+                </v-chip>
                 <v-chip v-if="log.interfaceType" size="small" :color="interfaceTypeColor(log.interfaceType)" variant="tonal" class="text-uppercase">
                   {{ log.interfaceType }}
                 </v-chip>
@@ -44,7 +45,18 @@
                 </v-chip>
                 <span v-if="log.originalModel" class="text-medium-emphasis log-meta">{{ log.originalModel }} →</span>
                 <span class="font-weight-medium log-model">{{ log.model }}</span>
-                <span class="text-medium-emphasis log-meta">{{ log.durationMs }}ms</span>
+                <template v-if="calculateDurations(log)">
+                  <span v-if="calculateDurations(log)!.connectMs !== null" class="text-medium-emphasis log-meta">
+                    连接 {{ calculateDurations(log)!.connectMs }}ms
+                  </span>
+                  <span v-if="calculateDurations(log)!.firstByteMs !== null" class="text-medium-emphasis log-meta">
+                    首字 {{ calculateDurations(log)!.firstByteMs }}ms
+                  </span>
+                  <span v-if="calculateDurations(log)!.totalMs !== null" class="text-medium-emphasis log-meta">
+                    总计 {{ calculateDurations(log)!.totalMs }}ms
+                  </span>
+                </template>
+                <span v-else class="text-medium-emphasis log-meta">{{ log.durationMs }}ms</span>
                 <span class="text-medium-emphasis log-meta">{{ log.keyMask }}</span>
                 <v-chip v-if="log.isRetry" size="small" color="warning" variant="tonal">{{ t('channelLogs.retry') }}</v-chip>
               </v-list-item-title>
@@ -82,7 +94,7 @@ const { t } = useI18n()
 
 const logs = ref<ChannelLogEntry[]>([])
 const isLoading = ref(false)
-const autoRefresh = ref(false)
+const autoRefresh = ref(true)
 const expandedIndex = ref<number | null>(null)
 let timer: ReturnType<typeof setInterval> | null = null
 
@@ -94,6 +106,49 @@ const statusColor = (code: number): string => {
   if (code >= 200 && code < 300) return 'success'
   if (code >= 400 && code < 500) return 'warning'
   return 'error'
+}
+
+const requestStatusColor = (status: string): string => {
+  switch (status) {
+    case 'completed': return 'success'
+    case 'failed': return 'error'
+    case 'streaming': return 'info'
+    case 'first_byte': return 'primary'
+    case 'connecting': return 'warning'
+    case 'pending': return 'default'
+    default: return 'default'
+  }
+}
+
+const requestStatusText = (status: string): string => {
+  switch (status) {
+    case 'pending': return '等待中'
+    case 'connecting': return '连接中'
+    case 'first_byte': return '首字节'
+    case 'streaming': return '传输中'
+    case 'completed': return '已完成'
+    case 'failed': return '失败'
+    default: return status
+  }
+}
+
+const isInProgress = (status: string): boolean => {
+  return ['pending', 'connecting', 'first_byte', 'streaming'].includes(status)
+}
+
+const calculateDurations = (log: ChannelLogEntry) => {
+  if (!log.startTime) return null
+
+  const start = new Date(log.startTime).getTime()
+  const connected = log.connectedAt ? new Date(log.connectedAt).getTime() : null
+  const firstByte = log.firstByteAt ? new Date(log.firstByteAt).getTime() : null
+  const completed = log.completedAt ? new Date(log.completedAt).getTime() : null
+
+  return {
+    connectMs: connected ? connected - start : null,
+    firstByteMs: firstByte ? firstByte - start : null,
+    totalMs: completed ? completed - start : null
+  }
 }
 
 const interfaceTypeColor = (type: string): string => {
@@ -155,6 +210,13 @@ watch(autoRefresh, (v) => {
   else stopPolling()
 })
 
+// 对话框打开时自动开始轮询
+watch(() => props.modelValue, (open) => {
+  if (open && autoRefresh.value) {
+    startPolling()
+  }
+}, { immediate: true })
+
 onUnmounted(() => stopPolling())
 </script>
 
@@ -173,6 +235,22 @@ onUnmounted(() => stopPolling())
 .log-item {
   padding-top: 10px;
   padding-bottom: 10px;
+}
+
+.log-in-progress {
+  border-left: 3px solid rgb(var(--v-theme-primary));
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    border-left-color: rgb(var(--v-theme-primary));
+    opacity: 1;
+  }
+  50% {
+    border-left-color: rgba(var(--v-theme-primary), 0.5);
+    opacity: 0.8;
+  }
 }
 
 .log-status-chip {
