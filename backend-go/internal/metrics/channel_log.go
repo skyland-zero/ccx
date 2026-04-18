@@ -156,23 +156,24 @@ const (
 
 // Update 更新指定请求日志（通过 RequestID 匹配）
 // 优先使用在途请求索引定位；若请求已不在途，则区分为淘汰或删除。
-func (s *ChannelLogStore) Update(channelIndex int, requestID string, updateFn func(*ChannelLog)) UpdateStatus {
+// 返回值为 (状态, 当前实际渠道索引)。
+func (s *ChannelLogStore) Update(channelIndex int, requestID string, updateFn func(*ChannelLog)) (UpdateStatus, int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if requestID == "" {
-		return UpdateMissingDeleted
+		return UpdateMissingDeleted, -1
 	}
 
 	actualIndex, tracking := s.requestLocations[requestID]
 	if !tracking {
-		return UpdateMissingDeleted
+		return UpdateMissingDeleted, -1
 	}
 
 	logs, ok := s.logs[actualIndex]
 	if !ok {
 		delete(s.requestLocations, requestID)
-		return UpdateMissingDeleted
+		return UpdateMissingDeleted, -1
 	}
 
 	for i := range logs {
@@ -181,10 +182,10 @@ func (s *ChannelLogStore) Update(channelIndex int, requestID string, updateFn fu
 			if logs[i].Status == StatusCompleted || logs[i].Status == StatusFailed {
 				delete(s.requestLocations, requestID)
 			}
-			return UpdateFound
+			return UpdateFound, actualIndex
 		}
 	}
 
 	// 仍被标记为在途，但已不在缓冲区中，说明是环形缓冲淘汰。
-	return UpdateMissingEvicted
+	return UpdateMissingEvicted, actualIndex
 }

@@ -32,11 +32,14 @@ func TestChannelLogStoreUpdateReturnsDeletedAfterRemoveAndShift(t *testing.T) {
 
 	store.RemoveAndShift(0)
 
-	status := store.Update(0, "req-delete", func(log *ChannelLog) {
+	status, actualIndex := store.Update(0, "req-delete", func(log *ChannelLog) {
 		log.Status = StatusCompleted
 	})
 	if status != UpdateMissingDeleted {
 		t.Fatalf("status = %v, want %v", status, UpdateMissingDeleted)
+	}
+	if actualIndex != -1 {
+		t.Fatalf("actualIndex = %d, want -1", actualIndex)
 	}
 }
 
@@ -48,11 +51,14 @@ func TestChannelLogStoreUpdateReturnsEvictedWhileStillTracked(t *testing.T) {
 	store.logs[0] = []*ChannelLog{}
 	store.mu.Unlock()
 
-	status := store.Update(0, "req-evicted", func(log *ChannelLog) {
+	status, actualIndex := store.Update(0, "req-evicted", func(log *ChannelLog) {
 		log.Status = StatusCompleted
 	})
 	if status != UpdateMissingEvicted {
 		t.Fatalf("status = %v, want %v", status, UpdateMissingEvicted)
+	}
+	if actualIndex != 0 {
+		t.Fatalf("actualIndex = %d, want 0", actualIndex)
 	}
 }
 
@@ -66,10 +72,34 @@ func TestChannelLogStoreRemoveAndShiftClearsEvictedInFlightRequestAtDeletedIndex
 
 	store.RemoveAndShift(1)
 
-	status := store.Update(1, "req-stale", func(log *ChannelLog) {
+	status, actualIndex := store.Update(1, "req-stale", func(log *ChannelLog) {
 		log.Status = StatusCompleted
 	})
 	if status != UpdateMissingDeleted {
 		t.Fatalf("status = %v, want %v", status, UpdateMissingDeleted)
+	}
+	if actualIndex != -1 {
+		t.Fatalf("actualIndex = %d, want -1", actualIndex)
+	}
+}
+
+func TestChannelLogStoreUpdateReturnsShiftedActualIndexForEvictedRequest(t *testing.T) {
+	store := NewChannelLogStore()
+	store.Record(1, &ChannelLog{RequestID: "req-shifted", Status: StatusPending})
+
+	store.mu.Lock()
+	store.logs[1] = []*ChannelLog{}
+	store.mu.Unlock()
+
+	store.RemoveAndShift(0)
+
+	status, actualIndex := store.Update(1, "req-shifted", func(log *ChannelLog) {
+		log.Status = StatusCompleted
+	})
+	if status != UpdateMissingEvicted {
+		t.Fatalf("status = %v, want %v", status, UpdateMissingEvicted)
+	}
+	if actualIndex != 0 {
+		t.Fatalf("actualIndex = %d, want 0", actualIndex)
 	}
 }
