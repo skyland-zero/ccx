@@ -113,6 +113,47 @@ func main() {
 	log.Printf("[Scheduler-Init] 多渠道调度器已初始化 (失败率阈值: %.0f%%, 滑动窗口: %d)",
 		messagesMetricsManager.GetFailureThreshold()*100, messagesMetricsManager.GetWindowSize())
 
+	scheduledRecoveryStop := make(chan struct{})
+	go func() {
+		for {
+			next := scheduler.NextScheduledRecoveryTimeUTC(time.Now())
+			wait := time.Until(next)
+			if wait < 0 {
+				wait = 0
+			}
+			timer := time.NewTimer(wait)
+			select {
+			case <-timer.C:
+				results, err := channelScheduler.RunScheduledRecoveries(time.Now().UTC())
+				if err != nil {
+					log.Printf("[Scheduler-Recovery] 警告: 自动恢复执行失败: %v", err)
+					continue
+				}
+				if len(results) == 0 {
+					log.Printf("[Scheduler-Recovery] UTC 自动恢复完成，本轮无可恢复 key")
+					continue
+				}
+				restoredKeys := 0
+				activatedChannels := 0
+				for _, result := range results {
+					restoredKeys += len(result.RestoredKeys)
+					if result.ActivatedChannel {
+						activatedChannels++
+					}
+				}
+				log.Printf("[Scheduler-Recovery] UTC 自动恢复完成：恢复 %d 个 key，激活 %d 个渠道", restoredKeys, activatedChannels)
+			case <-scheduledRecoveryStop:
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
+				return
+			}
+		}
+	}()
+
 	// 设置 Gin 模式
 	if envCfg.IsProduction() {
 		gin.SetMode(gin.ReleaseMode)
@@ -412,6 +453,7 @@ func main() {
 			}
 		}
 
+		close(scheduledRecoveryStop)
 		close(shutdownDone)
 	}()
 

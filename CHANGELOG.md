@@ -1,3 +1,11 @@
+## [Unreleased]
+
+### Changed
+
+- **新增 UTC 0/8/16 时段自动恢复黑名单 key** - 为因余额/额度类原因自动拉黑的 key 增加基于 UTC `00:00:01`、`08:00:01`、`16:00:01` 的定时恢复编排，恢复后将 key 切入 `half_open` 探测而非直接回到 `closed`，并跳过 1 小时内刚自动封禁的 key 以顺延到下个时段
+- **自动恢复时按渠道状态最小激活** - 当渠道因 active key 为空而处于 `suspended` 时，若本轮恢复出了可用 key，则自动恢复为 `active`；`disabled` 渠道保持不变，避免误激活手动禁用渠道
+- **补充恢复编排与熔断回归测试** - 新增 metrics/scheduler 单测覆盖 UTC 时段计算、可自动恢复 reason 筛选、多 BaseURL half-open 迁移与 suspended 渠道激活规则
+
 ## [v2.6.64] - 2026-04-16
 
 ### Fixed

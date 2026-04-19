@@ -6,6 +6,7 @@ import (
 	"log"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/BenedictKing/ccx/internal/config"
 	"github.com/BenedictKing/ccx/internal/metrics"
@@ -81,6 +82,27 @@ func (s *ChannelScheduler) getMetricsManager(kind ChannelKind) *metrics.MetricsM
 	}
 }
 
+func (s *ChannelScheduler) setChannelStatusByKind(index int, kind ChannelKind, status string) error {
+	switch kind {
+	case ChannelKindResponses:
+		return s.configManager.SetResponsesChannelStatus(index, status)
+	case ChannelKindGemini:
+		return s.configManager.SetGeminiChannelStatus(index, status)
+	case ChannelKindChat:
+		return s.configManager.SetChatChannelStatus(index, status)
+	default:
+		return s.configManager.SetChannelStatus(index, status)
+	}
+}
+
+type ScheduledRecoveryResult struct {
+	Kind             ChannelKind
+	ChannelIndex     int
+	ChannelName      string
+	RestoredKeys     []string
+	ActivatedChannel bool
+}
+
 // SelectionResult 渠道选择结果
 type SelectionResult struct {
 	Upstream     *config.UpstreamConfig
@@ -88,7 +110,135 @@ type SelectionResult struct {
 	Reason       string // 选择原因（用于日志）
 }
 
-// SelectChannel 选择最佳渠道
+// NextScheduledRecoveryTimeUTC 返回下一个 UTC 0/8/16 点后 1 秒的恢复时刻。
+func NextScheduledRecoveryTimeUTC(now time.Time) time.Time {
+	now = now.UTC()
+	base := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 1, 0, time.UTC)
+	for _, hour := range []int{0, 8, 16} {
+		candidate := time.Date(base.Year(), base.Month(), base.Day(), hour, 0, 1, 0, time.UTC)
+		if now.Before(candidate) {
+			return candidate
+		}
+	}
+	return base.Add(24 * time.Hour)
+}
+
+func shouldSkipScheduledRecovery(disabledAt string, now time.Time) bool {
+	if disabledAt == "" {
+		return false
+	}
+	parsed, err := time.Parse(time.RFC3339, disabledAt)
+	if err != nil {
+		return false
+	}
+	return now.Sub(parsed.UTC()) < time.Hour
+}
+
+func kindAPIType(kind ChannelKind) string {
+	switch kind {
+	case ChannelKindResponses:
+		return "Responses"
+	case ChannelKindGemini:
+		return "Gemini"
+	case ChannelKindChat:
+		return "Chat"
+	default:
+		return "Messages"
+	}
+}
+
+func (s *ChannelScheduler) scheduledRecoveryKinds() []ChannelKind {
+	return []ChannelKind{ChannelKindMessages, ChannelKindResponses, ChannelKindGemini, ChannelKindChat}
+}
+
+func (s *ChannelScheduler) restoreScheduledKeysForKind(kind ChannelKind, now time.Time) ([]ScheduledRecoveryResult, error) {
+	cfg := s.configManager.GetConfig()
+	var upstreams []config.UpstreamConfig
+	switch kind {
+	case ChannelKindResponses:
+		upstreams = cfg.ResponsesUpstream
+	case ChannelKindGemini:
+		upstreams = cfg.GeminiUpstream
+	case ChannelKindChat:
+		upstreams = cfg.ChatUpstream
+	default:
+		upstreams = cfg.Upstream
+	}
+
+	metricsManager := s.getMetricsManager(kind)
+	apiType := kindAPIType(kind)
+	results := make([]ScheduledRecoveryResult, 0)
+
+	for idx, upstream := range upstreams {
+		if upstream.Status == "disabled" || len(upstream.DisabledAPIKeys) == 0 {
+			continue
+		}
+
+		keysToRestore := make([]string, 0)
+		for _, dk := range upstream.DisabledAPIKeys {
+			if !config.IsAutoRecoverableDisabledReason(dk.Reason) {
+				continue
+			}
+			if shouldSkipScheduledRecovery(dk.DisabledAt, now) {
+				continue
+			}
+			keysToRestore = append(keysToRestore, dk.Key)
+		}
+		if len(keysToRestore) == 0 {
+			continue
+		}
+
+		restoredKeys, err := s.configManager.RestoreDisabledKeys(apiType, idx, keysToRestore)
+		if err != nil {
+			return nil, err
+		}
+		if len(restoredKeys) == 0 {
+			continue
+		}
+
+		updatedUpstream := s.getUpstreamByIndex(idx, kind)
+		if updatedUpstream == nil {
+			continue
+		}
+		for _, baseURL := range updatedUpstream.GetAllBaseURLs() {
+			for _, apiKey := range restoredKeys {
+				metricsManager.MoveKeyToHalfOpen(baseURL, apiKey)
+			}
+		}
+
+		activated := false
+		if upstream.Status == "suspended" && len(upstream.APIKeys) == 0 && updatedUpstream.Status == "suspended" {
+			if err := s.setChannelStatusByKind(idx, kind, "active"); err != nil {
+				return nil, err
+			}
+			activated = true
+		}
+
+		results = append(results, ScheduledRecoveryResult{
+			Kind:             kind,
+			ChannelIndex:     idx,
+			ChannelName:      updatedUpstream.Name,
+			RestoredKeys:     restoredKeys,
+			ActivatedChannel: activated,
+		})
+	}
+
+	return results, nil
+}
+
+// RunScheduledRecoveries 执行一次自动恢复扫描。
+func (s *ChannelScheduler) RunScheduledRecoveries(now time.Time) ([]ScheduledRecoveryResult, error) {
+	results := make([]ScheduledRecoveryResult, 0)
+	for _, kind := range s.scheduledRecoveryKinds() {
+		kindResults, err := s.restoreScheduledKeysForKind(kind, now.UTC())
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, kindResults...)
+	}
+	return results, nil
+}
+
 // 优先级: 促销期渠道 > Trace亲和（促销渠道失败时回退） > 渠道优先级顺序
 func (s *ChannelScheduler) SelectChannel(
 	ctx context.Context,
