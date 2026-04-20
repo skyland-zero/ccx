@@ -225,7 +225,7 @@ func TestChannelCapability(cfgManager *config.ConfigManager, channelLogStore *me
 
 		protocols := req.TargetProtocols
 		if len(protocols) == 0 {
-			protocols = []string{"messages", "chat", "gemini", "responses"}
+			protocols = []string{"messages", "responses", "chat", "gemini"}
 		}
 
 		effectiveRPM := channel.RPM

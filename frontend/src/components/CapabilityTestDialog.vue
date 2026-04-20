@@ -355,7 +355,7 @@ const getSuccessfulProtocols = () => {
     .map(t => t.protocol)
 }
 
-const protocolOrder = ['messages', 'chat', 'responses', 'gemini']
+const protocolOrder = ['messages', 'responses', 'chat', 'gemini']
 
 const sortedTests = computed(() => {
   if (!job.value) return []

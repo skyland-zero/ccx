@@ -685,7 +685,7 @@ export class ApiService {
     previousJobId?: string
   ): Promise<CapabilityTestJobStartResponse> {
     const body: { targetProtocols: string[]; timeout: number; previousJobId?: string } = {
-      targetProtocols: ['messages', 'chat', 'gemini', 'responses'],
+      targetProtocols: ['messages', 'responses', 'chat', 'gemini'],
       timeout: 10000
     }
     if (previousJobId) {
@@ -718,7 +718,7 @@ export class ApiService {
     return this.request(`/${type}/channels/${id}/capability-test`, {
       method: 'POST',
       body: JSON.stringify({
-        targetProtocols: ['messages', 'chat', 'gemini', 'responses'],
+        targetProtocols: ['messages', 'responses', 'chat', 'gemini'],
         timeout: 10000
       })
     })
