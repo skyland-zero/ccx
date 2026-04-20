@@ -13,18 +13,31 @@
             {{ isEditing ? t('addChannel.editSubtitle') : isQuickMode ? t('addChannel.quickSubtitle') : t('addChannel.fullSubtitle') }}
           </div>
         </div>
-        <!-- 能力测试按钮（仅在编辑模式显示） -->
-        <v-btn
-          v-if="isEditing"
-          color="success"
-          variant="flat"
-          size="small"
-          prepend-icon="mdi-test-tube"
-          class="capability-test-btn"
-          @click="handleTestCapability"
-        >
-          {{ t('addChannel.testCapability') }}
-        </v-btn>
+        <div v-if="isEditing" class="header-capability-actions">
+          <v-btn
+            color="success"
+            variant="flat"
+            size="small"
+            prepend-icon="mdi-test-tube"
+            class="capability-test-btn"
+            @click="handleTestCapability"
+          >
+            {{ t('addChannel.testCapability') }}
+          </v-btn>
+          <v-text-field
+            v-model.number="form.rpm"
+            :label="t('addChannel.rpmLabel')"
+            type="number"
+            min="1"
+            step="1"
+            variant="outlined"
+            density="compact"
+            hide-details
+            class="capability-rpm-field"
+            prepend-inner-icon="mdi-speedometer"
+            @blur="form.rpm = form.rpm > 0 ? Math.floor(form.rpm) : 10"
+          />
+        </div>
         <!-- 模式切换按钮（仅在添加模式显示） -->
         <v-btn v-if="!isEditing" variant="outlined" size="small" class="mode-toggle-btn" @click="toggleMode">
           <v-icon start size="16">{{ isQuickMode ? 'mdi-form-textbox' : 'mdi-lightning-bolt' }}</v-icon>
@@ -705,23 +718,6 @@
                 </div>
                 <v-switch v-model="form.normalizeMetadataUserId" inset color="primary" hide-details />
               </div>
-            </v-col>
-
-            <!-- 能力测试 RPM -->
-            <v-col cols="12" md="6">
-              <v-text-field
-                v-model.number="form.rpm"
-                :label="t('addChannel.rpmLabel')"
-                :hint="t('addChannel.rpmHint')"
-                persistent-hint
-                type="number"
-                min="1"
-                step="1"
-                variant="outlined"
-                density="comfortable"
-                prepend-inner-icon="mdi-speedometer"
-                @blur="form.rpm = form.rpm > 0 ? Math.floor(form.rpm) : 10"
-              />
             </v-col>
 
             <!-- 注入 Dummy Thought Signature（仅 Gemini 渠道显示） -->
@@ -2293,6 +2289,22 @@ onUnmounted(() => {
   font-weight: 600;
   letter-spacing: 0;
   padding-inline: 12px;
+}
+
+.header-capability-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.capability-rpm-field {
+  width: 110px;
+  min-width: 110px;
+}
+
+.capability-rpm-field :deep(.v-input__details) {
+  display: none;
 }
 
 .capability-test-btn :deep(.v-btn__content) {
