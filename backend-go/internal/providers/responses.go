@@ -247,16 +247,6 @@ func (p *ResponsesProvider) buildResponsesRequestFromClaude(c *gin.Context, body
 			responsesReq["parallel_tool_calls"] = true
 		}
 	}
-	if claudeReq.Metadata != nil {
-		if userID, ok := claudeReq.Metadata["user_id"].(string); ok && userID != "" {
-			responsesReq["user"] = userID
-		}
-	}
-	if _, exists := responsesReq["user"]; !exists {
-		if sessionID := utils.ExtractUnifiedSessionID(c, bodyBytes); sessionID != "" {
-			responsesReq["user"] = sessionID
-		}
-	}
 	if cacheKey := utils.ExtractUnifiedSessionID(c, bodyBytes); cacheKey != "" {
 		responsesReq["prompt_cache_key"] = cacheKey
 	}
