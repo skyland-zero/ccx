@@ -23,12 +23,24 @@
         <!-- Log list -->
         <v-list v-else density="comfortable" class="pa-0">
           <template v-for="(log, i) in logs" :key="i">
-            <v-list-item :class="['log-item', { 'bg-error-subtle': log.status === 'failed', 'log-in-progress': isInProgress(log.status) }]" @click="toggleExpand(i)">
+            <v-list-item :class="['log-item', { 'bg-error-subtle': log.status === 'failed' }]" @click="toggleExpand(i)">
               <template #prepend>
-                <v-chip v-if="log.statusCode > 0" :color="statusColor(log.statusCode)" size="small" variant="flat" class="mr-2 font-weight-bold log-status-chip">
+                <v-chip
+                  v-if="log.statusCode > 0"
+                  :color="statusColor(log.statusCode)"
+                  size="small"
+                  variant="flat"
+                  class="mr-2 font-weight-bold log-status-chip"
+                  :class="{ 'log-status-chip--in-progress': isInProgress(log.status) }"
+                >
                   {{ log.statusCode }}
                 </v-chip>
-                <v-chip v-else-if="isInProgress(log.status)" size="small" variant="flat" class="mr-2 font-weight-bold log-status-chip log-status-chip--placeholder">
+                <v-chip
+                  v-else-if="isInProgress(log.status)"
+                  size="small"
+                  variant="flat"
+                  class="mr-2 font-weight-bold log-status-chip log-status-chip--placeholder log-status-chip--in-progress"
+                >
                   <span class="log-status-chip__placeholder">000</span>
                 </v-chip>
                 <v-chip v-else size="small" color="default" variant="flat" class="mr-2 font-weight-bold log-status-chip">
@@ -246,25 +258,44 @@ onUnmounted(() => stopPolling())
   padding-bottom: 10px;
 }
 
-.log-in-progress {
-  border-left: 3px solid rgb(var(--v-theme-primary));
-  animation: pulse 2s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% {
-    border-left-color: rgb(var(--v-theme-primary));
-    opacity: 1;
-  }
-  50% {
-    border-left-color: rgba(var(--v-theme-primary), 0.5);
-    opacity: 0.8;
-  }
-}
-
 .log-status-chip {
   min-width: 52px;
   justify-content: center;
+}
+
+.log-status-chip--in-progress {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  animation: log-chip-neon-pulse 1.8s ease-in-out infinite;
+}
+
+.log-status-chip--in-progress::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    radial-gradient(circle at center, rgba(var(--v-theme-primary), 0.34) 0%, rgba(var(--v-theme-primary), 0.2) 45%, rgba(var(--v-theme-primary), 0.06) 100%);
+  opacity: 0.88;
+  z-index: -1;
+}
+
+@keyframes log-chip-neon-pulse {
+  0%, 100% {
+    box-shadow:
+      0 0 0 1px rgba(var(--v-theme-primary), 0.28),
+      0 0 10px rgba(var(--v-theme-primary), 0.22),
+      0 0 18px rgba(var(--v-theme-primary), 0.12);
+    filter: saturate(1);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px rgba(var(--v-theme-primary), 0.48),
+      0 0 14px rgba(var(--v-theme-primary), 0.36),
+      0 0 28px rgba(var(--v-theme-primary), 0.22);
+    filter: saturate(1.12);
+  }
 }
 
 .log-status-chip--placeholder {
