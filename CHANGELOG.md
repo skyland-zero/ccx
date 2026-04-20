@@ -2,11 +2,14 @@
 
 ### Added
 
+- **编辑弹窗新增静默保存后执行能力** - 编辑已有渠道时，点击“目标模型名”或“能力测试”会先验证并静默保存当前表单，再基于保存后的最新配置继续执行；`rpm`、`proxyUrl`、`baseUrl`、`apiKeys` 等修改无需手动保存即可生效
 - **渠道日志实时显示请求生命周期状态** - 扩展 `ChannelLog` 结构支持请求状态追踪（pending/connecting/first_byte/streaming/completed/failed），在请求各阶段实时更新日志状态，前端显示状态标签、各阶段耗时（连接耗时、首字节耗时、总耗时）和进行中请求的脉动动画效果
 - **渠道日志默认自动刷新** - 前端日志对话框打开时自动开始 3 秒轮询，移除手动刷新按钮，关闭对话框时自动停止查询
 
 ### Changed
 
+- **扩展按渠道模型查询的临时连接参数** - 前端模型查询请求与四类后端 `/channels/:id/models` 入口新增支持 `proxyUrl`、`insecureSkipVerify` 与 `customHeaders`，新增渠道场景也可直接带临时连接参数获取模型列表
+- **公共 `/v1/models` 复用渠道代理与自定义请求头** - 聚合模型列表与模型详情查询现在会沿用渠道配置中的 `proxyUrl` 和 `customHeaders`，与正式转发链路保持一致
 - **统一 Base URL 等价去重与请求预览语义** - 为前后端新增共享 canonical Base URL 规则，将根域名与默认版本前缀 URL（如 `/v1`、`/v1beta`）视为等效并保留最短形式，同时继续保留 `#` 作为独立语义；同步影响渠道新增/编辑、快速输入解析、payload 构建与预期请求 URL 预览
 - **兼容等效 Base URL 的历史指标与图表聚合** - 后端配置、运行时指标 key、历史统计与图表聚合改为按等效 Base URL 兼容读取，避免用户在 `root` 与 `/v1` 之间切换后出现历史访问记录和图表数据断裂，并补充前后端回归测试
 - **优化渠道日志记录机制** - 新增 `CreatePendingLog`、`UpdateLogStatus`、`CompleteLog` 函数支持日志生命周期管理，`ChannelLogStore` 新增 `Update` 方法支持通过 `requestID` 更新已存在的日志条目
@@ -16,6 +19,7 @@
 
 ### Fixed
 
+- **修复编辑渠道切换时弹窗临时输入残留** - `AddChannelModal` 在关闭弹窗、切换新增/编辑模式和切换编辑渠道时统一重置自定义请求头输入框，并同步清理新 API Key、模型映射等临时表单状态，避免上一个渠道的草稿残留到下一个渠道
 - **修复合并后的指标 serviceType 签名不一致** - 统一自动恢复与熔断相关代码、测试对新的 metrics identity/serviceType 签名的调用，修复 worktree 合并后 `MoveKeyToHalfOpen`、`GetKeyCircuitState` 与对应回归测试的编译错误，涉及 `internal/metrics` 与 `internal/scheduler`
 - **修复客户端取消请求的日志终态缺失** - 在客户端取消分支（`context.Canceled`）中补充 `CompleteLog` 调用，避免日志永久停留在进行中状态
 - **修复日志并发读写安全问题** - `ChannelLogStore.Get` 方法返回深拷贝而非共享指针，避免 HTTP 序列化与日志更新并发时的数据竞争

@@ -885,6 +885,8 @@ import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useTheme } from 'vuetify'
 import type { Channel } from '../services/api'
 import { ApiService, ApiError } from '../services/api'
+import { useChannelStore } from '../stores/channel'
+import { useDialogStore } from '../stores/dialog'
 import {
   isValidApiKey as _isValidApiKey,
   isValidUrl as _isValidQuickInputUrl,
@@ -911,9 +913,12 @@ const emit = defineEmits<{
   'update:show': [value: boolean]
   save: [channel: Omit<Channel, 'index' | 'latency' | 'status'>, options?: { isQuickAdd?: boolean }]
   testCapability: [channelId: number]
+  error: [message: string]
 }>()
 const { t } = useI18n()
 const apiService = new ApiService()
+const channelStore = useChannelStore()
+const dialogStore = useDialogStore()
 
 // 主题
 const theme = useTheme()
@@ -1490,6 +1495,26 @@ const removeCustomHeader = (key: string) => {
   delete form.customHeaders[key]
 }
 
+function resetTransientUiState() {
+  newApiKey.value = ''
+  apiKeyError.value = ''
+  duplicateKeyIndex.value = -1
+  copiedKeyIndex.value = null
+  newMapping.source = ''
+  newMapping.target = ''
+  newMapping.reasoningEffort = ''
+  sourceMappingError.value = ''
+  newHeaderKey.value = ''
+  newHeaderValue.value = ''
+  localRestoredKeys.value = new Set<string>()
+  restoringKey.value = ''
+  errors.name = ''
+  errors.serviceType = ''
+  errors.baseUrl = ''
+  errors.website = ''
+  formBaseUrlPreview.value = ''
+}
+
 // 安全地获取字符串值（处理 v-select/v-combobox 可能返回对象的情况）
 const getStringValue = (val: string | { title: string; value: string } | null | undefined): string => {
   if (!val) return ''
@@ -1527,6 +1552,7 @@ const targetModelOptions = ref<Array<{ title: string; value: string }>>([])
 const fetchingModels = ref(false)
 const fetchModelsError = ref('')
 const hasTriedFetchModels = ref(false) // 标记是否已尝试获取过模型列表
+const silentlySaving = ref(false)
 
 // API Key 的 models 状态管理
 interface KeyModelsStatus {
@@ -1649,8 +1675,105 @@ const maskApiKey = (key: string): string => {
   return key.slice(0, 8) + '***' + key.slice(-5)
 }
 
+const normalizeStringArray = (values: string[]): string[] => values.map(v => v.trim()).filter(Boolean)
+
+const normalizeStringRecord = (record: Record<string, string>): Record<string, string> => {
+  const normalized: Record<string, string> = {}
+  Object.entries(record)
+    .map(([key, value]) => [key.trim(), value.trim()] as const)
+    .filter(([key, value]) => key && value)
+    .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
+    .forEach(([key, value]) => {
+      normalized[key] = value
+    })
+  return normalized
+}
+
+const buildComparablePayload = () => {
+  const payload = buildChannelPayload(form)
+  return {
+    ...payload,
+    apiKeys: normalizeStringArray(payload.apiKeys),
+    baseUrls: normalizeStringArray(payload.baseUrls || []),
+    supportedModels: normalizeStringArray(payload.supportedModels || []),
+    customHeaders: normalizeStringRecord(payload.customHeaders || {}),
+    modelMapping: Object.fromEntries(Object.entries(payload.modelMapping || {}).sort(([a], [b]) => a.localeCompare(b))),
+    reasoningMapping: Object.fromEntries(Object.entries(payload.reasoningMapping || {}).sort(([a], [b]) => a.localeCompare(b)))
+  }
+}
+
+const hasEditableDraftChanges = computed(() => {
+  if (!isEditing.value || !props.channel) return false
+  const currentPayload = buildComparablePayload()
+  const originalPayload = {
+    name: props.channel.name.trim(),
+    serviceType: props.channel.serviceType,
+    baseUrl: props.channel.baseUrl || '',
+    baseUrls: normalizeStringArray(props.channel.baseUrls || []),
+    website: (props.channel.website || '').trim(),
+    insecureSkipVerify: !!props.channel.insecureSkipVerify,
+    lowQuality: !!props.channel.lowQuality,
+    injectDummyThoughtSignature: !!props.channel.injectDummyThoughtSignature,
+    stripThoughtSignature: !!props.channel.stripThoughtSignature,
+    description: (props.channel.description || '').trim(),
+    apiKeys: normalizeStringArray(props.channel.apiKeys || []),
+    modelMapping: Object.fromEntries(Object.entries(props.channel.modelMapping || {}).sort(([a], [b]) => a.localeCompare(b))),
+    reasoningMapping: Object.fromEntries(Object.entries(props.channel.reasoningMapping || {}).sort(([a], [b]) => a.localeCompare(b))),
+    textVerbosity: props.channel.textVerbosity || '',
+    fastMode: !!props.channel.fastMode,
+    customHeaders: normalizeStringRecord(props.channel.customHeaders || {}),
+    proxyUrl: props.channel.proxyUrl || '',
+    routePrefix: props.channel.routePrefix || '',
+    supportedModels: normalizeStringArray(props.channel.supportedModels || []),
+    autoBlacklistBalance: props.channel.autoBlacklistBalance ?? true,
+    normalizeMetadataUserId: props.channel.normalizeMetadataUserId ?? true,
+    rpm: props.channel.rpm ?? 10,
+  }
+
+  return JSON.stringify(currentPayload) !== JSON.stringify(originalPayload)
+})
+
+const ensureLatestSavedChannel = async (): Promise<number | null> => {
+  if (!isEditing.value || props.channel?.index === undefined || props.channel?.index === null) {
+    return props.channel?.index ?? null
+  }
+  if (!hasEditableDraftChanges.value) {
+    return props.channel.index
+  }
+  if (silentlySaving.value) {
+    return null
+  }
+
+  if (formRef.value) {
+    const { valid } = await formRef.value.validate()
+    if (!valid) {
+      return null
+    }
+  }
+
+  silentlySaving.value = true
+  try {
+    const payload = buildChannelPayload(form)
+    const result = await channelStore.saveChannel(payload, props.channel.index)
+    await channelStore.refreshChannels()
+    const latestChannel = channelStore.currentChannelsData.channels?.find(ch => ch.index === props.channel!.index) || null
+    if (latestChannel) {
+      dialogStore.editingChannel = latestChannel
+      loadChannelData(latestChannel)
+    }
+    return result.channelId ?? props.channel.index
+  } catch (error) {
+    const message = error instanceof Error ? error.message : t('system.unknown')
+    emit('error', message)
+    return null
+  } finally {
+    silentlySaving.value = false
+  }
+}
+
 // 表单操作
 const resetForm = () => {
+  resetTransientUiState()
   form.name = ''
   form.serviceType = ''
   form.baseUrl = ''
@@ -1673,12 +1796,6 @@ const resetForm = () => {
   form.autoBlacklistBalance = true
   form.normalizeMetadataUserId = true
   form.rpm = 10
-  newApiKey.value = ''
-  newMapping.source = ''
-  newMapping.target = ''
-  sourceMappingError.value = ''
-  newHeaderKey.value = ''
-  newHeaderValue.value = ''
 
   // 重置 baseUrlsText
   baseUrlsText.value = ''
@@ -1686,21 +1803,12 @@ const resetForm = () => {
   // 清空原始密钥映射
   originalKeyMap.value.clear()
 
-  // 清空密钥错误状态
-  apiKeyError.value = ''
-  duplicateKeyIndex.value = -1
-
   // 清空模型缓存和状态
   targetModelOptions.value = []
   fetchingModels.value = false
   fetchModelsError.value = ''
   keyModelsStatus.value.clear()
   hasTriedFetchModels.value = false
-
-  // 清除错误信息
-  errors.name = ''
-  errors.serviceType = ''
-  errors.baseUrl = ''
 
   // 重置快速添加模式数据
   quickInput.value = ''
@@ -1713,6 +1821,7 @@ const resetForm = () => {
 }
 
 const loadChannelData = (channel: Channel) => {
+  resetTransientUiState()
   form.name = channel.name
   form.serviceType = channel.serviceType
   form.baseUrl = channel.baseUrl
@@ -1967,6 +2076,16 @@ const fetchTargetModels = async () => {
     return
   }
 
+  const channelId = props.channel?.index
+  if (isEditing.value) {
+    const savedChannelId = await ensureLatestSavedChannel()
+    if (savedChannelId === null) {
+      hasTriedFetchModels.value = false
+      fetchingModels.value = false
+      return
+    }
+  }
+
   // 仅为未检测过的 API Key 发起请求
   const uncheckedKeys = candidateKeys.filter(key => !keyModelsStatus.value.has(key))
 
@@ -1976,8 +2095,6 @@ const fetchTargetModels = async () => {
 
   fetchingModels.value = true
   fetchModelsError.value = ''
-
-  const channelId = props.channel?.index
 
   // modelsApiType 决定请求协议（Bearer/x-goog-api-key、/v1/models vs /v1beta/models）
   // 对于 gemini 渠道组内配置为 openai/claude serviceType 的渠道，应走对应协议而非 Gemini 协议
@@ -1993,28 +2110,34 @@ const fetchTargetModels = async () => {
     modelsApiType = 'messages'
   }
 
+  const requestOverrides = {
+    baseUrl: form.baseUrl || undefined,
+    proxyUrl: form.proxyUrl || undefined,
+    insecureSkipVerify: form.insecureSkipVerify || undefined,
+    customHeaders: Object.keys(form.customHeaders).length > 0 ? { ...form.customHeaders } : undefined,
+  }
+
   // 每个 unchecked key 并发独立请求
   const keyPromises = uncheckedKeys.map(async (apiKey) => {
     keyModelsStatus.value.set(apiKey, { loading: true, success: false })
 
     try {
       let response: any
-      // 始终传递 form.baseUrl，确保检测使用表单当前值（而非已保存的旧配置）
       const id = channelId ?? 0
-      const baseUrlArg = form.baseUrl || undefined
+      const request = { key: apiKey, ...requestOverrides }
 
       switch (modelsApiType) {
         case 'messages':
-          response = await apiService.getChannelModels(id, apiKey, baseUrlArg)
+          response = await apiService.getChannelModels(id, request)
           break
         case 'responses':
-          response = await apiService.getResponsesChannelModels(id, apiKey, baseUrlArg)
+          response = await apiService.getResponsesChannelModels(id, request)
           break
         case 'chat':
-          response = await apiService.getChatChannelModels(id, apiKey, baseUrlArg)
+          response = await apiService.getChatChannelModels(id, request)
           break
         case 'gemini':
-          response = await apiService.getGeminiChannelModels(id, apiKey, baseUrlArg)
+          response = await apiService.getGeminiChannelModels(id, request)
           break
       }
 
@@ -2047,13 +2170,11 @@ const fetchTargetModels = async () => {
   try {
     const results = await Promise.all(keyPromises)
 
-    // 合并所有成功 key 的模型列表（去重）
     const allModels = new Set<string>(targetModelOptions.value.map(opt => opt.value))
     results.forEach(models => models.forEach(m => allModels.add(m.id)))
 
     targetModelOptions.value = sortModelNamesDesc(Array.from(allModels)).map(id => ({ title: id, value: id }))
 
-    // 所有 key（含已有记录）都失败时才显示错误
     const allFailed = candidateKeys.every(key => {
       const s = keyModelsStatus.value.get(key)
       return s && !s.success
@@ -2082,10 +2203,17 @@ const handleCancel = () => {
   resetForm()
 }
 
-const handleTestCapability = () => {
-  if (props.channel?.index !== undefined && props.channel?.index !== null) {
-    emit('testCapability', props.channel.index)
+const handleTestCapability = async () => {
+  if (props.channel?.index === undefined || props.channel?.index === null) {
+    return
   }
+
+  const savedChannelId = await ensureLatestSavedChannel()
+  if (savedChannelId === null) {
+    return
+  }
+
+  emit('testCapability', savedChannelId)
 }
 
 // 监听props变化
@@ -2148,6 +2276,26 @@ watch(
     }, 200)
   },
   { immediate: true }
+)
+
+watch(
+  () => JSON.stringify({
+    baseUrl: form.baseUrl,
+    baseUrls: form.baseUrls,
+    apiKeys: form.apiKeys,
+    proxyUrl: form.proxyUrl,
+    insecureSkipVerify: form.insecureSkipVerify,
+    customHeaders: form.customHeaders,
+    serviceType: form.serviceType,
+    routePrefix: form.routePrefix,
+    rpm: form.rpm,
+  }),
+  () => {
+    targetModelOptions.value = []
+    keyModelsStatus.value.clear()
+    hasTriedFetchModels.value = false
+    fetchModelsError.value = ''
+  }
 )
 
 // ESC键监听

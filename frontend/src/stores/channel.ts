@@ -253,7 +253,7 @@ export const useChannelStore = defineStore('channel', () => {
     channel: Omit<Channel, 'index' | 'latency' | 'status'>,
     editingChannelIndex: number | null,
     options?: { isQuickAdd?: boolean }
-  ) {
+  ): Promise<{ success: boolean; message: string; quickAddMessage?: string; channelId?: number }> {
     const isResponses = activeTab.value === 'responses'
     const isGemini = activeTab.value === 'gemini'
     const isChat = activeTab.value === 'chat'
@@ -269,7 +269,7 @@ export const useChannelStore = defineStore('channel', () => {
       } else {
         await api.updateChannel(editingChannelIndex, channel)
       }
-      return { success: true, message: t('store.channel.updated') }
+      return { success: true, message: t('store.channel.updated'), channelId: editingChannelIndex }
     } else {
       // 添加新渠道
       if (isChat) {

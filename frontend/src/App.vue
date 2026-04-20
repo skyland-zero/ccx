@@ -369,6 +369,7 @@
       :channel-type="channelStore.activeTab"
       @save="saveChannel"
       @test-capability="testChannelCapability"
+      @error="showErrorToast"
     />
 
     <!-- 能力测试对话框 -->
@@ -606,8 +607,10 @@ const saveChannel = async (channel: Omit<Channel, 'index' | 'latency' | 'status'
     }
     dialogStore.closeAddChannelModal()
     await refreshChannels()
+    return result
   } catch (error) {
     handleAuthError(error)
+    return undefined
   }
 }
 

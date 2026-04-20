@@ -189,7 +189,7 @@ func tryModelsRequest(c *gin.Context, cfgManager *config.ConfigManager, channelS
 		upstream := selection.Upstream
 
 		url := buildModelsURL(upstream.BaseURL) + suffix
-		client := httpclient.GetManager().GetStandardClient(modelsRequestTimeout, upstream.InsecureSkipVerify)
+		client := httpclient.GetManager().GetStandardClient(modelsRequestTimeout, upstream.InsecureSkipVerify, upstream.ProxyURL)
 
 		apiKey, usedDisabledFallback, err := cfgManager.GetAdminAPIKey(upstream, nil, channelType)
 		if err != nil {
@@ -209,6 +209,7 @@ func tryModelsRequest(c *gin.Context, cfgManager *config.ConfigManager, channelS
 		}
 		req.Header.Set("Authorization", "Bearer "+apiKey)
 		req.Header.Set("Content-Type", "application/json")
+		utils.ApplyCustomHeaders(req.Header, upstream.CustomHeaders)
 
 		resp, err := client.Do(req)
 		if err != nil {

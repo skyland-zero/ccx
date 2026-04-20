@@ -36,6 +36,15 @@ func GetManager() *ClientManager {
 // 注意：启用自动压缩让Go处理gzip，配合请求头清理确保正确解压
 // proxyURL: 可选的代理地址（支持 http/https/socks5 协议）
 func (cm *ClientManager) GetStandardClient(timeout time.Duration, insecure bool, proxyURL ...string) *http.Client {
+	return cm.getStandardClient(timeout, insecure, true, proxyURL...)
+}
+
+// NewStandardClient 获取标准客户端但不进入缓存（适用于临时代理等高变参数）
+func (cm *ClientManager) NewStandardClient(timeout time.Duration, insecure bool, proxyURL ...string) *http.Client {
+	return cm.getStandardClient(timeout, insecure, false, proxyURL...)
+}
+
+func (cm *ClientManager) getStandardClient(timeout time.Duration, insecure bool, useCache bool, proxyURL ...string) *http.Client {
 	// 从配置获取响应头超时时间
 	envConfig := config.NewEnvConfig()
 	responseHeaderTimeout := time.Duration(envConfig.ResponseHeaderTimeout) * time.Second
@@ -48,26 +57,29 @@ func (cm *ClientManager) GetStandardClient(timeout time.Duration, insecure bool,
 
 	key := fmt.Sprintf("standard-%d-%t-%d-%s", timeout, insecure, envConfig.ResponseHeaderTimeout, proxyAddr)
 
-	cm.mu.RLock()
-	if client, ok := cm.clients[key]; ok {
+	if useCache {
+		cm.mu.RLock()
+		if client, ok := cm.clients[key]; ok {
+			cm.mu.RUnlock()
+			return client
+		}
 		cm.mu.RUnlock()
-		return client
 	}
-	cm.mu.RUnlock()
 
-	cm.mu.Lock()
-	defer cm.mu.Unlock()
+	if useCache {
+		cm.mu.Lock()
+		defer cm.mu.Unlock()
 
-	// 双重检查，避免重复创建
-	if client, ok := cm.clients[key]; ok {
-		return client
+		if client, ok := cm.clients[key]; ok {
+			return client
+		}
 	}
 
 	transport := &http.Transport{
 		MaxIdleConns:          100,
 		MaxIdleConnsPerHost:   10,
 		IdleConnTimeout:       90 * time.Second,
-		DisableCompression:    false, // 启用自动压缩，让Go处理gzip
+		DisableCompression:    false,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ResponseHeaderTimeout: responseHeaderTimeout,
 		ExpectContinueTimeout: 1 * time.Second,
@@ -89,7 +101,9 @@ func (cm *ClientManager) GetStandardClient(timeout time.Duration, insecure bool,
 		Timeout:   timeout,
 	}
 
-	cm.clients[key] = client
+	if useCache {
+		cm.clients[key] = client
+	}
 	return client
 }
 

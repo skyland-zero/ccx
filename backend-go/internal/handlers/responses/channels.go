@@ -437,8 +437,12 @@ func buildModelsURL(baseURL string) string {
 
 // GetModelsRequest 获取模型列表的请求体
 type GetModelsRequest struct {
-	Key     string `json:"key"`
-	BaseURL string `json:"baseUrl"`
+	Key                string            `json:"key"`
+	BaseURL            string            `json:"baseUrl"`
+	BaseURLs           []string          `json:"baseUrls"`
+	ProxyURL           string            `json:"proxyUrl"`
+	InsecureSkipVerify *bool             `json:"insecureSkipVerify"`
+	CustomHeaders      map[string]string `json:"customHeaders"`
 }
 
 // GetChannelModels 获取指定渠道的模型列表（支持临时 Key）
@@ -477,6 +481,12 @@ func GetChannelModels(cfgManager *config.ConfigManager) gin.HandlerFunc {
 			channelName = "临时渠道"
 			insecureSkipVerify = false
 			proxyURL = ""
+			if req.InsecureSkipVerify != nil {
+				insecureSkipVerify = *req.InsecureSkipVerify
+			}
+			if req.ProxyURL != "" {
+				proxyURL = req.ProxyURL
+			}
 			log.Printf("[Responses-Models] 使用临时 baseUrl: %s", baseURL)
 		} else {
 			// 编辑模式：从配置中读取渠道信息
@@ -491,6 +501,20 @@ func GetChannelModels(cfgManager *config.ConfigManager) gin.HandlerFunc {
 			channelName = channel.Name
 			insecureSkipVerify = channel.InsecureSkipVerify
 			proxyURL = channel.ProxyURL
+			if req.BaseURL != "" {
+				if err := utils.ValidateBaseURL(req.BaseURL); err != nil {
+					log.Printf("[Responses-Models] SSRF 防护拦截: %v", err)
+					c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("无效的 baseUrl: %v", err)})
+					return
+				}
+				baseURL = req.BaseURL
+			}
+			if req.InsecureSkipVerify != nil {
+				insecureSkipVerify = *req.InsecureSkipVerify
+			}
+			if req.ProxyURL != "" {
+				proxyURL = req.ProxyURL
+			}
 		}
 
 		// 4. 验证 API Key
@@ -505,6 +529,9 @@ func GetChannelModels(cfgManager *config.ConfigManager) gin.HandlerFunc {
 		// 5. 发起请求
 		url := buildModelsURL(baseURL)
 		client := httpclient.GetManager().GetStandardClient(10*time.Second, insecureSkipVerify, proxyURL)
+		if req.BaseURL != "" && req.ProxyURL != "" {
+			client = httpclient.GetManager().NewStandardClient(10*time.Second, insecureSkipVerify, proxyURL)
+		}
 
 		httpReq, err := http.NewRequestWithContext(c.Request.Context(), "GET", url, nil)
 		if err != nil {
@@ -514,6 +541,7 @@ func GetChannelModels(cfgManager *config.ConfigManager) gin.HandlerFunc {
 		}
 		httpReq.Header.Set("Authorization", "Bearer "+apiKey)
 		httpReq.Header.Set("Content-Type", "application/json")
+		utils.ApplyCustomHeaders(httpReq.Header, req.CustomHeaders)
 
 		resp, err := client.Do(httpReq)
 		if err != nil {

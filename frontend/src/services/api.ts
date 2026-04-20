@@ -547,6 +547,15 @@ export async function fetchUpstreamModels(
   return await response.json()
 }
 
+export interface ChannelModelsRequest {
+  key: string
+  baseUrl?: string
+  proxyUrl?: string
+  insecureSkipVerify?: boolean
+  customHeaders?: Record<string, string>
+  baseUrls?: string[]
+}
+
 export class ApiService {
   private t(key: Parameters<typeof translate>[1], params?: Parameters<typeof translate>[2]): string {
     const preferencesStore = usePreferencesStore()
@@ -668,12 +677,10 @@ export class ApiService {
     return this.request('/messages/ping')
   }
 
-  async getChannelModels(id: number, key: string, baseUrl?: string): Promise<ModelsResponse> {
-    const body: { key: string; baseUrl?: string } = { key }
-    if (baseUrl) body.baseUrl = baseUrl
+  async getChannelModels(id: number, request: ChannelModelsRequest): Promise<ModelsResponse> {
     return this.request(`/messages/channels/${id}/models`, {
       method: 'POST',
-      body: JSON.stringify(body)
+      body: JSON.stringify(request)
     })
   }
 
@@ -790,12 +797,10 @@ export class ApiService {
     })
   }
 
-  async getResponsesChannelModels(id: number, key: string, baseUrl?: string): Promise<ModelsResponse> {
-    const body: { key: string; baseUrl?: string } = { key }
-    if (baseUrl) body.baseUrl = baseUrl
+  async getResponsesChannelModels(id: number, request: ChannelModelsRequest): Promise<ModelsResponse> {
     return this.request(`/responses/channels/${id}/models`, {
       method: 'POST',
-      body: JSON.stringify(body)
+      body: JSON.stringify(request)
     })
   }
 
@@ -1102,12 +1107,10 @@ export class ApiService {
     return this.request('/chat/ping')
   }
 
-  async getChatChannelModels(id: number, key: string, baseUrl?: string): Promise<ModelsResponse> {
-    const body: { key: string; baseUrl?: string } = { key }
-    if (baseUrl) body.baseUrl = baseUrl
+  async getChatChannelModels(id: number, request: ChannelModelsRequest): Promise<ModelsResponse> {
     return this.request(`/chat/channels/${id}/models`, {
       method: 'POST',
-      body: JSON.stringify(body)
+      body: JSON.stringify(request)
     })
   }
 
@@ -1235,12 +1238,10 @@ export class ApiService {
     }))
   }
 
-  async getGeminiChannelModels(id: number, key: string, baseUrl?: string): Promise<ModelsResponse> {
-    const body: { key: string; baseUrl?: string } = { key }
-    if (baseUrl) body.baseUrl = baseUrl
+  async getGeminiChannelModels(id: number, request: ChannelModelsRequest): Promise<ModelsResponse> {
     return this.request(`/gemini/channels/${id}/models`, {
       method: 'POST',
-      body: JSON.stringify(body)
+      body: JSON.stringify(request)
     })
   }
 }
