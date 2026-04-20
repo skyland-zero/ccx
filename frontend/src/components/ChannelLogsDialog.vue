@@ -28,6 +28,9 @@
                 <v-chip v-if="log.statusCode > 0" :color="statusColor(log.statusCode)" size="small" variant="flat" class="mr-2 font-weight-bold log-status-chip">
                   {{ log.statusCode }}
                 </v-chip>
+                <v-chip v-else-if="isInProgress(log.status)" size="small" variant="flat" class="mr-2 font-weight-bold log-status-chip log-status-chip--placeholder">
+                  <span class="log-status-chip__placeholder">000</span>
+                </v-chip>
                 <v-chip v-else size="small" color="default" variant="flat" class="mr-2 font-weight-bold log-status-chip">
                   -
                 </v-chip>
@@ -45,20 +48,21 @@
                 </v-chip>
                 <span v-if="log.originalModel" class="text-medium-emphasis log-meta">{{ log.originalModel }} →</span>
                 <span class="font-weight-medium log-model">{{ log.model }}</span>
+                <code class="text-caption bg-surface pa-1 rounded log-inline-code log-key-mask">{{ log.keyMask }}</code>
+                <code v-if="log.baseUrl" class="text-caption bg-surface pa-1 rounded log-inline-code log-base-url" :title="log.baseUrl">{{ log.baseUrl }}</code>
+                <v-chip v-if="log.isRetry" size="small" color="warning" variant="tonal">{{ t('channelLogs.retry') }}</v-chip>
                 <template v-if="calculateDurations(log)">
                   <span v-if="calculateDurations(log)!.connectMs !== null" class="text-medium-emphasis log-meta">
-                    连接 {{ calculateDurations(log)!.connectMs }}ms
+                    连接 {{ formatDurationSeconds(calculateDurations(log)!.connectMs!) }}
                   </span>
                   <span v-if="calculateDurations(log)!.firstByteMs !== null" class="text-medium-emphasis log-meta">
-                    首字 {{ calculateDurations(log)!.firstByteMs }}ms
+                    首字 {{ formatDurationSeconds(calculateDurations(log)!.firstByteMs!) }}
                   </span>
                   <span v-if="calculateDurations(log)!.totalMs !== null" class="text-medium-emphasis log-meta">
-                    总计 {{ calculateDurations(log)!.totalMs }}ms
+                    总计 {{ formatDurationSeconds(calculateDurations(log)!.totalMs!) }}
                   </span>
                 </template>
-                <span v-else class="text-medium-emphasis log-meta">{{ log.durationMs }}ms</span>
-                <span class="text-medium-emphasis log-meta">{{ log.keyMask }}</span>
-                <v-chip v-if="log.isRetry" size="small" color="warning" variant="tonal">{{ t('channelLogs.retry') }}</v-chip>
+                <span v-else class="text-medium-emphasis log-meta">{{ formatDurationSeconds(log.durationMs) }}</span>
               </v-list-item-title>
             </v-list-item>
             <!-- 展开的错误详情 -->
@@ -149,6 +153,11 @@ const calculateDurations = (log: ChannelLogEntry) => {
     firstByteMs: firstByte ? firstByte - start : null,
     totalMs: completed ? completed - start : null
   }
+}
+
+const formatDurationSeconds = (durationMs: number): string => {
+  const seconds = durationMs / 1000
+  return `${Number.parseFloat(seconds.toPrecision(3))}s`
 }
 
 const interfaceTypeColor = (type: string): string => {
@@ -254,8 +263,18 @@ onUnmounted(() => stopPolling())
 }
 
 .log-status-chip {
-  min-width: 44px;
+  min-width: 52px;
   justify-content: center;
+}
+
+.log-status-chip--placeholder {
+  background: transparent !important;
+  box-shadow: inset 0 0 0 1px rgba(var(--v-theme-on-surface), 0.12);
+}
+
+.log-status-chip__placeholder {
+  opacity: 0;
+  user-select: none;
 }
 
 .log-summary {
@@ -265,6 +284,21 @@ onUnmounted(() => stopPolling())
 
 .log-meta {
   font-size: 0.875rem;
+}
+
+.log-inline-code {
+  display: inline-block;
+  font-family: ui-monospace, SFMono-Regular, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  line-height: 1.3;
+  vertical-align: middle;
+}
+
+.log-key-mask {
+  white-space: nowrap;
+}
+
+.log-base-url {
+  white-space: nowrap;
 }
 
 .log-model {
