@@ -388,6 +388,7 @@ export interface ModelStatsHistoryResponse {
 // ============== 渠道日志类型 ==============
 
 export interface ChannelLogEntry {
+  requestId: string
   timestamp: string
   model: string
   originalModel?: string
@@ -400,6 +401,13 @@ export interface ChannelLogEntry {
   isRetry: boolean
   interfaceType?: string  // 接口类型（Messages/Responses/Gemini）
   requestSource?: string
+
+  // 请求生命周期状态
+  status: string  // pending/connecting/first_byte/streaming/completed/failed
+  startTime: string
+  connectedAt?: string
+  firstByteAt?: string
+  completedAt?: string
 }
 
 export interface ChannelLogsResponse {
