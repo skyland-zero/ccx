@@ -240,7 +240,7 @@ func (s *ChannelScheduler) restoreScheduledKeysForKind(kind ChannelKind, now tim
 		}
 		for _, baseURL := range updatedUpstream.GetAllBaseURLs() {
 			for _, apiKey := range restoredKeys {
-				metricsManager.MoveKeyToHalfOpen(baseURL, apiKey)
+				metricsManager.MoveKeyToHalfOpen(baseURL, apiKey, NormalizedMetricsServiceType(kind, updatedUpstream.ServiceType))
 			}
 		}
 

@@ -16,6 +16,7 @@
 
 ### Fixed
 
+- **修复合并后的指标 serviceType 签名不一致** - 统一自动恢复与熔断相关代码、测试对新的 metrics identity/serviceType 签名的调用，修复 worktree 合并后 `MoveKeyToHalfOpen`、`GetKeyCircuitState` 与对应回归测试的编译错误，涉及 `internal/metrics` 与 `internal/scheduler`
 - **修复客户端取消请求的日志终态缺失** - 在客户端取消分支（`context.Canceled`）中补充 `CompleteLog` 调用，避免日志永久停留在进行中状态
 - **修复日志并发读写安全问题** - `ChannelLogStore.Get` 方法返回深拷贝而非共享指针，避免 HTTP 序列化与日志更新并发时的数据竞争
 - **修复前端进行中请求误标为失败** - 仅在 `status === 'failed'` 时显示错误背景，`statusCode === 0` 时显示 `-` 而非 `ERR`，避免 pending/connecting 请求被误判为失败

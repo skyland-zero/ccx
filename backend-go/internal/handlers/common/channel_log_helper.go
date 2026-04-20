@@ -121,17 +121,17 @@ func CompleteLog(
 	// 仅在确认是环形缓冲淘汰时补写终态日志；若渠道已删除则不补写，避免污染其他渠道。
 	if updateStatus == metrics.UpdateMissingEvicted && actualChannelIndex >= 0 {
 		channelLogStore.Record(actualChannelIndex, &metrics.ChannelLog{
-			RequestID:     requestID,
-			ChannelIndex:  actualChannelIndex,
-			Timestamp:     now,
-			StatusCode:    statusCode,
-			Success:       success,
-			ErrorInfo:     errorInfo,
-			IsRetry:       isRetry,
-			Status:        getStatusFromSuccess(success),
-			StartTime:     now,
-			CompletedAt:   &now,
-			DurationMs:    0,
+			RequestID:    requestID,
+			ChannelIndex: actualChannelIndex,
+			Timestamp:    now,
+			StatusCode:   statusCode,
+			Success:      success,
+			ErrorInfo:    errorInfo,
+			IsRetry:      isRetry,
+			Status:       getStatusFromSuccess(success),
+			StartTime:    now,
+			CompletedAt:  &now,
+			DurationMs:   0,
 		})
 	}
 }

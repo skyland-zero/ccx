@@ -107,7 +107,7 @@ func TestRunScheduledRecoveries_RestoresEligibleKeysAndActivatesSuspendedChannel
 	}
 
 	for _, baseURL := range []string{"https://a.example.com", "https://b.example.com"} {
-		if got := scheduler.GetMessagesMetricsManager().GetKeyCircuitState(baseURL, "sk-balance"); got != metrics.CircuitStateHalfOpen {
+		if got := scheduler.GetMessagesMetricsManager().GetKeyCircuitState(baseURL, "sk-balance", "claude"); got != metrics.CircuitStateHalfOpen {
 			t.Fatalf("circuit state for %s = %v, want %v", baseURL, got, metrics.CircuitStateHalfOpen)
 		}
 	}

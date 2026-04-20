@@ -1821,11 +1821,11 @@ func (m *MetricsManager) GetAllTimeWindowStatsForKey(baseURL, apiKey, serviceTyp
 }
 
 // MoveKeyToHalfOpen 强制将指定 Key 切换到 half-open 探测状态。
-func (m *MetricsManager) MoveKeyToHalfOpen(baseURL, apiKey string) {
+func (m *MetricsManager) MoveKeyToHalfOpen(baseURL, apiKey, serviceType string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	metrics := m.getOrCreateKey(baseURL, apiKey)
+	metrics := m.getOrCreateKey(baseURL, apiKey, serviceType)
 	m.moveCircuitToHalfOpenLocked(metrics, time.Now())
 	log.Printf("[Metrics-Circuit] Key [%s] (%s) 已切换到 half-open", metrics.KeyMask, metrics.BaseURL)
 }
