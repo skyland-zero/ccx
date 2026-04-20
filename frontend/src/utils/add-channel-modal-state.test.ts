@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { Channel } from '@/services/api'
-import { resolveChannelWatcherAction } from './add-channel-modal-state'
+import { resolveChannelWatcherAction, syncBaseUrlsFormState } from './add-channel-modal-state'
 
 const sampleChannel: Channel = {
   index: 1,
@@ -42,5 +42,26 @@ describe('resolveChannelWatcherAction', () => {
       newChannel: sampleChannel,
       oldChannel: null,
     })).toBe('noop')
+  })
+})
+
+describe('syncBaseUrlsFormState', () => {
+  it('应在当前 serviceType 语义下去重，但不要求回写原始文本', () => {
+    expect(syncBaseUrlsFormState('https://host\nhttps://host/v1', 'openai')).toEqual({
+      baseUrl: 'https://host',
+      baseUrls: []
+    })
+  })
+
+  it('应保留原始文本，便于后续按最终 serviceType 重算', () => {
+    expect(syncBaseUrlsFormState('https://host/v1\nhttps://host', 'openai')).toEqual({
+      baseUrl: 'https://host',
+      baseUrls: []
+    })
+
+    expect(syncBaseUrlsFormState('https://host/v1\nhttps://host', 'gemini')).toEqual({
+      baseUrl: 'https://host/v1',
+      baseUrls: ['https://host/v1', 'https://host']
+    })
   })
 })

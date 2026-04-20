@@ -300,7 +300,7 @@ describe('综合解析场景', () => {
       sk-key3ghi345678
     `
     const result = parseQuickInput(input)
-    expect(result.detectedBaseUrl).toBe('https://api.openai.com/v1')
+    expect(result.detectedBaseUrl).toBe('https://api.openai.com')
     expect(result.detectedApiKeys).toEqual(['sk-key1abc123456', 'sk-key2def789012', 'sk-key3ghi345678'])
   })
 
@@ -404,7 +404,7 @@ describe('引号内容提取', () => {
   it('应从英文单引号中提取内容', () => {
     const input = `'sk-test123456789012' 'https://api.example.com/v1'`
     const result = parseQuickInput(input)
-    expect(result.detectedBaseUrl).toBe('https://api.example.com/v1')
+    expect(result.detectedBaseUrl).toBe('https://api.example.com')
     expect(result.detectedApiKeys).toEqual(['sk-test123456789012'])
   })
 
@@ -492,7 +492,7 @@ snow里获取不到模型不知道为啥
   it('应支持单边单引号', () => {
     const input = `'https://api.example.com/v1`
     const result = parseQuickInput(input)
-    expect(result.detectedBaseUrl).toBe('https://api.example.com/v1')
+    expect(result.detectedBaseUrl).toBe('https://api.example.com')
   })
 
   it('应支持混合完整引号和单边引号', () => {
@@ -500,5 +500,83 @@ snow里获取不到模型不知道为啥
     const result = parseQuickInput(input)
     expect(result.detectedBaseUrl).toBe('https://api.example.com')
     expect(result.detectedApiKeys).toContain('sk-key12345678901')
+  })
+})
+
+describe('Base URL 去重', () => {
+  it('应去重等效 URL（忽略尾部斜杠）', () => {
+    const input = `https://api.example.com/v1
+https://api.example.com/v1/
+sk-key1234567890`
+    const result = parseQuickInput(input)
+    expect(result.detectedBaseUrls).toEqual(['https://api.example.com'])
+  })
+
+  it('应保留带 # 的独立语义 URL', () => {
+    const input = `https://api.example.com/v1
+https://api.example.com/v1#
+sk-key1234567890`
+    const result = parseQuickInput(input)
+    expect(result.detectedBaseUrls).toEqual([
+      'https://api.example.com',
+      'https://api.example.com/v1#'
+    ])
+  })
+
+  it('应保留原始 URL 列表，供后续按最终 serviceType 重算', () => {
+    const input = `https://host/v1
+https://host
+sk-key1234567890`
+    const result = parseQuickInput(input, 'openai')
+    expect(result.detectedBaseUrls).toEqual(['https://host'])
+    expect(result.rawBaseUrls).toEqual(['https://host/v1', 'https://host'])
+  })
+
+  it('fallback serviceType 为 gemini 时不应提前合并 /v1 与根域名', () => {
+    const input = `https://host/v1
+https://host
+sk-key1234567890`
+    const result = parseQuickInput(input, 'gemini')
+    expect(result.detectedBaseUrls).toEqual(['https://host/v1', 'https://host'])
+    expect(result.rawBaseUrls).toEqual(['https://host/v1', 'https://host'])
+  })
+
+  it('应将根域名与默认版本前缀 URL 视为等效', () => {
+    const input = `https://new.timefiles.online/v1
+https://new.timefiles.online
+sk-key1234567890`
+    const result = parseQuickInput(input, 'openai')
+    expect(result.detectedBaseUrls).toEqual(['https://new.timefiles.online'])
+  })
+
+  it('应将 Gemini 根域名与 /v1beta 视为等效', () => {
+    const input = `https://generativelanguage.googleapis.com/v1beta
+https://generativelanguage.googleapis.com
+AIzaSyDxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
+    const result = parseQuickInput(input, 'gemini')
+    expect(result.detectedBaseUrls).toEqual(['https://generativelanguage.googleapis.com'])
+  })
+
+  it('应仅去重完全等效的带 # URL', () => {
+    const input = `https://api.example.com/v1#
+https://api.example.com/v1/#
+https://api.example.com/v1
+sk-key1234567890`
+    const result = parseQuickInput(input)
+    expect(result.detectedBaseUrls).toEqual([
+      'https://api.example.com/v1#',
+      'https://api.example.com'
+    ])
+  })
+
+  it('应保留不同的 URL', () => {
+    const input = `https://api.example.com/v1
+https://backup.example.com/v1
+sk-key1234567890`
+    const result = parseQuickInput(input)
+    expect(result.detectedBaseUrls).toEqual([
+      'https://api.example.com',
+      'https://backup.example.com'
+    ])
   })
 })

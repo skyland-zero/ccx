@@ -66,6 +66,9 @@ func (cm *ConfigManager) loadConfig() error {
 	// 兼容旧配置：检查 FuzzyModeEnabled 字段是否存在
 	// 如果不存在，默认设为 true（新功能默认启用）
 	needSaveDefaults := cm.applyConfigDefaults(data)
+	if cm.applyServiceTypeDefaults() {
+		needSaveDefaults = true
+	}
 
 	// 兼容旧格式：检测是否需要迁移
 	needMigration := cm.migrateOldFormat()
@@ -137,6 +140,29 @@ func (cm *ConfigManager) applyConfigDefaults(rawJSON []byte) bool {
 	}
 
 	return needSave
+}
+
+func (cm *ConfigManager) applyServiceTypeDefaults() bool {
+	updated := false
+
+	apply := func(channels []UpstreamConfig, fallback, channelName string) {
+		for i := range channels {
+			normalized := normalizeUpstreamServiceType(channels[i].ServiceType, fallback)
+			if channels[i].ServiceType == normalized {
+				continue
+			}
+			channels[i].ServiceType = normalized
+			updated = true
+			log.Printf("[Config-Migration] %s 渠道 [%d] %s serviceType 为空，已回填为 %s", channelName, i, channels[i].Name, normalized)
+		}
+	}
+
+	apply(cm.config.Upstream, "claude", "Messages")
+	apply(cm.config.ResponsesUpstream, "responses", "Responses")
+	apply(cm.config.GeminiUpstream, "gemini", "Gemini")
+	apply(cm.config.ChatUpstream, "openai", "Chat")
+
+	return updated
 }
 
 // migrateOldFormat 迁移旧格式配置，返回是否有迁移

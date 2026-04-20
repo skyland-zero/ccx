@@ -46,6 +46,36 @@ func (f *fakePersistenceStore) DeleteCircuitStatesByMetricsKeys(metricsKeys []st
 }
 func (f *fakePersistenceStore) Close() error { return nil }
 
+func TestFilterBucketsByURLsIncludesEquivalentLegacyMetricsKeys(t *testing.T) {
+	baseURL := "https://shared.example.com"
+	apiKey := "sk-a"
+	serviceType := "claude"
+	legacyKey := metrics.GenerateMetricsKey(baseURL, apiKey)
+	identityKey := metrics.GenerateMetricsIdentityKey(baseURL, apiKey, serviceType)
+
+	store := &fakePersistenceStore{
+		bucketsByMetricsKey: map[string][]metrics.AggregatedBucket{
+			legacyKey: {
+				{Timestamp: time.Unix(3600, 0), TotalRequests: 2, SuccessCount: 1},
+			},
+			identityKey: {
+				{Timestamp: time.Unix(3600, 0), TotalRequests: 3, SuccessCount: 3},
+			},
+		},
+	}
+
+	buckets := filterBucketsByURLs(store, "messages", time.Unix(0, 0), 3600, []string{baseURL}, []string{apiKey}, serviceType)
+	if len(buckets) != 1 {
+		t.Fatalf("buckets len = %d, want 1", len(buckets))
+	}
+	if buckets[0].TotalRequests != 5 {
+		t.Fatalf("total requests = %d, want 5", buckets[0].TotalRequests)
+	}
+	if buckets[0].SuccessCount != 4 {
+		t.Fatalf("success count = %d, want 4", buckets[0].SuccessCount)
+	}
+}
+
 func TestFilterBucketsByURLsIsolatesChannelsByMetricsKey(t *testing.T) {
 	baseURL := "https://shared.example.com"
 	keyA := "sk-a"
@@ -53,23 +83,179 @@ func TestFilterBucketsByURLsIsolatesChannelsByMetricsKey(t *testing.T) {
 
 	store := &fakePersistenceStore{
 		bucketsByMetricsKey: map[string][]metrics.AggregatedBucket{
-			metrics.GenerateMetricsKey(baseURL, keyA): {
+			metrics.GenerateMetricsIdentityKey(baseURL, keyA, "claude"): {
 				{Timestamp: time.Unix(3600, 0), TotalRequests: 1, SuccessCount: 1},
 			},
-			metrics.GenerateMetricsKey(baseURL, keyB): {
+			metrics.GenerateMetricsIdentityKey(baseURL, keyB, "claude"): {
 				{Timestamp: time.Unix(3600, 0), TotalRequests: 2, SuccessCount: 1},
 			},
 		},
 	}
 
-	channelABuckets := filterBucketsByURLs(store, "messages", time.Unix(0, 0), 3600, []string{baseURL}, []string{keyA})
-	channelBBuckets := filterBucketsByURLs(store, "messages", time.Unix(0, 0), 3600, []string{baseURL}, []string{keyB})
+	channelABuckets := filterBucketsByURLs(store, "messages", time.Unix(0, 0), 3600, []string{baseURL}, []string{keyA}, "claude")
+	channelBBuckets := filterBucketsByURLs(store, "messages", time.Unix(0, 0), 3600, []string{baseURL}, []string{keyB}, "claude")
 
 	if len(channelABuckets) != 1 || channelABuckets[0].TotalRequests != 1 {
 		t.Fatalf("channel A buckets = %+v, want only keyA data", channelABuckets)
 	}
 	if len(channelBBuckets) != 1 || channelBBuckets[0].TotalRequests != 2 {
 		t.Fatalf("channel B buckets = %+v, want only keyB data", channelBBuckets)
+	}
+}
+
+func TestChannelMetricsHandlers_FallbackServiceTypeForLegacyConfig(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name        string
+		serviceType string
+		baseURL     string
+		record      func(mm *metrics.MetricsManager, baseURL, apiKey, serviceType string)
+		register    func(r *gin.Engine, mm *metrics.MetricsManager, cfgManager *config.ConfigManager)
+		requestPath string
+		buildConfig func(baseURL string) config.Config
+		assertBody  func(t *testing.T, body []byte)
+	}{
+		{
+			name:        "gemini metrics fallback",
+			serviceType: "gemini",
+			baseURL:     "https://example.com",
+			record: func(mm *metrics.MetricsManager, baseURL, apiKey, serviceType string) {
+				for i := 0; i < 3; i++ {
+					mm.RecordFailure(baseURL, apiKey, serviceType)
+				}
+			},
+			register: func(r *gin.Engine, mm *metrics.MetricsManager, cfgManager *config.ConfigManager) {
+				r.GET("/gemini/channels/metrics", GetGeminiChannelMetrics(mm, cfgManager))
+			},
+			requestPath: "/gemini/channels/metrics",
+			buildConfig: func(baseURL string) config.Config {
+				return config.Config{GeminiUpstream: []config.UpstreamConfig{{Name: "gemini-legacy", BaseURL: baseURL, APIKeys: []string{"sk-test"}}}}
+			},
+			assertBody: func(t *testing.T, body []byte) {
+				var resp []map[string]any
+				if err := json.Unmarshal(body, &resp); err != nil {
+					t.Fatalf("unmarshal response: %v", err)
+				}
+				if len(resp) != 1 || resp[0]["circuitState"] != "open" {
+					t.Fatalf("unexpected metrics response: %s", string(body))
+				}
+			},
+		},
+		{
+			name:        "chat metrics fallback",
+			serviceType: "openai",
+			baseURL:     "https://example.com",
+			record: func(mm *metrics.MetricsManager, baseURL, apiKey, serviceType string) {
+				for i := 0; i < 3; i++ {
+					mm.RecordFailure(baseURL, apiKey, serviceType)
+				}
+			},
+			register: func(r *gin.Engine, mm *metrics.MetricsManager, cfgManager *config.ConfigManager) {
+				r.GET("/chat/channels/metrics", GetChatChannelMetrics(mm, cfgManager))
+			},
+			requestPath: "/chat/channels/metrics",
+			buildConfig: func(baseURL string) config.Config {
+				return config.Config{ChatUpstream: []config.UpstreamConfig{{Name: "chat-legacy", BaseURL: baseURL, APIKeys: []string{"sk-test"}}}}
+			},
+			assertBody: func(t *testing.T, body []byte) {
+				var resp []map[string]any
+				if err := json.Unmarshal(body, &resp); err != nil {
+					t.Fatalf("unmarshal response: %v", err)
+				}
+				if len(resp) != 1 || resp[0]["circuitState"] != "open" {
+					t.Fatalf("unexpected metrics response: %s", string(body))
+				}
+			},
+		},
+		{
+			name:        "gemini history fallback",
+			serviceType: "gemini",
+			baseURL:     "https://example.com",
+			record: func(mm *metrics.MetricsManager, baseURL, apiKey, serviceType string) {
+				mm.RecordSuccess(baseURL, apiKey, serviceType)
+			},
+			register: func(r *gin.Engine, mm *metrics.MetricsManager, cfgManager *config.ConfigManager) {
+				r.GET("/gemini/channels/metrics/history", GetGeminiChannelMetricsHistory(mm, cfgManager))
+			},
+			requestPath: "/gemini/channels/metrics/history?duration=1h",
+			buildConfig: func(baseURL string) config.Config {
+				return config.Config{GeminiUpstream: []config.UpstreamConfig{{Name: "gemini-legacy", BaseURL: baseURL, APIKeys: []string{"sk-test"}}}}
+			},
+			assertBody: func(t *testing.T, body []byte) {
+				var resp []struct {
+					DataPoints []any `json:"dataPoints"`
+				}
+				if err := json.Unmarshal(body, &resp); err != nil {
+					t.Fatalf("unmarshal response: %v", err)
+				}
+				if len(resp) != 1 || len(resp[0].DataPoints) == 0 {
+					t.Fatalf("unexpected history response: %s", string(body))
+				}
+			},
+		},
+		{
+			name:        "chat key history fallback",
+			serviceType: "openai",
+			baseURL:     "https://example.com",
+			record: func(mm *metrics.MetricsManager, baseURL, apiKey, serviceType string) {
+				mm.RecordSuccess(baseURL, apiKey, serviceType)
+			},
+			register: func(r *gin.Engine, mm *metrics.MetricsManager, cfgManager *config.ConfigManager) {
+				r.GET("/chat/channels/:id/keys/metrics/history", GetChatChannelKeyMetricsHistory(mm, cfgManager))
+			},
+			requestPath: "/chat/channels/0/keys/metrics/history?duration=1h",
+			buildConfig: func(baseURL string) config.Config {
+				return config.Config{ChatUpstream: []config.UpstreamConfig{{Name: "chat-legacy", BaseURL: baseURL, APIKeys: []string{"sk-test"}}}}
+			},
+			assertBody: func(t *testing.T, body []byte) {
+				var resp struct {
+					Keys []any `json:"keys"`
+				}
+				if err := json.Unmarshal(body, &resp); err != nil {
+					t.Fatalf("unmarshal response: %v", err)
+				}
+				if len(resp.Keys) == 0 {
+					t.Fatalf("unexpected key history response: %s", string(body))
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := tt.buildConfig(tt.baseURL)
+			configFile := filepath.Join(t.TempDir(), "config.json")
+			data, err := json.MarshalIndent(cfg, "", "  ")
+			if err != nil {
+				t.Fatalf("marshal config: %v", err)
+			}
+			if err := os.WriteFile(configFile, data, 0644); err != nil {
+				t.Fatalf("write config: %v", err)
+			}
+
+			cfgManager, err := config.NewConfigManager(configFile)
+			if err != nil {
+				t.Fatalf("new config manager: %v", err)
+			}
+			defer cfgManager.Close()
+
+			metricsManager := metrics.NewMetricsManager()
+			defer metricsManager.Stop()
+			tt.record(metricsManager, tt.baseURL, "sk-test", tt.serviceType)
+
+			r := gin.New()
+			tt.register(r, metricsManager, cfgManager)
+
+			req := httptest.NewRequest(http.MethodGet, tt.requestPath, nil)
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+
+			if w.Code != http.StatusOK {
+				t.Fatalf("status=%d, want=200, body=%s", w.Code, w.Body.String())
+			}
+			tt.assertBody(t, w.Body.Bytes())
+		})
 	}
 }
 

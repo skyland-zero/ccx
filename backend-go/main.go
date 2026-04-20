@@ -89,6 +89,9 @@ func main() {
 	// 初始化多渠道调度器（Messages、Responses、Gemini 和 Chat 使用独立的指标管理器）
 	var messagesMetricsManager, responsesMetricsManager, geminiMetricsManager, chatMetricsManager *metrics.MetricsManager
 	if metricsStore != nil {
+		if err := metricsStore.MigrateMetricsKeysToIdentity(cfgManager.GetConfig()); err != nil {
+			log.Fatalf("[Metrics-Migration] metrics key 迁移失败: %v", err)
+		}
 		messagesMetricsManager = metrics.NewMetricsManagerWithPersistence(
 			envCfg.MetricsWindowSize, envCfg.MetricsFailureThreshold, metricsStore, "messages")
 		responsesMetricsManager = metrics.NewMetricsManagerWithPersistence(

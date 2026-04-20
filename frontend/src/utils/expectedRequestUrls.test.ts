@@ -41,17 +41,18 @@ describe('buildExpectedRequestUrls', () => {
     expect(result[0].expectedUrl).toBe('https://api.openai.com/v1/responses')
   })
 
-  it('应为 chat 渠道上的 responses 上游生成 responses 端点', () => {
+  it('应为 chat 渠道上的 responses 上游生成 chat completions 端点', () => {
     const result = buildExpectedRequestUrls('chat', 'responses', 'https://api.openai.com')
 
     expect(result).toHaveLength(1)
-    expect(result[0].expectedUrl).toBe('https://api.openai.com/v1/responses')
+    expect(result[0].expectedUrl).toBe('https://api.openai.com/v1/chat/completions')
   })
 
-  it('应为 gemini 渠道上的 responses 上游生成 responses 端点', () => {
-    const result = buildExpectedRequestUrls('gemini', 'responses', 'https://proxy.example.com')
+  it('应让根域名与默认版本前缀预览到同一请求地址', () => {
+    const root = buildExpectedRequestUrls('chat', 'openai', 'https://new.timefiles.online')
+    const versioned = buildExpectedRequestUrls('chat', 'openai', 'https://new.timefiles.online/v1')
 
-    expect(result).toHaveLength(1)
-    expect(result[0].expectedUrl).toBe('https://proxy.example.com/v1/responses')
+    expect(root[0].expectedUrl).toBe('https://new.timefiles.online/v1/chat/completions')
+    expect(versioned[0].expectedUrl).toBe(root[0].expectedUrl)
   })
 })

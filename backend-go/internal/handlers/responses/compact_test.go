@@ -105,7 +105,7 @@ func TestCompactHandler_SingleChannelFailureRecordsMetricsAndLogs(t *testing.T) 
 		t.Fatalf("log errorInfo = %q, want contains unauthorized", logs[0].ErrorInfo)
 	}
 
-	metricsResp := sch.GetResponsesMetricsManager().ToResponseMultiURL(0, []string{upstream.URL}, []string{"sk-test"}, 0)
+	metricsResp := sch.GetResponsesMetricsManager().ToResponseMultiURL(0, []string{upstream.URL}, []string{"sk-test"}, "responses", 0)
 	if metricsResp.RequestCount != 1 {
 		t.Fatalf("requestCount = %d, want 1", metricsResp.RequestCount)
 	}
@@ -176,12 +176,12 @@ func TestCompactHandler_MultiChannelFailoverRecordsFailedChannelLogs(t *testing.
 		t.Fatalf("success channel status = %d, want %d", successLogs[0].StatusCode, http.StatusOK)
 	}
 
-	failedMetrics := sch.GetResponsesMetricsManager().ToResponseMultiURL(0, []string{failedUpstream.URL}, []string{"sk-fail"}, 0)
+	failedMetrics := sch.GetResponsesMetricsManager().ToResponseMultiURL(0, []string{failedUpstream.URL}, []string{"sk-fail"}, "responses", 0)
 	if failedMetrics.RequestCount != 1 || failedMetrics.FailureCount != 1 {
 		t.Fatalf("failed channel metrics = %+v, want requestCount=1 failureCount=1", failedMetrics)
 	}
 
-	successMetrics := sch.GetResponsesMetricsManager().ToResponseMultiURL(1, []string{successUpstream.URL}, []string{"sk-ok"}, 0)
+	successMetrics := sch.GetResponsesMetricsManager().ToResponseMultiURL(1, []string{successUpstream.URL}, []string{"sk-ok"}, "responses", 0)
 	if successMetrics.RequestCount != 1 || successMetrics.SuccessCount != 1 {
 		t.Fatalf("success channel metrics = %+v, want requestCount=1 successCount=1", successMetrics)
 	}

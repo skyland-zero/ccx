@@ -64,8 +64,70 @@ describe('buildChannelPayload', () => {
       normalizeMetadataUserId: true
     })
 
-    expect(result.baseUrl).toBe('https://api.example.com/v1#')
-    expect(result.baseUrls).toEqual(['https://api.example.com/v1#', 'https://backup.example.com/v1'])
+    expect(result.baseUrl).toBe('https://api.example.com')
+    expect(result.baseUrls).toEqual([
+      'https://api.example.com',
+      'https://api.example.com/v1#',
+      'https://backup.example.com'
+    ])
+  })
+
+  it('应将根域名与默认版本前缀 URL 去重为最短形式', () => {
+    const result = buildChannelPayload({
+      name: 'multi',
+      serviceType: 'openai',
+      baseUrl: '',
+      baseUrls: ['https://new.timefiles.online/v1', 'https://new.timefiles.online'],
+      website: '',
+      insecureSkipVerify: false,
+      lowQuality: false,
+      injectDummyThoughtSignature: false,
+      stripThoughtSignature: false,
+      description: '',
+      apiKeys: ['sk-1'],
+      modelMapping: {},
+      reasoningMapping: {},
+      textVerbosity: '',
+      fastMode: false,
+      customHeaders: {},
+      proxyUrl: '',
+      routePrefix: '',
+      supportedModels: [],
+      autoBlacklistBalance: true,
+      normalizeMetadataUserId: true
+    })
+
+    expect(result.baseUrl).toBe('https://new.timefiles.online')
+    expect(result.baseUrls).toBeUndefined()
+  })
+
+  it('应保留带 # 的 URL 与普通 URL 分离', () => {
+    const result = buildChannelPayload({
+      name: 'multi',
+      serviceType: 'openai',
+      baseUrl: '',
+      baseUrls: ['https://new.timefiles.online/v1', 'https://new.timefiles.online#'],
+      website: '',
+      insecureSkipVerify: false,
+      lowQuality: false,
+      injectDummyThoughtSignature: false,
+      stripThoughtSignature: false,
+      description: '',
+      apiKeys: ['sk-1'],
+      modelMapping: {},
+      reasoningMapping: {},
+      textVerbosity: '',
+      fastMode: false,
+      customHeaders: {},
+      proxyUrl: '',
+      routePrefix: '',
+      supportedModels: [],
+      autoBlacklistBalance: true,
+      normalizeMetadataUserId: true
+    })
+
+    expect(result.baseUrl).toBe('https://new.timefiles.online')
+    expect(result.baseUrls).toEqual(['https://new.timefiles.online', 'https://new.timefiles.online#'])
   })
 
   it('应清空 claude 渠道不支持的高级参数', () => {

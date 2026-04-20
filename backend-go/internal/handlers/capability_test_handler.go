@@ -56,13 +56,13 @@ var (
 )
 
 // buildCapabilityCacheKey 构建缓存 key（基于 baseURL + apiKey、协议列表、模型列表）
-func buildCapabilityCacheKey(baseURL string, apiKey string, protocols []string, models []string) string {
+func buildCapabilityCacheKey(baseURL string, apiKey string, serviceType string, protocols []string, models []string) string {
 	sorted := make([]string, len(protocols))
 	copy(sorted, protocols)
 	sort.Strings(sorted)
 
 	normalizedModels := normalizeCapabilityModels(models)
-	metricsKey := metrics.GenerateMetricsKey(baseURL, apiKey)
+	metricsKey := metrics.GenerateMetricsIdentityKey(baseURL, apiKey, serviceType)
 	return fmt.Sprintf("%s:%s:%s", metricsKey, strings.Join(sorted, ","), strings.Join(normalizedModels, ","))
 }
 
@@ -267,7 +267,7 @@ func TestChannelCapability(cfgManager *config.ConfigManager, channelLogStore *me
 		}
 
 		normalizedModels := normalizeCapabilityModels(req.Models)
-		cacheKey := buildCapabilityCacheKey(baseURL, apiKey, protocols, normalizedModels)
+		cacheKey := buildCapabilityCacheKey(baseURL, apiKey, channel.ServiceType, protocols, normalizedModels)
 		lookupKey := buildCapabilityJobLookupKey(cacheKey, channelKind, id)
 
 		if cached, ok := getCapabilityCache(cacheKey); ok {

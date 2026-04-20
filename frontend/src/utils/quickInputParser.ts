@@ -1,3 +1,5 @@
+import { deduplicateEquivalentBaseUrls, type ServiceType } from './baseUrlSemantics'
+
 /**
  * 快速添加渠道 - 输入解析工具
  *
@@ -213,6 +215,13 @@ export const detectServiceType = (url: string): 'openai' | 'gemini' | 'claude' |
 const MAX_BASE_URLS = 10
 
 /**
+ * 对 Base URL 列表去重（等效 URL 仅保留一条；尾部 # 视为不同语义）
+ */
+export function deduplicateBaseUrls(urls: string[], serviceType: ServiceType = ''): string[] {
+  return deduplicateEquivalentBaseUrls(urls, serviceType)
+}
+
+/**
  * 解析快速输入内容，提取 URL 和 API Keys
  *
  * 支持的格式：
@@ -221,14 +230,16 @@ const MAX_BASE_URLS = 10
  * 3. 多 Base URL：所有符合 HTTP 链接格式的都作为 baseUrl（最多 10 个）
  */
 export const parseQuickInput = (
-  input: string
+  input: string,
+  fallbackServiceType: ServiceType = ''
 ): {
   detectedBaseUrl: string
   detectedBaseUrls: string[]
+  rawBaseUrls: string[]
   detectedApiKeys: string[]
   detectedServiceType: 'openai' | 'gemini' | 'claude' | 'responses' | null
 } => {
-  const detectedBaseUrls: string[] = []
+  const rawUrls: string[] = []
   let detectedServiceType: 'openai' | 'gemini' | 'claude' | 'responses' | null = null
   const detectedApiKeys: string[] = []
 
@@ -236,11 +247,6 @@ export const parseQuickInput = (
 
   for (const token of tokens) {
     if (isValidUrl(token)) {
-      // 限制最大 URL 数量
-      if (detectedBaseUrls.length >= MAX_BASE_URLS) {
-        continue
-      }
-
       const endsWithHash = token.endsWith('#')
       let url = endsWithHash ? token.slice(0, -1) : token
       url = url.replace(/\/$/, '')
@@ -249,13 +255,10 @@ export const parseQuickInput = (
       // 检测协议并清理 URL（移除端点路径）
       const { serviceType, cleanedUrl } = detectServiceTypeAndCleanUrl(fullUrl)
 
-      // 避免重复
-      if (!detectedBaseUrls.includes(cleanedUrl)) {
-        detectedBaseUrls.push(cleanedUrl)
-        // 使用第一个 URL 的服务类型
-        if (!detectedServiceType) {
-          detectedServiceType = serviceType
-        }
+      rawUrls.push(cleanedUrl)
+      // 使用第一个 URL 的服务类型
+      if (!detectedServiceType) {
+        detectedServiceType = serviceType
       }
       continue
     }
@@ -265,9 +268,14 @@ export const parseQuickInput = (
     }
   }
 
+  // 先去重，再限制数量，避免误拒绝等效 URL
+  const deduplicatedRawBaseUrls = Array.from(new Set(rawUrls)).slice(0, MAX_BASE_URLS)
+  const detectedBaseUrls = deduplicateBaseUrls(deduplicatedRawBaseUrls, detectedServiceType || fallbackServiceType).slice(0, MAX_BASE_URLS)
+
   return {
     detectedBaseUrl: detectedBaseUrls[0] || '',
     detectedBaseUrls,
+    rawBaseUrls: deduplicatedRawBaseUrls,
     detectedApiKeys,
     detectedServiceType
   }

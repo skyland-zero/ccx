@@ -11,6 +11,7 @@ import (
 	"github.com/BenedictKing/ccx/internal/metrics"
 	"github.com/BenedictKing/ccx/internal/session"
 	"github.com/BenedictKing/ccx/internal/types"
+	"github.com/BenedictKing/ccx/internal/utils"
 	"github.com/BenedictKing/ccx/internal/warmup"
 )
 
@@ -81,7 +82,43 @@ func (s *ChannelScheduler) getMetricsManager(kind ChannelKind) *metrics.MetricsM
 	}
 }
 
-// SelectionResult 渠道选择结果
+func metricsLookupKeys(baseURL, apiKey, serviceType string) []string {
+	seen := make(map[string]struct{}, 4)
+	keys := make([]string, 0, 4)
+	add := func(metricsKey string) {
+		if metricsKey == "" {
+			return
+		}
+		if _, exists := seen[metricsKey]; exists {
+			return
+		}
+		seen[metricsKey] = struct{}{}
+		keys = append(keys, metricsKey)
+	}
+
+	add(metrics.GenerateMetricsIdentityKey(baseURL, apiKey, serviceType))
+	for _, variant := range utils.EquivalentBaseURLVariants(baseURL, serviceType) {
+		add(metrics.GenerateMetricsKey(variant, apiKey))
+	}
+	return keys
+}
+
+func NormalizedMetricsServiceType(kind ChannelKind, configured string) string {
+	if configured != "" {
+		return configured
+	}
+	switch kind {
+	case ChannelKindGemini:
+		return "gemini"
+	case ChannelKindResponses:
+		return "responses"
+	case ChannelKindChat:
+		return "openai"
+	default:
+		return "claude"
+	}
+}
+
 type SelectionResult struct {
 	Upstream     *config.UpstreamConfig
 	ChannelIndex int
@@ -265,21 +302,21 @@ func (s *ChannelScheduler) channelCircuitState(upstream *config.UpstreamConfig, 
 	if upstream == nil {
 		return metrics.CircuitStateClosed
 	}
-	return s.getMetricsManager(kind).GetChannelCircuitStateMultiURL(upstream.GetAllBaseURLs(), upstream.APIKeys)
+	return s.getMetricsManager(kind).GetChannelCircuitStateMultiURL(upstream.GetAllBaseURLs(), upstream.APIKeys, NormalizedMetricsServiceType(kind, upstream.ServiceType))
 }
 
 func (s *ChannelScheduler) channelFailureRate(upstream *config.UpstreamConfig, kind ChannelKind) float64 {
 	if upstream == nil {
 		return 0
 	}
-	return s.getMetricsManager(kind).CalculateChannelFailureRateMultiURL(upstream.GetAllBaseURLs(), upstream.APIKeys)
+	return s.getMetricsManager(kind).CalculateChannelFailureRateMultiURL(upstream.GetAllBaseURLs(), upstream.APIKeys, NormalizedMetricsServiceType(kind, upstream.ServiceType))
 }
 
 func (s *ChannelScheduler) channelIsHealthy(upstream *config.UpstreamConfig, kind ChannelKind) bool {
 	if upstream == nil {
 		return false
 	}
-	return s.getMetricsManager(kind).IsChannelHealthyMultiURL(upstream.GetAllBaseURLs(), upstream.APIKeys)
+	return s.getMetricsManager(kind).IsChannelHealthyMultiURL(upstream.GetAllBaseURLs(), upstream.APIKeys, NormalizedMetricsServiceType(kind, upstream.ServiceType))
 }
 
 // findPromotedChannel 查找处于促销期的渠道
@@ -471,28 +508,28 @@ func (s *ChannelScheduler) getUpstreamByIndex(index int, kind ChannelKind) *conf
 }
 
 // RecordSuccess 记录渠道成功（使用 baseURL + apiKey）
-func (s *ChannelScheduler) RecordSuccess(baseURL, apiKey string, kind ChannelKind) {
-	s.getMetricsManager(kind).RecordSuccess(baseURL, apiKey)
+func (s *ChannelScheduler) RecordSuccess(baseURL, apiKey, serviceType string, kind ChannelKind) {
+	s.getMetricsManager(kind).RecordSuccess(baseURL, apiKey, serviceType)
 }
 
 // RecordSuccessWithUsage 记录渠道成功（带 Usage 数据）
-func (s *ChannelScheduler) RecordSuccessWithUsage(baseURL, apiKey string, usage *types.Usage, kind ChannelKind) {
-	s.getMetricsManager(kind).RecordSuccessWithUsage(baseURL, apiKey, usage)
+func (s *ChannelScheduler) RecordSuccessWithUsage(baseURL, apiKey, serviceType string, usage *types.Usage, kind ChannelKind) {
+	s.getMetricsManager(kind).RecordSuccessWithUsage(baseURL, apiKey, serviceType, usage)
 }
 
 // RecordFailure 记录渠道失败（使用 baseURL + apiKey）
-func (s *ChannelScheduler) RecordFailure(baseURL, apiKey string, kind ChannelKind) {
-	s.getMetricsManager(kind).RecordFailure(baseURL, apiKey)
+func (s *ChannelScheduler) RecordFailure(baseURL, apiKey, serviceType string, kind ChannelKind) {
+	s.getMetricsManager(kind).RecordFailure(baseURL, apiKey, serviceType)
 }
 
 // RecordRequestStart 记录请求开始
-func (s *ChannelScheduler) RecordRequestStart(baseURL, apiKey string, kind ChannelKind) {
-	s.getMetricsManager(kind).RecordRequestStart(baseURL, apiKey)
+func (s *ChannelScheduler) RecordRequestStart(baseURL, apiKey, serviceType string, kind ChannelKind) {
+	s.getMetricsManager(kind).RecordRequestStart(baseURL, apiKey, serviceType)
 }
 
 // RecordRequestEnd 记录请求结束
-func (s *ChannelScheduler) RecordRequestEnd(baseURL, apiKey string, kind ChannelKind) {
-	s.getMetricsManager(kind).RecordRequestEnd(baseURL, apiKey)
+func (s *ChannelScheduler) RecordRequestEnd(baseURL, apiKey, serviceType string, kind ChannelKind) {
+	s.getMetricsManager(kind).RecordRequestEnd(baseURL, apiKey, serviceType)
 }
 
 // SetTraceAffinity 设置 Trace 亲和（按 kind 隔离）
@@ -560,7 +597,7 @@ func (s *ChannelScheduler) ResetChannelMetrics(channelIndex int, kind ChannelKin
 	metricsManager := s.getMetricsManager(kind)
 	for _, baseURL := range upstream.GetAllBaseURLs() {
 		for _, apiKey := range upstream.APIKeys {
-			metricsManager.ResetKeyFailureState(baseURL, apiKey)
+			metricsManager.ResetKeyFailureState(baseURL, apiKey, NormalizedMetricsServiceType(kind, upstream.ServiceType))
 		}
 	}
 	prefix := kindSchedulerLogPrefix(kind)
@@ -568,8 +605,8 @@ func (s *ChannelScheduler) ResetChannelMetrics(channelIndex int, kind ChannelKin
 }
 
 // ResetKeyMetrics 重置单个 Key 的指标
-func (s *ChannelScheduler) ResetKeyMetrics(baseURL, apiKey string, kind ChannelKind) {
-	s.getMetricsManager(kind).ResetKey(baseURL, apiKey)
+func (s *ChannelScheduler) ResetKeyMetrics(baseURL, apiKey, serviceType string, kind ChannelKind) {
+	s.getMetricsManager(kind).ResetKey(baseURL, apiKey, serviceType)
 }
 
 // DeleteChannelMetrics 删除渠道的所有指标数据（内存 + 持久化）
@@ -596,18 +633,18 @@ func (s *ChannelScheduler) DeleteChannelMetrics(upstream *config.UpstreamConfig,
 
 	// 收集当前配置中所有渠道使用的 (BaseURL, APIKey) 组合
 	// 注意：此时被删除渠道应已从 config 中移除
-	usedCombinations := s.collectUsedCombinations(kind)
+	usedMetricsKeys := s.collectUsedMetricsKeys(kind)
 
 	// 收集只被删除渠道独占的 metricsKey 列表（使用 map 去重）
 	exclusiveKeysSet := make(map[string]struct{})
+	serviceType := NormalizedMetricsServiceType(kind, upstream.ServiceType)
 
 	for _, baseURL := range deletedBaseURLs {
 		for _, apiKey := range deletedKeys {
-			combinationKey := baseURL + "|" + apiKey
-			if !usedCombinations[combinationKey] {
-				// 这个组合没有被其他渠道使用，可以删除
-				metricsKey := metrics.GenerateMetricsKey(baseURL, apiKey)
-				exclusiveKeysSet[metricsKey] = struct{}{}
+			for _, metricsKey := range metricsLookupKeys(baseURL, apiKey, serviceType) {
+				if !usedMetricsKeys[metricsKey] {
+					exclusiveKeysSet[metricsKey] = struct{}{}
+				}
 			}
 		}
 	}
@@ -629,10 +666,9 @@ func (s *ChannelScheduler) DeleteChannelMetrics(upstream *config.UpstreamConfig,
 	}
 }
 
-// collectUsedCombinations 收集当前配置中所有渠道使用的 (BaseURL, APIKey) 组合
-// 返回 map[string]bool，key 格式为 "baseURL|apiKey"
-// 注意：调用此方法前，被删除的渠道应已从 config 中移除
-func (s *ChannelScheduler) collectUsedCombinations(kind ChannelKind) map[string]bool {
+// collectUsedMetricsKeys 收集当前配置中所有渠道仍在使用的 identity metricsKey。
+// 注意：调用此方法前，被删除的渠道应已从 config 中移除。
+func (s *ChannelScheduler) collectUsedMetricsKeys(kind ChannelKind) map[string]bool {
 	cfg := s.configManager.GetConfig()
 
 	var upstreams []config.UpstreamConfig
@@ -647,22 +683,23 @@ func (s *ChannelScheduler) collectUsedCombinations(kind ChannelKind) map[string]
 		upstreams = cfg.Upstream
 	}
 
-	// 收集所有渠道的 (BaseURL, APIKey) 组合
-	usedCombinations := make(map[string]bool)
+	usedMetricsKeys := make(map[string]bool)
 	for _, upstream := range upstreams {
 		baseURLs := upstream.GetAllBaseURLs()
 		allKeys := append([]string{}, upstream.APIKeys...)
 		allKeys = append(allKeys, upstream.HistoricalAPIKeys...)
+		serviceType := NormalizedMetricsServiceType(kind, upstream.ServiceType)
 
 		for _, baseURL := range baseURLs {
 			for _, apiKey := range allKeys {
-				combinationKey := baseURL + "|" + apiKey
-				usedCombinations[combinationKey] = true
+				for _, metricsKey := range metricsLookupKeys(baseURL, apiKey, serviceType) {
+					usedMetricsKeys[metricsKey] = true
+				}
 			}
 		}
 	}
 
-	return usedCombinations
+	return usedMetricsKeys
 }
 
 // isUpstreamInConfig 检查指定的 upstream 是否仍在当前配置中

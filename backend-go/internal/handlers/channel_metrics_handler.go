@@ -11,6 +11,7 @@ import (
 	"github.com/BenedictKing/ccx/internal/config"
 	"github.com/BenedictKing/ccx/internal/metrics"
 	"github.com/BenedictKing/ccx/internal/scheduler"
+	"github.com/BenedictKing/ccx/internal/utils"
 	"github.com/gin-gonic/gin"
 )
 
@@ -19,8 +20,10 @@ func GetChannelMetricsWithConfig(metricsManager *metrics.MetricsManager, cfgMana
 	return func(c *gin.Context) {
 		cfg := cfgManager.GetConfig()
 		var upstreams []config.UpstreamConfig
+		kind := scheduler.ChannelKindMessages
 		if isResponses {
 			upstreams = cfg.ResponsesUpstream
+			kind = scheduler.ChannelKindResponses
 		} else {
 			upstreams = cfg.Upstream
 		}
@@ -28,7 +31,7 @@ func GetChannelMetricsWithConfig(metricsManager *metrics.MetricsManager, cfgMana
 		result := make([]gin.H, 0, len(upstreams))
 		for i, upstream := range upstreams {
 			// 使用多 URL 聚合方法获取渠道指标（支持 failover 多端点场景）
-			resp := metricsManager.ToResponseMultiURL(i, upstream.GetAllBaseURLs(), upstream.APIKeys, 0, upstream.HistoricalAPIKeys)
+			resp := metricsManager.ToResponseMultiURL(i, upstream.GetAllBaseURLs(), upstream.APIKeys, scheduler.NormalizedMetricsServiceType(kind, upstream.ServiceType), 0, upstream.HistoricalAPIKeys)
 
 			item := gin.H{
 				"channelIndex":        i,
@@ -372,8 +375,10 @@ func GetChannelMetricsHistory(metricsManager *metrics.MetricsManager, cfgManager
 
 		cfg := cfgManager.GetConfig()
 		var upstreams []config.UpstreamConfig
+		kind := scheduler.ChannelKindMessages
 		if isResponses {
 			upstreams = cfg.ResponsesUpstream
+			kind = scheduler.ChannelKindResponses
 		} else {
 			upstreams = cfg.Upstream
 		}
@@ -393,7 +398,7 @@ func GetChannelMetricsHistory(metricsManager *metrics.MetricsManager, cfgManager
 			for i, upstream := range upstreams {
 				// 过滤属于此渠道的数据（按 baseURL 匹配）
 				allURLs := upstream.GetAllBaseURLs()
-				channelBuckets := filterBucketsByURLs(store, apiType, since, intervalSec, allURLs, upstream.APIKeys)
+				channelBuckets := filterBucketsByURLs(store, apiType, since, intervalSec, allURLs, upstream.APIKeys, scheduler.NormalizedMetricsServiceType(kind, upstream.ServiceType))
 
 				dataPoints := convertBucketsToDataPoints(channelBuckets)
 				result = append(result, MetricsHistoryResponse{
@@ -409,7 +414,7 @@ func GetChannelMetricsHistory(metricsManager *metrics.MetricsManager, cfgManager
 		// <=24h 走内存
 		result := make([]MetricsHistoryResponse, 0, len(upstreams))
 		for i, upstream := range upstreams {
-			dataPoints := metricsManager.GetHistoricalStatsMultiURL(upstream.GetAllBaseURLs(), upstream.APIKeys, duration, interval)
+			dataPoints := metricsManager.GetHistoricalStatsMultiURL(upstream.GetAllBaseURLs(), upstream.APIKeys, scheduler.NormalizedMetricsServiceType(kind, upstream.ServiceType), duration, interval)
 
 			result = append(result, MetricsHistoryResponse{
 				ChannelIndex: i,
@@ -517,8 +522,10 @@ func GetChannelKeyMetricsHistory(metricsManager *metrics.MetricsManager, cfgMana
 
 		cfg := cfgManager.GetConfig()
 		var upstreams []config.UpstreamConfig
+		kind := scheduler.ChannelKindMessages
 		if isResponses {
 			upstreams = cfg.ResponsesUpstream
+			kind = scheduler.ChannelKindResponses
 		} else {
 			upstreams = cfg.Upstream
 		}
@@ -534,7 +541,7 @@ func GetChannelKeyMetricsHistory(metricsManager *metrics.MetricsManager, cfgMana
 		// 获取所有 Key 的使用信息并筛选（最多显示 10 个）
 		const maxDisplayKeys = 10
 		// 使用多 URL 聚合方法获取 Key 使用信息（支持 failover 多端点场景）
-		allKeyInfos := metricsManager.GetChannelKeyUsageInfoMultiURL(upstream.GetAllBaseURLs(), upstream.APIKeys)
+		allKeyInfos := metricsManager.GetChannelKeyUsageInfoMultiURL(upstream.GetAllBaseURLs(), upstream.APIKeys, scheduler.NormalizedMetricsServiceType(kind, upstream.ServiceType))
 		displayKeys := metrics.SelectTopKeys(allKeyInfos, maxDisplayKeys)
 
 		// 构建响应
@@ -550,10 +557,10 @@ func GetChannelKeyMetricsHistory(metricsManager *metrics.MetricsManager, cfgMana
 		for _, keyInfo := range displayKeys {
 			keyMask := truncateKeyMask(keyInfo.KeyMask, 8)
 			// 获取完整的 Key 级别数据（含 token/cache，用于 tokens/cache 视图）
-			fullDataPoints := metricsManager.GetKeyHistoricalStatsMultiURL(upstream.GetAllBaseURLs(), keyInfo.APIKey, duration, interval)
+			fullDataPoints := metricsManager.GetKeyHistoricalStatsMultiURL(upstream.GetAllBaseURLs(), keyInfo.APIKey, scheduler.NormalizedMetricsServiceType(kind, upstream.ServiceType), duration, interval)
 
 			// 获取按模型拆分的流量数据
-			modelData := metricsManager.GetKeyModelHistoricalStatsMultiURL(upstream.GetAllBaseURLs(), keyInfo.APIKey, duration, interval)
+			modelData := metricsManager.GetKeyModelHistoricalStatsMultiURL(upstream.GetAllBaseURLs(), keyInfo.APIKey, scheduler.NormalizedMetricsServiceType(kind, upstream.ServiceType), duration, interval)
 
 			if len(modelData) <= 1 {
 				// 只有一个或没有模型时，直接返回聚合数据
@@ -692,7 +699,7 @@ func GetChannelDashboard(cfgManager *config.ConfigManager, sch *scheduler.Channe
 		// 2. 构建 metrics 数据
 		metricsResult := make([]gin.H, 0, len(upstreams))
 		for i, upstream := range upstreams {
-			resp := metricsManager.ToResponseMultiURL(i, upstream.GetAllBaseURLs(), upstream.APIKeys, 0, upstream.HistoricalAPIKeys)
+			resp := metricsManager.ToResponseMultiURL(i, upstream.GetAllBaseURLs(), upstream.APIKeys, scheduler.NormalizedMetricsServiceType(kind, upstream.ServiceType), 0, upstream.HistoricalAPIKeys)
 
 			item := gin.H{
 				"channelIndex":        i,
@@ -745,7 +752,7 @@ func GetChannelDashboard(cfgManager *config.ConfigManager, sch *scheduler.Channe
 		// 4. 构建 recentActivity 数据（最近 15 分钟分段活跃度）
 		recentActivity := make([]*metrics.ChannelRecentActivity, len(upstreams))
 		for i, upstream := range upstreams {
-			recentActivity[i] = metricsManager.GetRecentActivityMultiURL(i, upstream.GetAllBaseURLs(), upstream.APIKeys)
+			recentActivity[i] = metricsManager.GetRecentActivityMultiURL(i, upstream.GetAllBaseURLs(), upstream.APIKeys, scheduler.NormalizedMetricsServiceType(kind, upstream.ServiceType))
 		}
 
 		// 返回合并数据
@@ -790,7 +797,7 @@ func GetGeminiChannelMetricsHistory(metricsManager *metrics.MetricsManager, cfgM
 			intervalSec := int64(interval.Seconds())
 			result := make([]MetricsHistoryResponse, 0, len(upstreams))
 			for i, upstream := range upstreams {
-				channelBuckets := filterBucketsByURLs(store, apiType, since, intervalSec, upstream.GetAllBaseURLs(), upstream.APIKeys)
+				channelBuckets := filterBucketsByURLs(store, apiType, since, intervalSec, upstream.GetAllBaseURLs(), upstream.APIKeys, scheduler.NormalizedMetricsServiceType(scheduler.ChannelKindGemini, upstream.ServiceType))
 				result = append(result, MetricsHistoryResponse{
 					ChannelIndex: i,
 					ChannelName:  upstream.Name,
@@ -803,7 +810,7 @@ func GetGeminiChannelMetricsHistory(metricsManager *metrics.MetricsManager, cfgM
 
 		result := make([]MetricsHistoryResponse, 0, len(upstreams))
 		for i, upstream := range upstreams {
-			dataPoints := metricsManager.GetHistoricalStatsMultiURL(upstream.GetAllBaseURLs(), upstream.APIKeys, duration, interval)
+			dataPoints := metricsManager.GetHistoricalStatsMultiURL(upstream.GetAllBaseURLs(), upstream.APIKeys, scheduler.NormalizedMetricsServiceType(scheduler.ChannelKindGemini, upstream.ServiceType), duration, interval)
 			result = append(result, MetricsHistoryResponse{
 				ChannelIndex: i,
 				ChannelName:  upstream.Name,
@@ -893,7 +900,7 @@ func GetGeminiChannelKeyMetricsHistory(metricsManager *metrics.MetricsManager, c
 		// 获取所有 Key 的使用信息并筛选（最多显示 10 个）
 		const maxDisplayKeys = 10
 		// 使用多 URL 聚合方法获取 Key 使用信息（支持 failover 多端点场景）
-		allKeyInfos := metricsManager.GetChannelKeyUsageInfoMultiURL(upstream.GetAllBaseURLs(), upstream.APIKeys)
+		allKeyInfos := metricsManager.GetChannelKeyUsageInfoMultiURL(upstream.GetAllBaseURLs(), upstream.APIKeys, scheduler.NormalizedMetricsServiceType(scheduler.ChannelKindGemini, upstream.ServiceType))
 		displayKeys := metrics.SelectTopKeys(allKeyInfos, maxDisplayKeys)
 
 		// 构建响应
@@ -906,7 +913,7 @@ func GetGeminiChannelKeyMetricsHistory(metricsManager *metrics.MetricsManager, c
 		// 为筛选后的 Key 获取历史数据
 		for i, keyInfo := range displayKeys {
 			// 使用多 URL 聚合方法获取单个 Key 的历史数据（支持 failover 多端点场景）
-			dataPoints := metricsManager.GetKeyHistoricalStatsMultiURL(upstream.GetAllBaseURLs(), keyInfo.APIKey, duration, interval)
+			dataPoints := metricsManager.GetKeyHistoricalStatsMultiURL(upstream.GetAllBaseURLs(), keyInfo.APIKey, scheduler.NormalizedMetricsServiceType(scheduler.ChannelKindGemini, upstream.ServiceType), duration, interval)
 
 			// 获取 Key 的颜色
 			color := keyColors[i%len(keyColors)]
@@ -934,7 +941,7 @@ func GetGeminiChannelMetrics(metricsManager *metrics.MetricsManager, cfgManager 
 		result := make([]gin.H, 0, len(upstreams))
 		for i, upstream := range upstreams {
 			// 使用多 URL 聚合方法获取渠道指标（支持 failover 多端点场景）
-			resp := metricsManager.ToResponseMultiURL(i, upstream.GetAllBaseURLs(), upstream.APIKeys, 0, upstream.HistoricalAPIKeys)
+			resp := metricsManager.ToResponseMultiURL(i, upstream.GetAllBaseURLs(), upstream.APIKeys, scheduler.NormalizedMetricsServiceType(scheduler.ChannelKindGemini, upstream.ServiceType), 0, upstream.HistoricalAPIKeys)
 
 			item := gin.H{
 				"channelIndex":        i,
@@ -979,7 +986,7 @@ func GetChatChannelMetrics(metricsManager *metrics.MetricsManager, cfgManager *c
 		cfg := cfgManager.GetConfig()
 		result := make([]gin.H, 0, len(cfg.ChatUpstream))
 		for i, upstream := range cfg.ChatUpstream {
-			resp := metricsManager.ToResponseMultiURL(i, upstream.GetAllBaseURLs(), upstream.APIKeys, 0, upstream.HistoricalAPIKeys)
+			resp := metricsManager.ToResponseMultiURL(i, upstream.GetAllBaseURLs(), upstream.APIKeys, scheduler.NormalizedMetricsServiceType(scheduler.ChannelKindChat, upstream.ServiceType), 0, upstream.HistoricalAPIKeys)
 			item := gin.H{
 				"channelIndex":        i,
 				"channelName":         upstream.Name,
@@ -1031,7 +1038,7 @@ func GetChatChannelMetricsHistory(metricsManager *metrics.MetricsManager, cfgMan
 			intervalSec := int64(interval.Seconds())
 			result := make([]MetricsHistoryResponse, 0, len(cfg.ChatUpstream))
 			for i, upstream := range cfg.ChatUpstream {
-				channelBuckets := filterBucketsByURLs(store, apiType, since, intervalSec, upstream.GetAllBaseURLs(), upstream.APIKeys)
+				channelBuckets := filterBucketsByURLs(store, apiType, since, intervalSec, upstream.GetAllBaseURLs(), upstream.APIKeys, scheduler.NormalizedMetricsServiceType(scheduler.ChannelKindChat, upstream.ServiceType))
 				result = append(result, MetricsHistoryResponse{ChannelIndex: i, ChannelName: upstream.Name, DataPoints: convertBucketsToDataPoints(channelBuckets)})
 			}
 			c.JSON(200, result)
@@ -1040,7 +1047,7 @@ func GetChatChannelMetricsHistory(metricsManager *metrics.MetricsManager, cfgMan
 
 		result := make([]MetricsHistoryResponse, 0, len(cfg.ChatUpstream))
 		for i, upstream := range cfg.ChatUpstream {
-			dataPoints := metricsManager.GetHistoricalStatsMultiURL(upstream.GetAllBaseURLs(), upstream.APIKeys, duration, interval)
+			dataPoints := metricsManager.GetHistoricalStatsMultiURL(upstream.GetAllBaseURLs(), upstream.APIKeys, scheduler.NormalizedMetricsServiceType(scheduler.ChannelKindChat, upstream.ServiceType), duration, interval)
 			result = append(result, MetricsHistoryResponse{ChannelIndex: i, ChannelName: upstream.Name, DataPoints: dataPoints})
 		}
 		c.JSON(200, result)
@@ -1062,11 +1069,11 @@ func GetChatChannelKeyMetricsHistory(metricsManager *metrics.MetricsManager, cfg
 			return
 		}
 		upstream := cfg.ChatUpstream[channelID]
-		allKeyInfos := metricsManager.GetChannelKeyUsageInfoMultiURL(upstream.GetAllBaseURLs(), upstream.APIKeys)
+		allKeyInfos := metricsManager.GetChannelKeyUsageInfoMultiURL(upstream.GetAllBaseURLs(), upstream.APIKeys, scheduler.NormalizedMetricsServiceType(scheduler.ChannelKindChat, upstream.ServiceType))
 		displayKeys := metrics.SelectTopKeys(allKeyInfos, 10)
 		result := ChannelKeyMetricsHistoryResponse{ChannelIndex: channelID, ChannelName: upstream.Name, Keys: make([]KeyMetricsHistoryResult, 0, len(displayKeys))}
 		for i, keyInfo := range displayKeys {
-			dataPoints := metricsManager.GetKeyHistoricalStatsMultiURL(upstream.GetAllBaseURLs(), keyInfo.APIKey, duration, interval)
+			dataPoints := metricsManager.GetKeyHistoricalStatsMultiURL(upstream.GetAllBaseURLs(), keyInfo.APIKey, scheduler.NormalizedMetricsServiceType(scheduler.ChannelKindChat, upstream.ServiceType), duration, interval)
 			result.Keys = append(result.Keys, KeyMetricsHistoryResult{KeyMask: truncateKeyMask(keyInfo.KeyMask, 8), Color: keyColors[i%len(keyColors)], DataPoints: dataPoints})
 		}
 		c.JSON(200, result)
@@ -1186,38 +1193,54 @@ func parseExtendedDuration(s string) (time.Duration, error) {
 }
 
 // filterBucketsByURLs 按渠道的 URL 和 Key 过滤 SQLite 聚合数据
-func filterBucketsByURLs(store metrics.PersistenceStore, apiType string, since time.Time, intervalSec int64, baseURLs []string, apiKeys []string) []metrics.AggregatedBucket {
+func filterBucketsByURLs(store metrics.PersistenceStore, apiType string, since time.Time, intervalSec int64, baseURLs []string, apiKeys []string, serviceType string) []metrics.AggregatedBucket {
 	// SQLite 里的聚合记录是按 metrics_key(baseURL + apiKey) 归属的。
 	// 因此这里必须按当前渠道的 URL+Key 组合逐个查询并汇总，
 	// 不能只按 baseURL 过滤，否则多个共用 baseURL 的渠道会串数据。
 	bucketMap := make(map[int64]*metrics.AggregatedBucket)
 
+	queriedMetricsKeys := make(map[string]struct{})
 	for _, baseURL := range baseURLs {
 		for _, apiKey := range apiKeys {
-			metricsKey := metrics.GenerateMetricsKey(baseURL, apiKey)
-			buckets, err := store.QueryAggregatedHistory(apiType, since, intervalSec, metricsKey, "")
-			if err != nil {
-				log.Printf("[Metrics-History] 查询 metricsKey %s 失败(baseURL=%s): %v", metricsKey, baseURL, err)
-				continue
+			lookupKeys := []string{metrics.GenerateMetricsIdentityKey(baseURL, apiKey, serviceType)}
+			for _, variant := range utils.EquivalentBaseURLVariants(baseURL, serviceType) {
+				lookupKey := metrics.GenerateMetricsKey(variant, apiKey)
+				if lookupKey == lookupKeys[0] {
+					continue
+				}
+				lookupKeys = append(lookupKeys, lookupKey)
 			}
-			for _, b := range buckets {
-				ts := b.Timestamp.Unix()
-				if existing, ok := bucketMap[ts]; ok {
-					existing.TotalRequests += b.TotalRequests
-					existing.SuccessCount += b.SuccessCount
-					existing.InputTokens += b.InputTokens
-					existing.OutputTokens += b.OutputTokens
-					existing.CacheCreationTokens += b.CacheCreationTokens
-					existing.CacheReadTokens += b.CacheReadTokens
-				} else {
-					copy := b
-					bucketMap[ts] = &copy
+
+			for _, metricsKey := range lookupKeys {
+				if _, exists := queriedMetricsKeys[metricsKey]; exists {
+					continue
+				}
+				queriedMetricsKeys[metricsKey] = struct{}{}
+
+				buckets, err := store.QueryAggregatedHistory(apiType, since, intervalSec, metricsKey, "")
+				if err != nil {
+					log.Printf("[Metrics-History] 查询 metricsKey %s 失败(baseURL=%s): %v", metricsKey, baseURL, err)
+					continue
+				}
+
+				for _, b := range buckets {
+					ts := b.Timestamp.Unix()
+					if existing, ok := bucketMap[ts]; ok {
+						existing.TotalRequests += b.TotalRequests
+						existing.SuccessCount += b.SuccessCount
+						existing.InputTokens += b.InputTokens
+						existing.OutputTokens += b.OutputTokens
+						existing.CacheCreationTokens += b.CacheCreationTokens
+						existing.CacheReadTokens += b.CacheReadTokens
+					} else {
+						copy := b
+						bucketMap[ts] = &copy
+					}
 				}
 			}
 		}
 	}
 
-	// 转为有序 slice
 	result := make([]metrics.AggregatedBucket, 0, len(bucketMap))
 	for _, b := range bucketMap {
 		result = append(result, *b)

@@ -896,8 +896,9 @@ import {
 } from '../utils/quickInputParser'
 import { buildExpectedRequestUrls } from '../utils/expectedRequestUrls'
 import { supportsAdvancedChannelOptions } from '../utils/channelAdvancedOptions'
+import { buildExpectedRequestUrl } from '../utils/baseUrlSemantics'
 import { buildChannelPayload } from '../utils/channelPayload'
-import { resolveChannelWatcherAction } from '../utils/add-channel-modal-state'
+import { resolveChannelWatcherAction, syncBaseUrlsFormState } from '../utils/add-channel-modal-state'
 import { useI18n } from '../i18n'
 
 interface Props {
@@ -931,6 +932,7 @@ const isQuickMode = ref(true)
 const quickInput = ref('')
 const detectedBaseUrl = ref('')
 const detectedBaseUrls = ref<string[]>([])
+const detectedRawBaseUrls = ref<string[]>([])
 const detectedApiKeys = ref<string[]>([])
 const detectedServiceType = ref<'openai' | 'gemini' | 'claude' | 'responses' | null>(null)
 
@@ -941,25 +943,22 @@ let formBaseUrlPreviewTimer: number | null = null
 // 切换模式时，将快速模式检测到的值同步到详细表单，但不清空快速模式输入
 const toggleMode = () => {
   if (isQuickMode.value) {
-    // 从快速模式切换到详细模式：始终用检测到的值覆盖表单
-    if (detectedBaseUrls.value.length > 0) {
-      // 多个 BaseURL
-      form.baseUrl = detectedBaseUrls.value[0]
-      form.baseUrls = [...detectedBaseUrls.value]
-      baseUrlsText.value = detectedBaseUrls.value.join('\n')
-    } else if (detectedBaseUrl.value) {
-      // 单个 BaseURL
-      form.baseUrl = detectedBaseUrl.value
-      form.baseUrls = []
-      baseUrlsText.value = detectedBaseUrl.value
-    }
+    const effectiveServiceType = detectedServiceType.value || getDefaultServiceTypeValue()
+    const sourceUrls = detectedRawBaseUrls.value.length > 0
+      ? detectedRawBaseUrls.value.join('\n')
+      : (detectedBaseUrl.value || '')
+
+    const { baseUrl, baseUrls } = syncBaseUrlsFormState(sourceUrls, effectiveServiceType)
+    form.baseUrl = baseUrl
+    form.baseUrls = baseUrls
+    baseUrlsText.value = sourceUrls
     if (detectedApiKeys.value.length > 0) {
       form.apiKeys = [...detectedApiKeys.value]
     }
     if (generatedChannelName.value) {
       form.name = generatedChannelName.value
     }
-    form.serviceType = detectedServiceType.value || getDefaultServiceTypeValue()
+    form.serviceType = effectiveServiceType
   }
   // 切换回快速模式时不做任何清理，保留 quickInput 原有内容
   isQuickMode.value = !isQuickMode.value
@@ -967,9 +966,10 @@ const toggleMode = () => {
 
 // 解析快速输入内容
 const parseQuickInput = () => {
-  const result = parseQuickInputUtil(quickInput.value)
+  const result = parseQuickInputUtil(quickInput.value, form.serviceType || getDefaultServiceTypeValue())
   detectedBaseUrl.value = result.detectedBaseUrl
   detectedBaseUrls.value = result.detectedBaseUrls
+  detectedRawBaseUrls.value = result.rawBaseUrls
   detectedApiKeys.value = result.detectedApiKeys
   detectedServiceType.value = result.detectedServiceType
 }
@@ -1106,14 +1106,6 @@ const _expectedRequestUrl = computed(() => {
 const getExpectedRequestUrl = (inputBaseUrl: string): string => {
   if (!inputBaseUrl) return ''
 
-  let baseUrl = inputBaseUrl
-  const skipVersion = baseUrl.endsWith('#')
-  if (skipVersion) {
-    baseUrl = baseUrl.slice(0, -1)
-  }
-
-  const hasVersion = /\/v\d+[a-z]*$/.test(baseUrl)
-
   const serviceType = detectedServiceType.value || getDefaultServiceTypeValue()
   const endpoint =
     props.channelType === 'responses'
@@ -1121,19 +1113,20 @@ const getExpectedRequestUrl = (inputBaseUrl: string): string => {
         ? '/responses'
         : serviceType === 'claude'
           ? '/messages'
-          : '/chat/completions'
+          : serviceType === 'gemini'
+            ? '/models/{model}:generateContent'
+            : '/chat/completions'
       : serviceType === 'claude'
         ? '/messages'
         : serviceType === 'gemini'
           ? '/models/{model}:generateContent'
-          : '/chat/completions'
+          : serviceType === 'responses'
+            ? props.channelType === 'chat'
+              ? '/chat/completions'
+              : '/responses'
+            : '/chat/completions'
 
-  if (hasVersion || skipVersion) {
-    return baseUrl + endpoint
-  }
-  // Gemini 使用 /v1beta，其他使用 /v1
-  const versionPrefix = serviceType === 'gemini' ? '/v1beta' : '/v1'
-  return baseUrl + versionPrefix + endpoint
+  return buildExpectedRequestUrl(serviceType, endpoint, inputBaseUrl)
 }
 
 // 检测 baseUrl 是否有验证错误
@@ -1442,22 +1435,17 @@ const form = reactive({
 // 多 BaseURL 文本输入（独立变量，保留用户输入的换行）
 const baseUrlsText = ref('')
 
-// 监听 baseUrlsText 变化，同步到 form（仅做基本同步，不修改用户输入）
+// 监听 baseUrlsText 变化，同步到 form（去重等效 URL）
 watch(baseUrlsText, val => {
-  const urls = val
-    .split('\n')
-    .map(s => s.trim())
-    .filter(Boolean)
-  if (urls.length === 0) {
-    form.baseUrl = ''
-    form.baseUrls = []
-  } else if (urls.length === 1) {
-    form.baseUrl = urls[0]
-    form.baseUrls = []
-  } else {
-    form.baseUrl = urls[0]
-    form.baseUrls = urls
-  }
+  const { baseUrl, baseUrls } = syncBaseUrlsFormState(val, form.serviceType)
+  form.baseUrl = baseUrl
+  form.baseUrls = baseUrls
+})
+
+watch(() => form.serviceType, () => {
+  const { baseUrl, baseUrls } = syncBaseUrlsFormState(baseUrlsText.value, form.serviceType)
+  form.baseUrl = baseUrl
+  form.baseUrls = baseUrls
 })
 
 // 原始密钥映射 (掩码密钥 -> 原始密钥)
@@ -1721,6 +1709,8 @@ const resetForm = () => {
   // 重置快速添加模式数据
   quickInput.value = ''
   detectedBaseUrl.value = ''
+  detectedBaseUrls.value = []
+  detectedRawBaseUrls.value = []
   detectedApiKeys.value = []
   detectedServiceType.value = null
   randomSuffix.value = generateRandomString(6)
@@ -1738,12 +1728,11 @@ const loadChannelData = (channel: Channel) => {
   form.stripThoughtSignature = !!channel.stripThoughtSignature
   form.description = channel.description || ''
 
-  // 同步 baseUrlsText（优先使用 baseUrls，否则使用 baseUrl）
-  if (channel.baseUrls && channel.baseUrls.length > 0) {
-    baseUrlsText.value = channel.baseUrls.join('\n')
-  } else {
-    baseUrlsText.value = channel.baseUrl || ''
-  }
+  // 同步 baseUrlsText（优先使用 baseUrls，否则使用 baseUrl），保留用户显式配置的原始 URL 形式
+  const rawUrls = channel.baseUrls && channel.baseUrls.length > 0
+    ? channel.baseUrls
+    : (channel.baseUrl ? [channel.baseUrl] : [])
+  baseUrlsText.value = rawUrls.join('\n')
 
   // 直接存储原始密钥，不需要映射关系
   form.apiKeys = [...channel.apiKeys]
@@ -2086,20 +2075,6 @@ const handleSubmit = async () => {
 
   const { valid } = await formRef.value.validate()
   if (!valid) return
-
-  // 处理 BaseURL：去重（忽略末尾 / 和 # 差异），并移除 UI 专用的尾部 #
-  const seenUrls = new Set<string>()
-  if (form.baseUrls.length > 0) {
-    form.baseUrls
-      .map(url => url.trim().replace(/[#/]+$/, ''))
-      .filter(Boolean)
-      .forEach(url => {
-        const normalized = url.replace(/[#/]+$/, '')
-        if (!seenUrls.has(normalized)) {
-          seenUrls.add(normalized)
-        }
-      })
-  }
 
   const channelData = buildChannelPayload(form)
 

@@ -4,6 +4,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/BenedictKing/ccx/internal/utils"
 )
 
 // ============== 工具函数 ==============
@@ -24,18 +26,29 @@ func deduplicateStrings(items []string) []string {
 	return result
 }
 
-// deduplicateBaseURLs 去重 BaseURLs，忽略末尾 / 和 # 差异
-func deduplicateBaseURLs(urls []string) []string {
-	if len(urls) <= 1 {
+func normalizeUpstreamServiceType(serviceType, fallback string) string {
+	trimmed := strings.TrimSpace(serviceType)
+	if trimmed != "" {
+		return trimmed
+	}
+	return fallback
+}
+
+// deduplicateBaseURLs 去重 BaseURLs，忽略尾部 / 和默认版本前缀差异，保留 # 语义。
+func deduplicateBaseURLs(urls []string, serviceType string) []string {
+	if len(urls) == 0 {
 		return urls
 	}
 	seen := make(map[string]struct{}, len(urls))
 	result := make([]string, 0, len(urls))
-	for _, url := range urls {
-		normalized := strings.TrimRight(url, "/#")
-		if _, exists := seen[normalized]; !exists {
-			seen[normalized] = struct{}{}
-			result = append(result, url)
+	for _, rawURL := range urls {
+		canonical := utils.CanonicalBaseURL(rawURL, serviceType)
+		if canonical == "" {
+			continue
+		}
+		if _, exists := seen[canonical]; !exists {
+			seen[canonical] = struct{}{}
+			result = append(result, canonical)
 		}
 	}
 	return result
@@ -218,12 +231,12 @@ func (u *UpstreamConfig) SupportsModel(model string) bool {
 func (u *UpstreamConfig) GetEffectiveBaseURL() string {
 	// 优先使用 BaseURL（可能被调用方临时设置用于指定本次请求的 URL）
 	if u.BaseURL != "" {
-		return u.BaseURL
+		return utils.CanonicalBaseURL(u.BaseURL, u.ServiceType)
 	}
 
 	// 回退到 BaseURLs 数组
 	if len(u.BaseURLs) > 0 {
-		return u.BaseURLs[0]
+		return utils.CanonicalBaseURL(u.BaseURLs[0], u.ServiceType)
 	}
 
 	return ""
@@ -232,10 +245,14 @@ func (u *UpstreamConfig) GetEffectiveBaseURL() string {
 // GetAllBaseURLs 获取所有 BaseURL（用于延迟测试）
 func (u *UpstreamConfig) GetAllBaseURLs() []string {
 	if len(u.BaseURLs) > 0 {
-		return u.BaseURLs
+		return deduplicateBaseURLs(u.BaseURLs, u.ServiceType)
 	}
 	if u.BaseURL != "" {
-		return []string{u.BaseURL}
+		canonical := utils.CanonicalBaseURL(u.BaseURL, u.ServiceType)
+		if canonical == "" {
+			return nil
+		}
+		return []string{canonical}
 	}
 	return nil
 }

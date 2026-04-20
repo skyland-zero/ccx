@@ -303,50 +303,76 @@ func TestGetEffectiveBaseURL_Priority(t *testing.T) {
 // TestDeduplicateBaseURLs 测试 BaseURLs 去重逻辑
 func TestDeduplicateBaseURLs(t *testing.T) {
 	tests := []struct {
-		name  string
-		input []string
-		want  []string
+		name        string
+		serviceType string
+		input       []string
+		want        []string
 	}{
 		{
-			name:  "精确重复应去重",
-			input: []string{"https://a.com", "https://b.com", "https://a.com"},
-			want:  []string{"https://a.com", "https://b.com"},
+			name:        "精确重复应去重",
+			serviceType: "openai",
+			input:       []string{"https://a.com", "https://b.com", "https://a.com"},
+			want:        []string{"https://a.com", "https://b.com"},
 		},
 		{
-			name:  "末尾斜杠差异应视为相同",
-			input: []string{"https://a.com", "https://a.com/"},
-			want:  []string{"https://a.com"},
+			name:        "末尾斜杠差异应视为相同",
+			serviceType: "openai",
+			input:       []string{"https://a.com", "https://a.com/"},
+			want:        []string{"https://a.com"},
 		},
 		{
-			name:  "末尾井号差异应视为相同",
-			input: []string{"https://a.com", "https://a.com#"},
-			want:  []string{"https://a.com"},
+			name:        "末尾井号差异应保留独立语义",
+			serviceType: "openai",
+			input:       []string{"https://a.com", "https://a.com#"},
+			want:        []string{"https://a.com", "https://a.com#"},
 		},
 		{
-			name:  "保持原始顺序",
-			input: []string{"https://c.com", "https://a.com", "https://b.com"},
-			want:  []string{"https://c.com", "https://a.com", "https://b.com"},
+			name:        "根域名与 /v1 应视为相同",
+			serviceType: "openai",
+			input:       []string{"https://a.com", "https://a.com/v1"},
+			want:        []string{"https://a.com"},
 		},
 		{
-			name:  "单个元素不变",
-			input: []string{"https://only.com"},
-			want:  []string{"https://only.com"},
+			name:        "Gemini 根域名与 /v1beta 应视为相同",
+			serviceType: "gemini",
+			input:       []string{"https://gemini.example.com", "https://gemini.example.com/v1beta"},
+			want:        []string{"https://gemini.example.com"},
 		},
 		{
-			name:  "空切片返回空切片",
-			input: []string{},
-			want:  []string{},
+			name:        "多个不同 URL 保持原始顺序",
+			serviceType: "openai",
+			input:       []string{"https://c.com", "https://a.com", "https://b.com"},
+			want:        []string{"https://c.com", "https://a.com", "https://b.com"},
 		},
 		{
-			name:  "nil 返回 nil",
-			input: nil,
-			want:  nil,
+			name:        "单个元素不变",
+			serviceType: "openai",
+			input:       []string{"https://only.com"},
+			want:        []string{"https://only.com"},
+		},
+		{
+			name:        "单个元素也执行 canonical 规范化",
+			serviceType: "openai",
+			input:       []string{"https://only.com/v1"},
+			want:        []string{"https://only.com"},
+		},
+		{
+			name:        "空切片返回空切片",
+			serviceType: "openai",
+			input:       []string{},
+			want:        []string{},
+		},
+		{
+			name:        "nil 返回 nil",
+			serviceType: "openai",
+			input:       nil,
+			want:        nil,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := deduplicateBaseURLs(tt.input)
+			got := deduplicateBaseURLs(tt.input, tt.serviceType)
 
 			if len(got) != len(tt.want) {
 				t.Errorf("deduplicateBaseURLs() length = %d, want %d", len(got), len(tt.want))
@@ -400,6 +426,65 @@ func TestAddUpstream_BaseURLDeduplication(t *testing.T) {
 		if url != expectedURLs[i] {
 			t.Errorf("BaseURLs[%d] = %q, want %q", i, url, expectedURLs[i])
 		}
+	}
+}
+
+func TestLoadConfig_BackfillsLegacyServiceTypeDefaults(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.json")
+	initialConfig := `{
+		"upstream": [{
+			"name": "messages-legacy",
+			"baseUrl": "https://messages.example.com/v1",
+			"apiKeys": ["sk-m"]
+		}],
+		"responsesUpstream": [{
+			"name": "responses-legacy",
+			"baseUrl": "https://responses.example.com/v1",
+			"apiKeys": ["sk-r"]
+		}],
+		"geminiUpstream": [{
+			"name": "gemini-legacy",
+			"baseUrl": "https://generativelanguage.googleapis.com/v1beta",
+			"baseUrls": [
+				"https://generativelanguage.googleapis.com/v1beta",
+				"https://generativelanguage.googleapis.com"
+			],
+			"apiKeys": ["sk-g"]
+		}],
+		"chatUpstream": [{
+			"name": "chat-legacy",
+			"baseUrl": "https://chat.example.com/v1",
+			"apiKeys": ["sk-c"]
+		}]
+	}`
+	if err := os.WriteFile(configPath, []byte(initialConfig), 0644); err != nil {
+		t.Fatalf("写入初始配置失败: %v", err)
+	}
+
+	cm, err := NewConfigManager(configPath)
+	if err != nil {
+		t.Fatalf("初始化配置管理器失败: %v", err)
+	}
+	defer cm.Close()
+
+	cfg := cm.GetConfig()
+	if got := cfg.Upstream[0].ServiceType; got != "claude" {
+		t.Fatalf("messages ServiceType = %q, want claude", got)
+	}
+	if got := cfg.ResponsesUpstream[0].ServiceType; got != "responses" {
+		t.Fatalf("responses ServiceType = %q, want responses", got)
+	}
+	if got := cfg.GeminiUpstream[0].ServiceType; got != "gemini" {
+		t.Fatalf("gemini ServiceType = %q, want gemini", got)
+	}
+	if got := cfg.ChatUpstream[0].ServiceType; got != "openai" {
+		t.Fatalf("chat ServiceType = %q, want openai", got)
+	}
+
+	// 回填后 Gemini 的 root 与 /v1beta 应按等价规则折叠为最短形式。
+	if urls := cfg.GeminiUpstream[0].GetAllBaseURLs(); len(urls) != 1 || urls[0] != "https://generativelanguage.googleapis.com" {
+		t.Fatalf("Gemini GetAllBaseURLs() = %#v, want [https://generativelanguage.googleapis.com]", urls)
 	}
 }
 
