@@ -1820,6 +1820,16 @@ func (m *MetricsManager) GetAllTimeWindowStatsForKey(baseURL, apiKey, serviceTyp
 	}
 }
 
+// MoveKeyToHalfOpen 强制将指定 Key 切换到 half-open 探测状态。
+func (m *MetricsManager) MoveKeyToHalfOpen(baseURL, apiKey string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	metrics := m.getOrCreateKey(baseURL, apiKey)
+	m.moveCircuitToHalfOpenLocked(metrics, time.Now())
+	log.Printf("[Metrics-Circuit] Key [%s] (%s) 已切换到 half-open", metrics.KeyMask, metrics.BaseURL)
+}
+
 // ResetKeyFailureState 重置单个 Key 的熔断/失败状态（保留历史统计与总量计数）。
 // 用于“恢复熔断”场景：清零连续失败、清空 breaker 滑动窗口、解除熔断标记。
 func (m *MetricsManager) ResetKeyFailureState(baseURL, apiKey, serviceType string) {

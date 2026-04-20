@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -59,6 +60,17 @@ type DisabledKeyInfo struct {
 	Reason     string `json:"reason"`     // "authentication_error" / "permission_error" / "insufficient_balance"
 	Message    string `json:"message"`    // 原始错误信息
 	DisabledAt string `json:"disabledAt"` // ISO8601 时间戳
+}
+
+// IsAutoRecoverableDisabledReason 判断是否属于可自动恢复的拉黑原因。
+func IsAutoRecoverableDisabledReason(reason string) bool {
+	reason = strings.ToLower(strings.TrimSpace(reason))
+	switch reason {
+	case "insufficient_balance", "insufficient_quota", "billing_error", "quota":
+		return true
+	default:
+		return false
+	}
 }
 
 // IsAutoBlacklistBalanceEnabled 检查余额不足自动拉黑是否启用（默认 true）
@@ -564,6 +576,60 @@ func (cm *ConfigManager) RestoreAllKeys(apiType string, channelIndex int) (int, 
 	upstream.DisabledAPIKeys = nil
 
 	return restoredCount, cm.saveConfigLocked(cm.config)
+}
+
+// RestoreDisabledKeys 恢复指定渠道中命中的被拉黑 Key，并返回实际恢复的 key 列表。
+func (cm *ConfigManager) RestoreDisabledKeys(apiType string, channelIndex int, keys []string) ([]string, error) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	upstreams := cm.getUpstreamSliceLocked(apiType)
+	if upstreams == nil || channelIndex < 0 || channelIndex >= len(*upstreams) {
+		return nil, fmt.Errorf("无效的渠道索引: %s[%d]", apiType, channelIndex)
+	}
+	if len(keys) == 0 {
+		return nil, nil
+	}
+
+	keySet := make(map[string]struct{}, len(keys))
+	for _, key := range keys {
+		if key == "" {
+			continue
+		}
+		keySet[key] = struct{}{}
+	}
+	if len(keySet) == 0 {
+		return nil, nil
+	}
+
+	upstream := &(*upstreams)[channelIndex]
+	restored := make([]string, 0, len(keySet))
+	newDisabled := make([]DisabledKeyInfo, 0, len(upstream.DisabledAPIKeys))
+	for _, dk := range upstream.DisabledAPIKeys {
+		if _, ok := keySet[dk.Key]; !ok {
+			newDisabled = append(newDisabled, dk)
+			continue
+		}
+		if !slices.Contains(upstream.APIKeys, dk.Key) {
+			upstream.APIKeys = append(upstream.APIKeys, dk.Key)
+		}
+		upstream.HistoricalAPIKeys = slices.DeleteFunc(upstream.HistoricalAPIKeys, func(k string) bool {
+			return k == dk.Key
+		})
+		delete(cm.failedKeysCache, failedKeyCacheKey(apiType, dk.Key))
+		restored = append(restored, dk.Key)
+	}
+
+	if len(restored) == 0 {
+		return nil, nil
+	}
+
+	upstream.DisabledAPIKeys = newDisabled
+	log.Printf("[%s-Blacklist] 渠道 [%d] %s 自动恢复了 %d 个 Key", apiType, channelIndex, upstream.Name, len(restored))
+	if err := cm.saveConfigLocked(cm.config); err != nil {
+		return nil, err
+	}
+	return restored, nil
 }
 
 // getUpstreamSliceLocked 根据 apiType 获取对应的 upstream slice 指针（调用方需持有锁）

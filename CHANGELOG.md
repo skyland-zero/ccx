@@ -10,6 +10,9 @@
 - **统一 Base URL 等价去重与请求预览语义** - 为前后端新增共享 canonical Base URL 规则，将根域名与默认版本前缀 URL（如 `/v1`、`/v1beta`）视为等效并保留最短形式，同时继续保留 `#` 作为独立语义；同步影响渠道新增/编辑、快速输入解析、payload 构建与预期请求 URL 预览
 - **兼容等效 Base URL 的历史指标与图表聚合** - 后端配置、运行时指标 key、历史统计与图表聚合改为按等效 Base URL 兼容读取，避免用户在 `root` 与 `/v1` 之间切换后出现历史访问记录和图表数据断裂，并补充前后端回归测试
 - **优化渠道日志记录机制** - 新增 `CreatePendingLog`、`UpdateLogStatus`、`CompleteLog` 函数支持日志生命周期管理，`ChannelLogStore` 新增 `Update` 方法支持通过 `requestID` 更新已存在的日志条目
+- **新增 UTC 0/8/16 时段自动恢复黑名单 key** - 为因余额/额度类原因自动拉黑的 key 增加基于 UTC `00:00:01`、`08:00:01`、`16:00:01` 的定时恢复编排，恢复后将 key 切入 `half_open` 探测而非直接回到 `closed`，并跳过 1 小时内刚自动封禁的 key 以顺延到下个时段
+- **自动恢复时按渠道状态最小激活** - 当渠道因 active key 为空而处于 `suspended` 时，若本轮恢复出了可用 key，则自动恢复为 `active`；`disabled` 渠道保持不变，避免误激活手动禁用渠道
+- **补充恢复编排与熔断回归测试** - 新增 metrics/scheduler 单测覆盖 UTC 时段计算、可自动恢复 reason 筛选、多 BaseURL half-open 迁移与 suspended 渠道激活规则
 
 ### Fixed
 
