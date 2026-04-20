@@ -128,6 +128,8 @@ const requestStatusColor = (status: string): string => {
   switch (status) {
     case 'completed': return 'success'
     case 'failed': return 'error'
+    case 'cancelled':
+    case 'canceled': return 'warning'
     case 'streaming': return 'info'
     case 'first_byte': return 'primary'
     case 'connecting': return 'warning'
@@ -144,6 +146,8 @@ const requestStatusText = (status: string): string => {
     case 'streaming': return '传输中'
     case 'completed': return '已完成'
     case 'failed': return '失败'
+    case 'cancelled':
+    case 'canceled': return '已取消'
     default: return status
   }
 }

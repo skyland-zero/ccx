@@ -23,7 +23,7 @@ type ChannelLog struct {
 	RequestSource string    `json:"requestSource,omitempty"` // 请求来源（proxy/capability_test）
 
 	// 请求生命周期状态
-	Status      string     `json:"status"`                // pending/connecting/first_byte/streaming/completed/failed
+	Status      string     `json:"status"`                // pending/connecting/first_byte/streaming/completed/failed/cancelled
 	StartTime   time.Time  `json:"startTime"`             // 请求开始时间
 	ConnectedAt *time.Time `json:"connectedAt,omitempty"` // 连接建立时间
 	FirstByteAt *time.Time `json:"firstByteAt,omitempty"` // 首字节到达时间
@@ -42,7 +42,12 @@ const (
 	StatusStreaming  = "streaming"
 	StatusCompleted  = "completed"
 	StatusFailed     = "failed"
+	StatusCancelled  = "cancelled"
 )
+
+func isTerminalStatus(status string) bool {
+	return status == StatusCompleted || status == StatusFailed || status == StatusCancelled
+}
 
 // ChannelLogStore 渠道日志存储（内存环形缓冲区）
 type ChannelLogStore struct {
@@ -63,7 +68,7 @@ func (s *ChannelLogStore) Record(channelIndex int, log *ChannelLog) {
 	defer s.mu.Unlock()
 	if log != nil && log.RequestID != "" {
 		log.ChannelIndex = channelIndex
-		if log.Status != StatusCompleted && log.Status != StatusFailed {
+		if !isTerminalStatus(log.Status) {
 			s.requestLocations[log.RequestID] = channelIndex
 		} else {
 			delete(s.requestLocations, log.RequestID)
@@ -179,7 +184,7 @@ func (s *ChannelLogStore) Update(channelIndex int, requestID string, updateFn fu
 	for i := range logs {
 		if logs[i].RequestID == requestID {
 			updateFn(logs[i])
-			if logs[i].Status == StatusCompleted || logs[i].Status == StatusFailed {
+			if isTerminalStatus(logs[i].Status) {
 				delete(s.requestLocations, requestID)
 			}
 			return UpdateFound, actualIndex

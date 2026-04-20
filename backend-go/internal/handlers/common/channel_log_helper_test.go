@@ -94,3 +94,36 @@ func TestRecordChannelLogWithSource_UsesExplicitSource(t *testing.T) {
 		t.Fatalf("requestSource = %q, want %q", logs[0].RequestSource, metrics.RequestSourceCapabilityTest)
 	}
 }
+
+func TestCompleteLog_MapsClientCanceledToCancelledStatus(t *testing.T) {
+	store := metrics.NewChannelLogStore()
+	requestID := CreatePendingLog(store, 0, "model-a", "", "sk-test-secret", "https://example.com", "Responses", metrics.RequestSourceProxy)
+
+	CompleteLog(store, 0, requestID, 200, false, "client canceled", false)
+
+	logs := store.Get(0)
+	if len(logs) != 1 {
+		t.Fatalf("logs count = %d, want 1", len(logs))
+	}
+	if logs[0].Status != metrics.StatusCancelled {
+		t.Fatalf("status = %q, want %q", logs[0].Status, metrics.StatusCancelled)
+	}
+	if logs[0].Success {
+		t.Fatalf("success = true, want false")
+	}
+}
+
+func TestCompleteLog_LeavesRealFailuresAsFailed(t *testing.T) {
+	store := metrics.NewChannelLogStore()
+	requestID := CreatePendingLog(store, 0, "model-a", "", "sk-test-secret", "https://example.com", "Responses", metrics.RequestSourceProxy)
+
+	CompleteLog(store, 0, requestID, 502, false, "upstream timeout", false)
+
+	logs := store.Get(0)
+	if len(logs) != 1 {
+		t.Fatalf("logs count = %d, want 1", len(logs))
+	}
+	if logs[0].Status != metrics.StatusFailed {
+		t.Fatalf("status = %q, want %q", logs[0].Status, metrics.StatusFailed)
+	}
+}

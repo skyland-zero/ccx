@@ -4,6 +4,7 @@ package common
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"strings"
 	"time"
 
 	"github.com/BenedictKing/ccx/internal/metrics"
@@ -102,6 +103,7 @@ func CompleteLog(
 		errorInfo = errorInfo[:200]
 	}
 
+	status := getStatusFromResult(success, errorInfo)
 	now := time.Now()
 	updateStatus, actualChannelIndex := channelLogStore.Update(channelIndex, requestID, func(log *metrics.ChannelLog) {
 		log.StatusCode = statusCode
@@ -110,12 +112,7 @@ func CompleteLog(
 		log.IsRetry = isRetry
 		log.CompletedAt = &now
 		log.DurationMs = now.Sub(log.StartTime).Milliseconds()
-
-		if success {
-			log.Status = metrics.StatusCompleted
-		} else {
-			log.Status = metrics.StatusFailed
-		}
+		log.Status = status
 	})
 
 	// 仅在确认是环形缓冲淘汰时补写终态日志；若渠道已删除则不补写，避免污染其他渠道。
@@ -128,7 +125,7 @@ func CompleteLog(
 			Success:      success,
 			ErrorInfo:    errorInfo,
 			IsRetry:      isRetry,
-			Status:       getStatusFromSuccess(success),
+			Status:       status,
 			StartTime:    now,
 			CompletedAt:  &now,
 			DurationMs:   0,
@@ -136,9 +133,12 @@ func CompleteLog(
 	}
 }
 
-func getStatusFromSuccess(success bool) string {
+func getStatusFromResult(success bool, errorInfo string) string {
 	if success {
 		return metrics.StatusCompleted
+	}
+	if strings.EqualFold(strings.TrimSpace(errorInfo), "client canceled") {
+		return metrics.StatusCancelled
 	}
 	return metrics.StatusFailed
 }
