@@ -13,14 +13,20 @@ func TestSupportsModel(t *testing.T) {
 		{"空列表匹配空模型", nil, "", true},
 		{"精确匹配", []string{"gpt-4o"}, "gpt-4o", true},
 		{"精确不匹配", []string{"gpt-4o"}, "gpt-4-turbo", false},
-		{"通配符匹配", []string{"gpt-4*"}, "gpt-4o", true},
-		{"通配符匹配turbo", []string{"gpt-4*"}, "gpt-4-turbo", true},
+		{"前缀匹配", []string{"gpt-4*"}, "gpt-4o", true},
+		{"后缀匹配", []string{"*image"}, "gpt-image", true},
+		{"包含匹配", []string{"*image*"}, "gpt-4-image-preview", true},
 		{"通配符不匹配", []string{"gpt-4*"}, "o3", false},
-		{"多模式匹配第一个", []string{"gpt-4*", "claude-*"}, "gpt-4o", true},
 		{"多模式匹配第二个", []string{"gpt-4*", "claude-*"}, "claude-3-opus", true},
-		{"多模式都不匹配", []string{"gpt-4*", "claude-*"}, "o3", false},
 		{"精确和通配符混合", []string{"o3", "gpt-4*"}, "o3", true},
 		{"通配符星号本身", []string{"*"}, "anything", true},
+		{"精确排除命中", []string{"gpt-4*", "!gpt-4-image-preview"}, "gpt-4-image-preview", false},
+		{"包含排除命中", []string{"gpt-4*", "!*image*"}, "gpt-4-image-preview", false},
+		{"后缀排除命中", []string{"*", "!*image"}, "gpt-image", false},
+		{"仅排除且未命中时放行", []string{"!*image*"}, "gpt-4o", true},
+		{"排除优先于包含", []string{"*image*", "!*image*"}, "gpt-image", false},
+		{"非法中间通配被跳过且不影响合法规则", []string{"foo*bar", "gpt-4*"}, "gpt-4o", true},
+		{"仅非法中间通配时等价于无有效规则", []string{"foo*bar"}, "foobar", true},
 	}
 
 	for _, tt := range tests {
@@ -28,6 +34,32 @@ func TestSupportsModel(t *testing.T) {
 			u := &UpstreamConfig{SupportedModels: tt.supportedModels}
 			if got := u.SupportsModel(tt.model); got != tt.want {
 				t.Errorf("SupportsModel(%q) = %v, want %v", tt.model, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsValidSupportedModelPattern(t *testing.T) {
+	tests := []struct {
+		name    string
+		pattern string
+		want    bool
+	}{
+		{"精确匹配合法", "gpt-4o", true},
+		{"前缀匹配合法", "gpt-4*", true},
+		{"后缀匹配合法", "*image", true},
+		{"包含匹配合法", "*image*", true},
+		{"全通配合法", "*", true},
+		{"空字符串非法", "", false},
+		{"仅空白非法", "   ", false},
+		{"空 contains 非法", "**", false},
+		{"多重排除前缀非法", "!!gpt-4*", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isValidSupportedModelPattern(tt.pattern); got != tt.want {
+				t.Errorf("isValidSupportedModelPattern(%q) = %v, want %v", tt.pattern, got, tt.want)
 			}
 		})
 	}

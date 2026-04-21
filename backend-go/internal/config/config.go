@@ -49,7 +49,7 @@ type UpstreamConfig struct {
 	// 渠道级代理
 	ProxyURL string `json:"proxyUrl,omitempty"` // HTTP/HTTPS/SOCKS5 代理地址
 	// 模型白名单
-	SupportedModels []string `json:"supportedModels,omitempty"` // 支持的模型白名单（空=全部），支持通配符如 gpt-4*
+	SupportedModels []string `json:"supportedModels,omitempty"` // 支持的模型白名单（空=全部）；支持精确匹配，以及 prefix* / *suffix / *contains* 形式的包含与排除规则（排除用 ! 前缀）
 	// 路由前缀
 	RoutePrefix string `json:"routePrefix,omitempty"` // 路由前缀（如 "kimi"），客户端可通过 /:routePrefix/v1/messages 访问
 }
@@ -120,7 +120,7 @@ type UpstreamUpdate struct {
 	// 渠道级代理
 	ProxyURL *string `json:"proxyUrl"`
 	// 模型白名单
-	SupportedModels []string `json:"supportedModels"` // 支持的模型白名单（空=全部），支持通配符如 gpt-4*
+	SupportedModels []string `json:"supportedModels"` // 支持的模型白名单（空=全部）；支持精确匹配，以及 prefix* / *suffix / *contains* 形式的包含与排除规则（排除用 ! 前缀）
 	// 路由前缀
 	RoutePrefix *string `json:"routePrefix"` // 路由前缀（如 "kimi"）
 }

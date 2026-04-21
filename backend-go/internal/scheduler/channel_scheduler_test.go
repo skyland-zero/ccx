@@ -720,6 +720,70 @@ func TestAffinityStillWorksWithoutHigherPriorityAlternative(t *testing.T) {
 	}
 }
 
+func TestSelectChannelFiltersSupportedModels(t *testing.T) {
+	cfg := config.Config{
+		Upstream: []config.UpstreamConfig{
+			{
+				Name:            "image-excluded",
+				BaseURL:         "https://excluded.example.com",
+				APIKeys:         []string{"sk-excluded"},
+				Status:          "active",
+				Priority:        1,
+				SupportedModels: []string{"gpt-4*", "!*image*"},
+			},
+			{
+				Name:            "image-allowed",
+				BaseURL:         "https://allowed.example.com",
+				APIKeys:         []string{"sk-allowed"},
+				Status:          "active",
+				Priority:        2,
+				SupportedModels: []string{"gpt-4*"},
+			},
+			{
+				Name:            "invalid-pattern-fallback",
+				BaseURL:         "https://invalid.example.com",
+				APIKeys:         []string{"sk-invalid"},
+				Status:          "active",
+				Priority:        3,
+				SupportedModels: []string{"foo*bar", "claude-*"},
+			},
+		},
+	}
+
+	scheduler, cleanup := createTestScheduler(t, cfg)
+	defer cleanup()
+
+	t.Run("命中排除规则时跳过高优先级渠道", func(t *testing.T) {
+		result, err := scheduler.SelectChannel(context.Background(), "test-user", make(map[int]bool), ChannelKindMessages, "gpt-4-image-preview", "")
+		if err != nil {
+			t.Fatalf("选择渠道失败: %v", err)
+		}
+		if result.ChannelIndex != 1 {
+			t.Fatalf("期望选择 index=1，实际为 %d", result.ChannelIndex)
+		}
+	})
+
+	t.Run("非法规则被跳过且不影响合法规则", func(t *testing.T) {
+		result, err := scheduler.SelectChannel(context.Background(), "test-user", make(map[int]bool), ChannelKindMessages, "claude-3-7-sonnet", "")
+		if err != nil {
+			t.Fatalf("选择渠道失败: %v", err)
+		}
+		if result.ChannelIndex != 2 {
+			t.Fatalf("期望选择 index=2，实际为 %d", result.ChannelIndex)
+		}
+	})
+
+	t.Run("所有活跃渠道都不支持模型时返回明确错误", func(t *testing.T) {
+		_, err := scheduler.SelectChannel(context.Background(), "test-user", make(map[int]bool), ChannelKindMessages, "gemini-2.5-pro", "")
+		if err == nil {
+			t.Fatal("期望返回错误，实际为 nil")
+		}
+		if err.Error() != "没有 Messages 渠道支持模型 \"gemini-2.5-pro\"，请检查渠道的 supportedModels 配置" {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
+
 func tcServiceType(kind ChannelKind) string {
 	switch kind {
 	case ChannelKindGemini:

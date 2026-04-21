@@ -393,6 +393,7 @@
                 :placeholder="t('addChannel.supportedModelsPlaceholder')"
                 prepend-inner-icon="mdi-brain"
                 :hint="t('addChannel.supportedModelsHint')"
+                :error-messages="supportedModelsError ? [supportedModelsError] : []"
                 persistent-hint
                 clearable
                 multiple
@@ -400,6 +401,7 @@
                 closable-chips
                 variant="outlined"
                 density="comfortable"
+                @update:model-value="handleSupportedModelsChange"
               />
               <div class="d-flex align-center flex-wrap ga-2 mt-2">
                 <div class="text-caption text-primary">{{ t('addChannel.commonFilters') }}</div>
@@ -896,7 +898,11 @@ import { buildExpectedRequestUrls } from '../utils/expectedRequestUrls'
 import { supportsAdvancedChannelOptions } from '../utils/channelAdvancedOptions'
 import { buildExpectedRequestUrl } from '../utils/baseUrlSemantics'
 import { buildChannelPayload } from '../utils/channelPayload'
-import { resolveChannelWatcherAction, syncBaseUrlsFormState } from '../utils/add-channel-modal-state'
+import {
+  resolveChannelWatcherAction,
+  syncBaseUrlsFormState,
+  filterValidSupportedModelPatterns
+} from '../utils/add-channel-modal-state'
 import { useI18n } from '../i18n'
 
 interface Props {
@@ -1630,9 +1636,10 @@ const isEditing = computed(() => dialogMode.value === 'edit')
 const hasDisabledKeysAvailable = computed(() => visibleDisabledKeys.value.length > 0)
 const hasConfigurableKeys = computed(() => form.apiKeys.length > 0 || (isEditing.value && hasDisabledKeysAvailable.value))
 
-const commonSupportedModelFilters = ['claude-*', 'gpt-5*', 'grok-4*', 'gemini-3*']
+const commonSupportedModelFilters = ['claude-*', 'gpt-5*', 'grok-4*', 'gemini-3*', '!*image*']
 
 const selectedSupportedModelSet = computed(() => new Set(form.supportedModels))
+const supportedModelsError = ref('')
 
 // 动态header样式
 const headerClasses = computed(() => {
@@ -1676,6 +1683,17 @@ const maskApiKey = (key: string): string => {
 }
 
 const normalizeStringArray = (values: string[]): string[] => values.map(v => v.trim()).filter(Boolean)
+
+const handleSupportedModelsChange = (values: Array<string | { title: string; value: string }>) => {
+  const normalizedValues = values
+    .map(getStringValue)
+    .map(v => v.trim())
+    .filter(Boolean)
+
+  const { validPatterns, hasInvalidPatterns } = filterValidSupportedModelPatterns(normalizedValues)
+  form.supportedModels = validPatterns
+  supportedModelsError.value = hasInvalidPatterns ? t('addChannel.supportedModelsInvalidPattern') : ''
+}
 
 const normalizeStringRecord = (record: Record<string, string>): Record<string, string> => {
   const normalized: Record<string, string> = {}
@@ -1793,6 +1811,7 @@ const resetForm = () => {
   form.proxyUrl = ''
   form.routePrefix = ''
   form.supportedModels = []
+  supportedModelsError.value = ''
   form.autoBlacklistBalance = true
   form.normalizeMetadataUserId = true
   form.rpm = 10
@@ -1852,7 +1871,9 @@ const loadChannelData = (channel: Channel) => {
   form.customHeaders = { ...(channel.customHeaders || {}) }
   form.proxyUrl = channel.proxyUrl || ''
   form.routePrefix = channel.routePrefix || ''
-  form.supportedModels = channel.supportedModels || []
+  const { validPatterns, hasInvalidPatterns } = filterValidSupportedModelPatterns(channel.supportedModels || [])
+  form.supportedModels = validPatterns
+  supportedModelsError.value = hasInvalidPatterns ? t('addChannel.supportedModelsInvalidPattern') : ''
   form.autoBlacklistBalance = channel.autoBlacklistBalance ?? true
   form.normalizeMetadataUserId = channel.normalizeMetadataUserId ?? true
   form.rpm = channel.rpm ?? 10
@@ -2050,6 +2071,7 @@ const appendSupportedModelFilter = (filter: string) => {
     return
   }
   form.supportedModels.push(filter)
+  supportedModelsError.value = ''
 }
 
 // 处理目标模型输入框点击事件(仅在首次或有新 key 时触发请求)

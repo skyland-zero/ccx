@@ -48,3 +48,49 @@ export function syncBaseUrlsFormState(rawText: string, serviceType: ServiceType)
     baseUrls: deduplicated
   }
 }
+
+export function isValidSupportedModelPattern(pattern: string): boolean {
+  const trimmed = pattern.trim()
+  if (!trimmed) {
+    return false
+  }
+
+  if ((trimmed.match(/!/g) || []).length > 1) {
+    return false
+  }
+
+  const normalized = trimmed.startsWith('!') ? trimmed.slice(1).trim() : trimmed
+  if (!normalized || normalized.startsWith('!')) {
+    return false
+  }
+
+  const starCount = (normalized.match(/\*/g) || []).length
+  if (starCount === 0) {
+    return true
+  }
+  if (normalized === '*') {
+    return true
+  }
+  if (starCount === 1) {
+    return normalized.startsWith('*') || normalized.endsWith('*')
+  }
+  if (starCount === 2) {
+    return normalized.startsWith('*') && normalized.endsWith('*') && normalized.replace(/\*/g, '') !== ''
+  }
+  return false
+}
+
+export function filterValidSupportedModelPatterns(patterns: string[]): {
+  validPatterns: string[]
+  hasInvalidPatterns: boolean
+} {
+  const normalized = patterns
+    .map(pattern => pattern.trim())
+    .filter(Boolean)
+
+  const validPatterns = normalized.filter(isValidSupportedModelPattern)
+  return {
+    validPatterns,
+    hasInvalidPatterns: validPatterns.length !== normalized.length
+  }
+}

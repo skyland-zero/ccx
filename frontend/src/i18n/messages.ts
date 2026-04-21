@@ -182,6 +182,7 @@ export type MessageKey =
   | 'addChannel.supportedModelsLabel'
   | 'addChannel.supportedModelsPlaceholder'
   | 'addChannel.supportedModelsHint'
+  | 'addChannel.supportedModelsInvalidPattern'
   | 'addChannel.commonFilters'
   | 'addChannel.apiKeyRequired'
   | 'addChannel.apiKeyLoadBalance'
@@ -542,8 +543,9 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'addChannel.fastModeHint': 'When enabled, requests send service_tier=priority.',
     'addChannel.textVerbosityLabel': 'Output verbosity',
     'addChannel.supportedModelsLabel': 'Supported models (optional)',
-    'addChannel.supportedModelsPlaceholder': 'Press Enter after each model name, for example gpt-4o or claude-*',
-    'addChannel.supportedModelsHint': 'Matches the original model requested by the client before model redirect is applied. Leave empty to allow all models. Wildcards such as gpt-4* are supported.',
+    'addChannel.supportedModelsPlaceholder': 'Press Enter after each rule, for example gpt-4*, *image*, or !*image*',
+    'addChannel.supportedModelsHint': 'Matches the original model requested by the client before model redirect is applied. Leave empty to allow all models. Supported forms: exact, prefix*, *suffix, *contains*, and exclusion with !.',
+    'addChannel.supportedModelsInvalidPattern': 'Invalid rule ignored. Only exact, prefix*, *suffix, *contains*, and ! exclusion are allowed.',
     'addChannel.commonFilters': 'Common filters',
     'addChannel.apiKeyRequired': 'At least one key is required',
     'addChannel.apiKeyLoadBalance': 'Multiple keys can be added for load balancing',
@@ -903,8 +905,9 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'addChannel.fastModeHint': 'Jika aktif, request akan mengirim service_tier=priority.',
     'addChannel.textVerbosityLabel': 'Kepadatan output',
     'addChannel.supportedModelsLabel': 'Model yang didukung (opsional)',
-    'addChannel.supportedModelsPlaceholder': 'Masukkan nama model lalu tekan Enter, misalnya gpt-4o atau claude-*',
-    'addChannel.supportedModelsHint': 'Mencocokkan nama model asli yang diminta client sebelum model redirect diterapkan. Kosong berarti semua model didukung. Wildcard seperti gpt-4* didukung.',
+    'addChannel.supportedModelsPlaceholder': 'Masukkan rule lalu tekan Enter, misalnya gpt-4*、*image*、atau !*image*',
+    'addChannel.supportedModelsHint': 'Mencocokkan nama model asli yang diminta client sebelum model redirect diterapkan. Kosong berarti semua model didukung. Bentuk yang didukung: exact, prefix*, *suffix, *contains*, serta exclusion dengan !.',
+    'addChannel.supportedModelsInvalidPattern': 'Rule tidak valid dan diabaikan. Hanya exact, prefix*, *suffix, *contains*, serta exclusion ! yang didukung.',
     'addChannel.commonFilters': 'Filter umum',
     'addChannel.apiKeyRequired': 'Minimal satu key diperlukan',
     'addChannel.apiKeyLoadBalance': 'Beberapa key bisa ditambahkan untuk load balancing',
@@ -1264,8 +1267,9 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'addChannel.fastModeHint': '开启后下发 service_tier=priority',
     'addChannel.textVerbosityLabel': '输出冗长度',
     'addChannel.supportedModelsLabel': '支持的模型 (可选)',
-    'addChannel.supportedModelsPlaceholder': '输入模型名称后按回车添加，如 gpt-4o、claude-*',
-    'addChannel.supportedModelsHint': '匹配客户端请求的原始模型名（模型重定向发生在渠道选中之后）。留空表示支持所有模型。支持通配符，如 gpt-4* 匹配 gpt-4o、gpt-4-turbo 等',
+    'addChannel.supportedModelsPlaceholder': '输入规则后按回车添加，如 gpt-4*、*image*、!*image*',
+    'addChannel.supportedModelsHint': '匹配客户端请求的原始模型名（模型重定向发生在渠道选中之后）。留空表示支持所有模型。支持精确匹配、prefix*、*suffix、*contains* 以及 ! 排除规则。',
+    'addChannel.supportedModelsInvalidPattern': '已忽略非法规则。仅支持精确匹配、prefix*、*suffix、*contains* 和 ! 排除规则。',
     'addChannel.commonFilters': '常用过滤器',
     'addChannel.apiKeyRequired': '至少需要一个密钥',
     'addChannel.apiKeyLoadBalance': '可添加多个密钥用于负载均衡',

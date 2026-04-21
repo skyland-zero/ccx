@@ -4,6 +4,8 @@
 
 - **统一渠道状态管理暴露层与恢复编排** - 为 channels 列表、dashboard、metrics/history、status/promotion、resume 与 ping 抽取共享 view / handler / transition helper，收口 messages / responses / chat / gemini 四类渠道管理接口的重复实现，并保持状态语义、运行时状态与返回结构一致
 - **补齐渠道状态与连通性回归测试** - 新增和更新 handlers/config/scheduler/metrics/transitions 相关测试，覆盖统一状态视图、Chat 自动 suspended、promotion/status 接口、自动恢复编排，以及 chat / gemini / responses / messages 的 ping 路径
+- **支持模型过滤增强为包含/排除规则** - `supportedModels` 现支持精确匹配、`prefix*`、`*suffix`、`*contains*` 以及 `!` 排除规则；非法中间通配如 `foo*bar` 在前端会被拦截为无效输入，后端会跳过该条规则而不影响其他合法规则生效
+- **修复 Responses Compact 多渠道模型过滤绕过** - `/v1/responses/compact` 多渠道选择现在会携带原始请求模型参与 `supportedModels` 过滤，并补充后端调度/handler 回归测试与前端规则校验测试
 
 ## [v2.6.66] - 2026-04-20
 

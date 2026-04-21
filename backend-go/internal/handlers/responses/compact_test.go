@@ -117,6 +117,91 @@ func TestCompactHandler_SingleChannelFailureRecordsMetricsAndLogs(t *testing.T) 
 	}
 }
 
+func TestCompactHandler_MultiChannelRespectsSupportedModels(t *testing.T) {
+	skippedUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, `{"id":"resp_skipped","status":"completed","output":[],"usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0}}`)
+	}))
+	defer skippedUpstream.Close()
+
+	selectedUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, `{"id":"resp_selected","status":"completed","output":[],"usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0}}`)
+	}))
+	defer selectedUpstream.Close()
+
+	router, sch := newCompactTestRouter(t, []config.UpstreamConfig{
+		{
+			Name:            "skip-image-models",
+			BaseURL:         skippedUpstream.URL,
+			APIKeys:         []string{"sk-skip"},
+			ServiceType:     "responses",
+			Status:          "active",
+			SupportedModels: []string{"gpt-4*", "!*image*"},
+		},
+		{
+			Name:            "allow-image-models",
+			BaseURL:         selectedUpstream.URL,
+			APIKeys:         []string{"sk-allow"},
+			ServiceType:     "responses",
+			Status:          "active",
+			SupportedModels: []string{"gpt-4*"},
+		},
+	})
+
+	w := performCompactRequest(t, router, `{"model":"gpt-4-image-preview","input":"hello"}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body=%s", w.Code, http.StatusOK, w.Body.String())
+	}
+
+	skippedLogs := sch.GetChannelLogStore(scheduler.ChannelKindResponses).Get(0)
+	if len(skippedLogs) != 0 {
+		t.Fatalf("skipped channel logs count = %d, want 0", len(skippedLogs))
+	}
+
+	selectedLogs := sch.GetChannelLogStore(scheduler.ChannelKindResponses).Get(1)
+	if len(selectedLogs) != 1 {
+		t.Fatalf("selected channel logs count = %d, want 1", len(selectedLogs))
+	}
+	if !selectedLogs[0].Success {
+		t.Fatal("selected channel success = false, want true")
+	}
+	if selectedLogs[0].Model != "gpt-4-image-preview" {
+		t.Fatalf("selected channel model = %q, want gpt-4-image-preview", selectedLogs[0].Model)
+	}
+}
+
+func TestCompactHandler_ReturnsSelectionErrorWhenNoChannelSupportsModel(t *testing.T) {
+	router, _ := newCompactTestRouter(t, []config.UpstreamConfig{
+		{
+			Name:            "exclude-image-a",
+			BaseURL:         "https://example.com/v1",
+			APIKeys:         []string{"sk-test-a"},
+			ServiceType:     "responses",
+			Status:          "active",
+			SupportedModels: []string{"gpt-4*", "!*image*"},
+		},
+		{
+			Name:            "exclude-image-b",
+			BaseURL:         "https://example.net/v1",
+			APIKeys:         []string{"sk-test-b"},
+			ServiceType:     "responses",
+			Status:          "active",
+			SupportedModels: []string{"gpt-4*", "!*image*"},
+		},
+	})
+
+	w := performCompactRequest(t, router, `{"model":"gpt-4-image-preview","input":"hello"}`)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d, body=%s", w.Code, http.StatusServiceUnavailable, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "没有 Responses 渠道支持模型") {
+		t.Fatalf("body = %s, want contains selection error", w.Body.String())
+	}
+}
+
 func TestCompactHandler_MultiChannelFailoverRecordsFailedChannelLogs(t *testing.T) {
 	failedUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

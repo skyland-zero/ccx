@@ -257,19 +257,107 @@ func (u *UpstreamConfig) Clone() *UpstreamConfig {
 }
 
 // SupportsModel 检查渠道是否支持指定模型
-// 空列表表示支持所有模型，支持通配符前缀匹配（如 gpt-4* 匹配 gpt-4o）
+// 空列表表示支持所有模型；支持精确匹配，以及 prefix* / *suffix / *contains* 形式的包含与排除规则。
 func (u *UpstreamConfig) SupportsModel(model string) bool {
 	if len(u.SupportedModels) == 0 {
 		return true
 	}
-	for _, pattern := range u.SupportedModels {
-		if strings.HasSuffix(pattern, "*") {
-			if strings.HasPrefix(model, strings.TrimSuffix(pattern, "*")) {
-				return true
-			}
-		} else if pattern == model {
+
+	includes, excludes := splitSupportedModelRules(u.SupportedModels)
+	for _, pattern := range excludes {
+		if matchSupportedModelPattern(pattern, model) {
+			return false
+		}
+	}
+	if len(includes) == 0 {
+		return true
+	}
+	for _, pattern := range includes {
+		if matchSupportedModelPattern(pattern, model) {
 			return true
 		}
+	}
+	return false
+}
+
+func splitSupportedModelRules(rules []string) (includes []string, excludes []string) {
+	includes = make([]string, 0, len(rules))
+	excludes = make([]string, 0, len(rules))
+	for _, rawRule := range rules {
+		rule := strings.TrimSpace(rawRule)
+		if rule == "" {
+			continue
+		}
+		if strings.HasPrefix(rule, "!") {
+			pattern := strings.TrimSpace(strings.TrimPrefix(rule, "!"))
+			if strings.HasPrefix(pattern, "!") {
+				continue
+			}
+			if isValidSupportedModelPattern(pattern) {
+				excludes = append(excludes, pattern)
+			}
+			continue
+		}
+		if isValidSupportedModelPattern(rule) {
+			includes = append(includes, rule)
+		}
+	}
+	return includes, excludes
+}
+
+func isValidSupportedModelPattern(pattern string) bool {
+	trimmed := strings.TrimSpace(pattern)
+	if trimmed == "" {
+		return false
+	}
+	if strings.Count(trimmed, "!") > 1 {
+		return false
+	}
+	normalized := trimmed
+	if strings.HasPrefix(normalized, "!") {
+		normalized = strings.TrimSpace(strings.TrimPrefix(normalized, "!"))
+	}
+	if normalized == "" || strings.HasPrefix(normalized, "!") {
+		return false
+	}
+	starCount := strings.Count(normalized, "*")
+	if starCount == 0 {
+		return true
+	}
+	if normalized == "*" {
+		return true
+	}
+	if starCount == 1 {
+		return strings.HasPrefix(normalized, "*") || strings.HasSuffix(normalized, "*")
+	}
+	if starCount == 2 {
+		return strings.HasPrefix(normalized, "*") && strings.HasSuffix(normalized, "*") && strings.Trim(normalized, "*") != ""
+	}
+	return false
+}
+
+func matchSupportedModelPattern(pattern, model string) bool {
+	if !isValidSupportedModelPattern(pattern) {
+		return false
+	}
+	if strings.HasPrefix(pattern, "!") {
+		pattern = strings.TrimSpace(strings.TrimPrefix(pattern, "!"))
+	}
+	if pattern == "*" {
+		return true
+	}
+	starCount := strings.Count(pattern, "*")
+	if starCount == 0 {
+		return pattern == model
+	}
+	if strings.HasPrefix(pattern, "*") && strings.HasSuffix(pattern, "*") {
+		return strings.Contains(model, strings.Trim(pattern, "*"))
+	}
+	if strings.HasPrefix(pattern, "*") {
+		return strings.HasSuffix(model, strings.TrimPrefix(pattern, "*"))
+	}
+	if strings.HasSuffix(pattern, "*") {
+		return strings.HasPrefix(model, strings.TrimSuffix(pattern, "*"))
 	}
 	return false
 }

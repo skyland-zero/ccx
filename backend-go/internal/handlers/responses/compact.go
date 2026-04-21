@@ -170,12 +170,14 @@ func handleMultiChannelCompact(
 	failedChannels := make(map[int]bool)
 	maxAttempts := channelScheduler.GetActiveChannelCount(scheduler.ChannelKindResponses)
 	var lastErr *compactError
+	var selectionErr error
 	requestModel := extractCompactRequestModel(bodyBytes)
 	channelLogStore := channelScheduler.GetChannelLogStore(scheduler.ChannelKindResponses)
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
-		selection, err := channelScheduler.SelectChannel(c.Request.Context(), userID, failedChannels, scheduler.ChannelKindResponses, "", c.Param("routePrefix"))
+		selection, err := channelScheduler.SelectChannel(c.Request.Context(), userID, failedChannels, scheduler.ChannelKindResponses, requestModel, c.Param("routePrefix"))
 		if err != nil {
+			selectionErr = err
 			break
 		}
 
@@ -212,6 +214,8 @@ func handleMultiChannelCompact(
 
 	if lastErr != nil {
 		c.Data(lastErr.status, "application/json", lastErr.body)
+	} else if selectionErr != nil {
+		c.JSON(503, gin.H{"error": selectionErr.Error()})
 	} else {
 		c.JSON(503, gin.H{"error": "所有 Responses 渠道都不可用"})
 	}

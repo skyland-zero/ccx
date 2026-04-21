@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
 import type { Channel } from '@/services/api'
-import { resolveChannelWatcherAction, syncBaseUrlsFormState } from './add-channel-modal-state'
+import {
+  filterValidSupportedModelPatterns,
+  isValidSupportedModelPattern,
+  resolveChannelWatcherAction,
+  syncBaseUrlsFormState
+} from './add-channel-modal-state'
 
 const sampleChannel: Channel = {
   index: 1,
@@ -62,6 +67,41 @@ describe('syncBaseUrlsFormState', () => {
     expect(syncBaseUrlsFormState('https://host/v1\nhttps://host', 'gemini')).toEqual({
       baseUrl: 'https://host/v1',
       baseUrls: ['https://host/v1', 'https://host']
+    })
+  })
+})
+
+describe('isValidSupportedModelPattern', () => {
+  it('支持精确、前缀、后缀、包含和排除规则', () => {
+    expect(isValidSupportedModelPattern('gpt-4o')).toBe(true)
+    expect(isValidSupportedModelPattern('gpt-4*')).toBe(true)
+    expect(isValidSupportedModelPattern('*image')).toBe(true)
+    expect(isValidSupportedModelPattern('*image*')).toBe(true)
+    expect(isValidSupportedModelPattern('!*image*')).toBe(true)
+  })
+
+  it('拒绝非法中间通配和空规则', () => {
+    expect(isValidSupportedModelPattern('foo*bar')).toBe(false)
+    expect(isValidSupportedModelPattern('**')).toBe(false)
+    expect(isValidSupportedModelPattern('')).toBe(false)
+    expect(isValidSupportedModelPattern('   ')).toBe(false)
+    expect(isValidSupportedModelPattern('!')).toBe(false)
+    expect(isValidSupportedModelPattern('!!gpt-4*')).toBe(false)
+  })
+})
+
+describe('filterValidSupportedModelPatterns', () => {
+  it('过滤非法规则并保留合法规则顺序', () => {
+    expect(filterValidSupportedModelPatterns([' gpt-4* ', 'foo*bar', '!*image*'])).toEqual({
+      validPatterns: ['gpt-4*', '!*image*'],
+      hasInvalidPatterns: true
+    })
+  })
+
+  it('全部合法时不标记错误', () => {
+    expect(filterValidSupportedModelPatterns(['gpt-4*', '*image*'])).toEqual({
+      validPatterns: ['gpt-4*', '*image*'],
+      hasInvalidPatterns: false
     })
   })
 })
