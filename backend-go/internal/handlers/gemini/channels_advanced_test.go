@@ -40,45 +40,61 @@ func TestBuildHealthCheckURLs_UseExistingVersionSuffix(t *testing.T) {
 	}
 }
 
-func TestGetUpstreams_IncludesAdvancedOptionFields(t *testing.T) {
+func TestPingChannel_WithoutBaseURLReturnsError(t *testing.T) {
 	cm := setupGeminiConfigManager(t, []config.UpstreamConfig{{
-		Name:             "gemini-ch",
-		ServiceType:      "gemini",
-		BaseURL:          "https://api.example.com",
-		APIKeys:          []string{"sk-1"},
-		ModelMapping:     map[string]string{"gemini-2.5-pro": "gemini-2.5-flash"},
-		ReasoningMapping: map[string]string{"gemini-2.5-pro": "high"},
-		TextVerbosity:    "medium",
-		FastMode:         true,
+		Name:        "gemini-ch",
+		ServiceType: "gemini",
 	}})
 
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	r.GET("/gemini/channels", GetUpstreams(cm))
+	r.GET("/gemini/ping/:id", PingChannel(cm))
 
-	req := httptest.NewRequest(http.MethodGet, "/gemini/channels", nil)
+	req := httptest.NewRequest(http.MethodGet, "/gemini/ping/0", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK && w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 200 or 400, body=%s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if got := resp["error"]; got == nil {
+		t.Fatalf("error = %v, want non-nil", got)
+	}
+}
+
+func TestPingAllChannels_WithoutBaseURLMarksChannelError(t *testing.T) {
+	cm := setupGeminiConfigManager(t, []config.UpstreamConfig{{
+		Name:        "gemini-ch",
+		ServiceType: "gemini",
+	}})
+
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.GET("/gemini/ping", PingAllChannels(cm))
+
+	req := httptest.NewRequest(http.MethodGet, "/gemini/ping", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", w.Code)
+		t.Fatalf("status = %d, want 200, body=%s", w.Code, w.Body.String())
 	}
 
 	var resp struct {
-		Channels []map[string]interface{} `json:"channels"`
+		Channels []map[string]any `json:"channels"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal response: %v", err)
 	}
-	ch := resp.Channels[0]
-	if ch["textVerbosity"] != "medium" {
-		t.Fatalf("textVerbosity = %v, want medium", ch["textVerbosity"])
+	if len(resp.Channels) != 1 {
+		t.Fatalf("len(channels) = %d, want 1", len(resp.Channels))
 	}
-	if ch["fastMode"] != true {
-		t.Fatalf("fastMode = %v, want true", ch["fastMode"])
-	}
-	rm, ok := ch["reasoningMapping"].(map[string]interface{})
-	if !ok || rm["gemini-2.5-pro"] != "high" {
-		t.Fatalf("reasoningMapping = %#v, want gemini-2.5-pro=high", ch["reasoningMapping"])
+	if got := resp.Channels[0]["error"]; got == nil {
+		t.Fatalf("error = %v, want non-nil", got)
 	}
 }

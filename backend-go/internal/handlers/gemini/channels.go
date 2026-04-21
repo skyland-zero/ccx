@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/BenedictKing/ccx/internal/config"
+	handlers "github.com/BenedictKing/ccx/internal/handlers"
+	"github.com/BenedictKing/ccx/internal/handlers/common"
 	"github.com/BenedictKing/ccx/internal/httpclient"
 	"github.com/BenedictKing/ccx/internal/scheduler"
 	"github.com/BenedictKing/ccx/internal/utils"
@@ -26,39 +28,9 @@ func GetUpstreams(cfgManager *config.ConfigManager) gin.HandlerFunc {
 
 		upstreams := make([]gin.H, len(cfg.GeminiUpstream))
 		for i, up := range cfg.GeminiUpstream {
-			status := config.GetChannelStatus(&up)
-			priority := config.GetChannelPriority(&up, i)
-
-			upstreams[i] = gin.H{
-				"index":                       i,
-				"name":                        up.Name,
-				"serviceType":                 up.ServiceType,
-				"baseUrl":                     up.BaseURL,
-				"baseUrls":                    up.BaseURLs,
-				"apiKeys":                     up.APIKeys,
-				"description":                 up.Description,
-				"website":                     up.Website,
-				"insecureSkipVerify":          up.InsecureSkipVerify,
-				"modelMapping":                up.ModelMapping,
-				"reasoningMapping":            up.ReasoningMapping,
-				"textVerbosity":               up.TextVerbosity,
-				"fastMode":                    up.FastMode,
-				"latency":                     nil,
-				"status":                      status,
-				"priority":                    priority,
-				"promotionUntil":              up.PromotionUntil,
-				"lowQuality":                  up.LowQuality,
-				"rpm":                         up.RPM,
-				"injectDummyThoughtSignature": up.InjectDummyThoughtSignature,
-				"stripThoughtSignature":       up.StripThoughtSignature,
-				"customHeaders":               up.CustomHeaders,
-				"proxyUrl":                    up.ProxyURL,
-				"supportedModels":             up.SupportedModels,
-				"routePrefix":                 up.RoutePrefix,
-				"disabledApiKeys":             up.DisabledAPIKeys,
-				"autoBlacklistBalance":        up.IsAutoBlacklistBalanceEnabled(),
-				"normalizeMetadataUserId":     up.IsNormalizeMetadataUserIDEnabled(),
-			}
+			upstreams[i] = common.BuildChannelView(up, i)
+			upstreams[i]["injectDummyThoughtSignature"] = up.InjectDummyThoughtSignature
+			upstreams[i]["stripThoughtSignature"] = up.StripThoughtSignature
 		}
 
 		c.JSON(200, gin.H{
@@ -265,76 +237,18 @@ func ReorderChannels(cfgManager *config.ConfigManager) gin.HandlerFunc {
 
 // SetChannelStatus 设置 Gemini 渠道状态
 func SetChannelStatus(cfgManager *config.ConfigManager) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		idStr := c.Param("id")
-		id, err := strconv.Atoi(idStr)
-		if err != nil {
-			c.JSON(400, gin.H{"error": "Invalid channel ID"})
-			return
-		}
-
-		var req struct {
-			Status string `json:"status"`
-		}
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(400, gin.H{"error": "Invalid request body"})
-			return
-		}
-
-		if err := cfgManager.SetGeminiChannelStatus(id, req.Status); err != nil {
-			if strings.Contains(err.Error(), "无效的上游索引") {
-				c.JSON(404, gin.H{"error": "Channel not found"})
-			} else {
-				c.JSON(400, gin.H{"error": err.Error()})
-			}
-			return
-		}
-
-		c.JSON(200, gin.H{
-			"success": true,
-			"message": "Gemini 渠道状态已更新",
-			"status":  req.Status,
-		})
-	}
+	adapter := handlers.ChannelStatusConfigManagerFunc(func(index int, status string) error {
+		return cfgManager.SetGeminiChannelStatus(index, status)
+	})
+	return handlers.NamedChannelStatusHandler(adapter, "Gemini 渠道状态已更新")
 }
 
 // SetChannelPromotion 设置 Gemini 渠道促销期
 func SetChannelPromotion(cfgManager *config.ConfigManager) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		idStr := c.Param("id")
-		id, err := strconv.Atoi(idStr)
-		if err != nil {
-			c.JSON(400, gin.H{"error": "Invalid channel ID"})
-			return
-		}
-
-		var req struct {
-			Duration int `json:"duration"` // 促销期时长（秒），0 表示清除
-		}
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(400, gin.H{"error": "Invalid request body"})
-			return
-		}
-
-		duration := time.Duration(req.Duration) * time.Second
-		if err := cfgManager.SetGeminiChannelPromotion(id, duration); err != nil {
-			c.JSON(400, gin.H{"error": err.Error()})
-			return
-		}
-
-		if req.Duration <= 0 {
-			c.JSON(200, gin.H{
-				"success": true,
-				"message": "Gemini 渠道促销期已清除",
-			})
-		} else {
-			c.JSON(200, gin.H{
-				"success":  true,
-				"message":  "Gemini 渠道促销期已设置",
-				"duration": req.Duration,
-			})
-		}
-	}
+	adapter := handlers.PromotionConfigManagerFunc(func(index int, duration time.Duration) error {
+		return cfgManager.SetGeminiChannelPromotion(index, duration)
+	})
+	return handlers.NamedChannelPromotionHandler(adapter, "Invalid channel ID", "Invalid request body", "Gemini 渠道促销期已清除", "Gemini 渠道促销期已设置")
 }
 
 // PingChannel 测试 Gemini 渠道连通性
@@ -353,41 +267,7 @@ func PingChannel(cfgManager *config.ConfigManager) gin.HandlerFunc {
 			return
 		}
 
-		upstream := cfg.GeminiUpstream[id]
-		baseURL := upstream.GetEffectiveBaseURL()
-		if baseURL == "" {
-			c.JSON(400, gin.H{"error": "No base URL configured"})
-			return
-		}
-
-		// 简单的连通性测试
-		client := httpclient.GetManager().GetStandardClient(10*time.Second, upstream.InsecureSkipVerify, upstream.ProxyURL)
-		testURL := buildModelsURL(baseURL)
-
-		req, _ := http.NewRequest("GET", testURL, nil)
-		if len(upstream.APIKeys) > 0 {
-			req.Header.Set("x-goog-api-key", upstream.APIKeys[0])
-		}
-
-		start := time.Now()
-		resp, err := client.Do(req)
-		latency := time.Since(start).Milliseconds()
-
-		if err != nil {
-			c.JSON(200, gin.H{
-				"success": false,
-				"error":   err.Error(),
-				"latency": latency,
-			})
-			return
-		}
-		defer resp.Body.Close()
-
-		c.JSON(200, gin.H{
-			"success":    resp.StatusCode >= 200 && resp.StatusCode < 400,
-			"statusCode": resp.StatusCode,
-			"latency":    latency,
-		})
+		c.JSON(200, common.PingSingleBaseURLUpstream(cfg.GeminiUpstream[id], buildPingRequest))
 	}
 }
 
@@ -395,58 +275,16 @@ func PingChannel(cfgManager *config.ConfigManager) gin.HandlerFunc {
 func PingAllChannels(cfgManager *config.ConfigManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		cfg := cfgManager.GetConfig()
-		results := make([]gin.H, len(cfg.GeminiUpstream))
-
-		for i, upstream := range cfg.GeminiUpstream {
-			baseURL := upstream.GetEffectiveBaseURL()
-			if baseURL == "" {
-				results[i] = gin.H{
-					"index":   i,
-					"name":    upstream.Name,
-					"success": false,
-					"error":   "No base URL configured",
-				}
-				continue
-			}
-
-			// 每个渠道使用各自的代理配置
-			client := httpclient.GetManager().GetStandardClient(10*time.Second, upstream.InsecureSkipVerify, upstream.ProxyURL)
-
-			testURL := buildModelsURL(baseURL)
-			req, _ := http.NewRequest("GET", testURL, nil)
-			if len(upstream.APIKeys) > 0 {
-				req.Header.Set("x-goog-api-key", upstream.APIKeys[0])
-			}
-
-			start := time.Now()
-			resp, err := client.Do(req)
-			latency := time.Since(start).Milliseconds()
-
-			if err != nil {
-				results[i] = gin.H{
-					"index":   i,
-					"name":    upstream.Name,
-					"success": false,
-					"error":   err.Error(),
-					"latency": latency,
-				}
-				continue
-			}
-			resp.Body.Close()
-
-			results[i] = gin.H{
-				"index":      i,
-				"name":       upstream.Name,
-				"success":    resp.StatusCode >= 200 && resp.StatusCode < 400,
-				"statusCode": resp.StatusCode,
-				"latency":    latency,
-			}
-		}
-
-		c.JSON(200, gin.H{
-			"channels": results,
-		})
+		c.JSON(200, gin.H{"channels": common.PingAllSingleBaseURLUpstreams(cfg.GeminiUpstream, buildPingRequest, true)["channels"]})
 	}
+}
+
+func buildPingRequest(upstream config.UpstreamConfig, baseURL string) (*http.Request, error) {
+	req, _ := http.NewRequest(http.MethodGet, buildModelsURL(baseURL), nil)
+	if len(upstream.APIKeys) > 0 {
+		req.Header.Set("x-goog-api-key", upstream.APIKeys[0])
+	}
+	return req, nil
 }
 
 // buildEndpointURL 构建带版本前缀的端点 URL

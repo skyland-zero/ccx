@@ -9,10 +9,11 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/BenedictKing/ccx/internal/config"
+	handlers "github.com/BenedictKing/ccx/internal/handlers"
+	"github.com/BenedictKing/ccx/internal/handlers/common"
 	"github.com/BenedictKing/ccx/internal/httpclient"
 	"github.com/BenedictKing/ccx/internal/scheduler"
 	"github.com/BenedictKing/ccx/internal/utils"
@@ -26,37 +27,7 @@ func GetUpstreams(cfgManager *config.ConfigManager) gin.HandlerFunc {
 
 		upstreams := make([]gin.H, len(cfg.ResponsesUpstream))
 		for i, up := range cfg.ResponsesUpstream {
-			status := config.GetChannelStatus(&up)
-			priority := config.GetChannelPriority(&up, i)
-
-			upstreams[i] = gin.H{
-				"index":                   i,
-				"name":                    up.Name,
-				"serviceType":             up.ServiceType,
-				"baseUrl":                 up.BaseURL,
-				"baseUrls":                up.BaseURLs,
-				"apiKeys":                 up.APIKeys,
-				"description":             up.Description,
-				"website":                 up.Website,
-				"insecureSkipVerify":      up.InsecureSkipVerify,
-				"modelMapping":            up.ModelMapping,
-				"reasoningMapping":        up.ReasoningMapping,
-				"textVerbosity":           up.TextVerbosity,
-				"fastMode":                up.FastMode,
-				"latency":                 nil,
-				"status":                  status,
-				"priority":                priority,
-				"promotionUntil":          up.PromotionUntil,
-				"lowQuality":              up.LowQuality,
-				"rpm":                     up.RPM,
-				"customHeaders":           up.CustomHeaders,
-				"proxyUrl":                up.ProxyURL,
-				"supportedModels":         up.SupportedModels,
-				"routePrefix":             up.RoutePrefix,
-				"disabledApiKeys":         up.DisabledAPIKeys,
-				"autoBlacklistBalance":    up.IsAutoBlacklistBalanceEnabled(),
-				"normalizeMetadataUserId": up.IsNormalizeMetadataUserIDEnabled(),
-			}
+			upstreams[i] = common.BuildChannelView(up, i)
 		}
 
 		c.JSON(200, gin.H{
@@ -276,9 +247,7 @@ func PingChannel(cfgManager *config.ConfigManager) gin.HandlerFunc {
 			return
 		}
 
-		upstream := cfg.ResponsesUpstream[id]
-		result := pingResponsesUpstream(&upstream)
-		c.JSON(http.StatusOK, result)
+		c.JSON(http.StatusOK, common.PingSingleBaseURLUpstream(cfg.ResponsesUpstream[id], buildPingRequest))
 	}
 }
 
@@ -286,122 +255,44 @@ func PingChannel(cfgManager *config.ConfigManager) gin.HandlerFunc {
 func PingAllChannels(cfgManager *config.ConfigManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		cfg := cfgManager.GetConfig()
-		results := make([]gin.H, len(cfg.ResponsesUpstream))
-		var wg sync.WaitGroup
-
-		for i, upstream := range cfg.ResponsesUpstream {
-			wg.Add(1)
-			go func(index int, up config.UpstreamConfig) {
-				defer wg.Done()
-				result := pingResponsesUpstream(&up)
-				result["id"] = index
-				result["name"] = up.Name
-				results[index] = result
-			}(i, upstream)
-		}
-
-		wg.Wait()
-		c.JSON(http.StatusOK, results)
+		c.JSON(http.StatusOK, common.PingAllSingleBaseURLUpstreams(cfg.ResponsesUpstream, buildPingRequest, false)["results"])
 	}
 }
 
-func pingResponsesUpstream(upstream *config.UpstreamConfig) gin.H {
-	baseURL := upstream.GetEffectiveBaseURL()
-	if baseURL == "" {
-		return gin.H{
-			"success": false,
-			"error":   "No base URL configured",
-			"latency": 0,
-			"status":  "error",
-		}
-	}
-
-	client := httpclient.GetManager().GetStandardClient(10*time.Second, upstream.InsecureSkipVerify, upstream.ProxyURL)
-
-	var (
-		testURL string
-		method  string
-		req     *http.Request
-	)
+func buildPingRequest(upstream config.UpstreamConfig, baseURL string) (*http.Request, error) {
+	var req *http.Request
 	switch upstream.ServiceType {
 	case "claude":
-		method = http.MethodOptions
-		testURL = buildMessagesURL(baseURL)
-		req, _ = http.NewRequest(method, testURL, nil)
+		req, _ = http.NewRequest(http.MethodOptions, buildMessagesURL(baseURL), nil)
 		if len(upstream.APIKeys) > 0 {
 			utils.SetAuthenticationHeader(req.Header, upstream.APIKeys[0])
 			req.Header.Set("anthropic-version", "2023-06-01")
 		}
 	case "gemini":
-		method = http.MethodGet
-		testURL = buildGeminiModelsURL(baseURL)
-		req, _ = http.NewRequest(method, testURL, nil)
+		req, _ = http.NewRequest(http.MethodGet, buildGeminiModelsURL(baseURL), nil)
 		if len(upstream.APIKeys) > 0 {
 			req.Header.Set("x-goog-api-key", upstream.APIKeys[0])
 		}
 	default:
-		method = http.MethodGet
-		testURL = buildModelsURL(baseURL)
-		req, _ = http.NewRequest(method, testURL, nil)
+		req, _ = http.NewRequest(http.MethodGet, buildModelsURL(baseURL), nil)
 		if len(upstream.APIKeys) > 0 {
 			utils.SetAuthenticationHeader(req.Header, upstream.APIKeys[0])
 		}
 	}
-
-	start := time.Now()
-	resp, err := client.Do(req)
-	latency := time.Since(start).Milliseconds()
-	if err != nil {
-		return gin.H{
-			"success": false,
-			"error":   err.Error(),
-			"latency": latency,
-			"status":  "error",
-		}
-	}
-	defer resp.Body.Close()
-
-	return gin.H{
-		"success":    resp.StatusCode >= 200 && resp.StatusCode < 400,
-		"statusCode": resp.StatusCode,
-		"latency":    latency,
-		"status":     "healthy",
-	}
+	return req, nil
 }
 
 // SetChannelStatus 设置 Responses 渠道状态
 func SetChannelStatus(cfgManager *config.ConfigManager) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		idStr := c.Param("id")
-		id, err := strconv.Atoi(idStr)
-		if err != nil {
-			c.JSON(400, gin.H{"error": "Invalid channel ID"})
-			return
-		}
+	adapter := handlers.ChannelStatusConfigManagerFunc(func(index int, status string) error {
+		return cfgManager.SetResponsesChannelStatus(index, status)
+	})
+	return handlers.NamedChannelStatusHandler(adapter, "Responses 渠道状态已更新")
+}
 
-		var req struct {
-			Status string `json:"status"`
-		}
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(400, gin.H{"error": "Invalid request body"})
-			return
-		}
-
-		if err := cfgManager.SetResponsesChannelStatus(id, req.Status); err != nil {
-			if strings.Contains(err.Error(), "无效的上游索引") {
-				c.JSON(404, gin.H{"error": "Channel not found"})
-			} else {
-				c.JSON(400, gin.H{"error": err.Error()})
-			}
-			return
-		}
-
-		c.JSON(200, gin.H{
-			"success": true,
-			"message": "Responses 渠道状态已更新",
-			"status":  req.Status,
-		})
-	}
+// SetChannelPromotion 设置 Responses 渠道促销期
+func SetChannelPromotion(cfgManager *config.ConfigManager) gin.HandlerFunc {
+	return handlers.SetResponsesChannelPromotion(cfgManager)
 }
 
 // buildEndpointURL 构建带版本前缀的端点 URL

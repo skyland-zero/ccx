@@ -43,16 +43,19 @@ func TestBuildHealthCheckURLs_UseExistingVersionSuffix(t *testing.T) {
 	}
 }
 
-func TestGetUpstreams_IncludesAdvancedOptionFields(t *testing.T) {
+func TestGetUpstreams_IncludesUnifiedStateFields(t *testing.T) {
 	cm := setupChatConfigManager(t, []config.UpstreamConfig{{
-		Name:             "chat-ch",
-		ServiceType:      "openai",
-		BaseURL:          "https://api.example.com",
-		APIKeys:          []string{"sk-1"},
-		ModelMapping:     map[string]string{"gpt-5": "gpt-5.2"},
-		ReasoningMapping: map[string]string{"gpt-5": "xhigh"},
-		TextVerbosity:    "low",
-		FastMode:         true,
+		Name:        "chat-ch",
+		ServiceType: "openai",
+		BaseURL:     "https://api.example.com",
+		APIKeys:     []string{"sk-1"},
+		Status:      "suspended",
+		DisabledAPIKeys: []config.DisabledKeyInfo{{
+			Key:        "sk-disabled",
+			Reason:     "insufficient_balance",
+			Message:    "no balance",
+			DisabledAt: "2026-04-11T00:00:00Z",
+		}},
 	}})
 
 	gin.SetMode(gin.TestMode)
@@ -73,15 +76,78 @@ func TestGetUpstreams_IncludesAdvancedOptionFields(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal response: %v", err)
 	}
-	ch := resp.Channels[0]
-	if ch["textVerbosity"] != "low" {
-		t.Fatalf("textVerbosity = %v, want low", ch["textVerbosity"])
+	if len(resp.Channels) != 1 {
+		t.Fatalf("len(channels) = %d, want 1", len(resp.Channels))
 	}
-	if ch["fastMode"] != true {
-		t.Fatalf("fastMode = %v, want true", ch["fastMode"])
+	if got := resp.Channels[0]["status"]; got != "suspended" {
+		t.Fatalf("status = %v, want suspended", got)
 	}
-	rm, ok := ch["reasoningMapping"].(map[string]interface{})
-	if !ok || rm["gpt-5"] != "xhigh" {
-		t.Fatalf("reasoningMapping = %#v, want gpt-5=xhigh", ch["reasoningMapping"])
+	if got := resp.Channels[0]["adminState"]; got != "suspended" {
+		t.Fatalf("adminState = %v, want suspended", got)
+	}
+	if got := resp.Channels[0]["effectiveState"]; got != "suspended" {
+		t.Fatalf("effectiveState = %v, want suspended", got)
+	}
+	if got := resp.Channels[0]["runtimeState"]; got != "disabled_keys_present" {
+		t.Fatalf("runtimeState = %v, want disabled_keys_present", got)
+	}
+}
+
+func TestPingChannel_WithoutBaseURLReturnsError(t *testing.T) {
+	cm := setupChatConfigManager(t, []config.UpstreamConfig{{
+		Name:        "chat-ch",
+		ServiceType: "openai",
+	}})
+
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.GET("/chat/ping/:id", PingChannel(cm))
+
+	req := httptest.NewRequest(http.MethodGet, "/chat/ping/0", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK && w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 200 or 400, body=%s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if got := resp["error"]; got == nil {
+		t.Fatalf("error = %v, want non-nil", got)
+	}
+}
+
+func TestPingAllChannels_WithoutBaseURLMarksChannelError(t *testing.T) {
+	cm := setupChatConfigManager(t, []config.UpstreamConfig{{
+		Name:        "chat-ch",
+		ServiceType: "openai",
+	}})
+
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.GET("/chat/ping", PingAllChannels(cm))
+
+	req := httptest.NewRequest(http.MethodGet, "/chat/ping", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Channels []map[string]any `json:"channels"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if len(resp.Channels) != 1 {
+		t.Fatalf("len(channels) = %d, want 1", len(resp.Channels))
+	}
+	if got := resp.Channels[0]["error"]; got == nil {
+		t.Fatalf("error = %v, want non-nil", got)
 	}
 }

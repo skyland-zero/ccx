@@ -108,8 +108,6 @@ func (cm *ConfigManager) UpdateGeminiUpstream(index int, updates UpstreamUpdate)
 	}
 	if updates.BaseURL != nil {
 		upstream.BaseURL = utils.CanonicalBaseURL(*updates.BaseURL, serviceType)
-		// 当 BaseURL 被更新且 BaseURLs 未被显式设置时，清空 BaseURLs 保持一致性
-		// 避免出现 baseUrl 和 baseUrls[0] 不一致的情况
 		if updates.BaseURLs == nil {
 			upstream.BaseURLs = nil
 		}
@@ -127,16 +125,13 @@ func (cm *ConfigManager) UpdateGeminiUpstream(index int, updates UpstreamUpdate)
 		upstream.Website = *updates.Website
 	}
 	if updates.APIKeys != nil {
-		// 记录被移除的 Key 到历史列表（用于统计聚合）
 		newKeys := make(map[string]bool)
 		for _, key := range updates.APIKeys {
 			newKeys[key] = true
 		}
 
-		// 找出被移除的 Key（在旧列表中但不在新列表中）
 		for _, key := range upstream.APIKeys {
 			if !newKeys[key] {
-				// 检查是否已在历史列表中
 				alreadyInHistory := false
 				for _, hk := range upstream.HistoricalAPIKeys {
 					if hk == key {
@@ -151,7 +146,6 @@ func (cm *ConfigManager) UpdateGeminiUpstream(index int, updates UpstreamUpdate)
 			}
 		}
 
-		// 如果新 Key 在历史列表中，从历史列表移除（换回来了）
 		var newHistoricalKeys []string
 		for _, hk := range upstream.HistoricalAPIKeys {
 			if !newKeys[hk] {
@@ -162,12 +156,10 @@ func (cm *ConfigManager) UpdateGeminiUpstream(index int, updates UpstreamUpdate)
 		}
 		upstream.HistoricalAPIKeys = newHistoricalKeys
 
-		// 只有单 key 场景且 key 被更换时，才自动激活并重置熔断
-		if len(upstream.APIKeys) == 1 && len(updates.APIKeys) == 1 &&
-			upstream.APIKeys[0] != updates.APIKeys[0] {
+		wasSuspended := upstream.Status == "suspended"
+		if applySingleKeyReplacementTransition(upstream, updates.APIKeys) {
 			shouldResetMetrics = true
-			if upstream.Status == "suspended" {
-				upstream.Status = "active"
+			if wasSuspended {
 				log.Printf("[Config-Upstream] Gemini 渠道 [%d] %s 已从暂停状态自动激活（单 key 更换）", index, upstream.Name)
 			}
 		}
@@ -250,7 +242,6 @@ func (cm *ConfigManager) RemoveGeminiUpstream(index int) (*UpstreamConfig, error
 	removed := cm.config.GeminiUpstream[index]
 	cm.config.GeminiUpstream = append(cm.config.GeminiUpstream[:index], cm.config.GeminiUpstream[index+1:]...)
 
-	// 清理被删除渠道的失败 key 冷却记录
 	cm.clearFailedKeysForUpstream(&removed, "Gemini")
 
 	if err := cm.saveConfigLocked(cm.config); err != nil {

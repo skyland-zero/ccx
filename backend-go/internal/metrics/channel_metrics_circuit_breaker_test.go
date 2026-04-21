@@ -1,6 +1,9 @@
 package metrics
 
 import (
+	"bytes"
+	"log"
+	"strings"
 	"testing"
 	"time"
 )
@@ -55,5 +58,29 @@ func TestMoveKeyToHalfOpenKeepsBreakerHistory(t *testing.T) {
 	}
 	if metrics.CircuitState != CircuitStateHalfOpen {
 		t.Fatalf("CircuitState = %v, want %v", metrics.CircuitState, CircuitStateHalfOpen)
+	}
+}
+
+func TestCircuitLogsIncludeTransitionFields(t *testing.T) {
+	m := NewMetricsManager()
+	defer m.Stop()
+
+	var buf bytes.Buffer
+	origWriter := log.Writer()
+	log.SetOutput(&buf)
+	defer log.SetOutput(origWriter)
+
+	for i := 0; i < 3; i++ {
+		m.RecordFailure("https://example.com", "sk-test", "claude")
+	}
+	m.MoveKeyToHalfOpen("https://example.com", "sk-test", "claude")
+	m.RecordSuccess("https://example.com", "sk-test", "claude")
+
+	output := buf.String()
+	if !strings.Contains(output, "from=closed") || !strings.Contains(output, "to=open") || !strings.Contains(output, "cause=breaker_threshold") {
+		t.Fatalf("open transition fields missing: %q", output)
+	}
+	if !strings.Contains(output, "from=half_open") || !strings.Contains(output, "to=closed") || !strings.Contains(output, "cause=probe_success") {
+		t.Fatalf("probe success transition fields missing: %q", output)
 	}
 }

@@ -13,8 +13,7 @@ func RestoreDisabledKeysAndActivate(
 	restoreDisabledKeys func([]string) ([]string, error),
 	moveKeyToHalfOpen func(baseURL, apiKey string),
 	setChannelStatus func(string) error,
-	upstreamStatus string,
-	activeKeyCount int,
+	shouldActivateChannel func() bool,
 	keysToRestore []string,
 ) (RestoreAndHalfOpenResult, error) {
 	_ = (*metrics.MetricsManager)(nil)
@@ -36,7 +35,7 @@ func RestoreDisabledKeysAndActivate(
 	}
 
 	result.RestoredKeys = restoredKeys
-	if upstreamStatus == "suspended" && activeKeyCount == 0 {
+	if shouldActivateChannel != nil && shouldActivateChannel() {
 		if err := setChannelStatus("active"); err != nil {
 			return result, err
 		}

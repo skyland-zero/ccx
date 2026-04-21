@@ -239,7 +239,7 @@ func main() {
 		apiGroup.POST("/responses/channels/reorder", responses.ReorderChannels(cfgManager))
 		apiGroup.PATCH("/responses/channels/:id/status", responses.SetChannelStatus(cfgManager))
 		apiGroup.POST("/responses/channels/:id/resume", handlers.ResumeChannel(channelScheduler, cfgManager, true))
-		apiGroup.POST("/responses/channels/:id/promotion", handlers.SetResponsesChannelPromotion(cfgManager))
+		apiGroup.POST("/responses/channels/:id/promotion", responses.SetChannelPromotion(cfgManager))
 		apiGroup.GET("/responses/channels/metrics", handlers.GetChannelMetricsWithConfig(responsesMetricsManager, cfgManager, true))
 		apiGroup.GET("/responses/channels/metrics/history", handlers.GetChannelMetricsHistory(responsesMetricsManager, cfgManager, true))
 		apiGroup.GET("/responses/channels/:id/keys/metrics/history", handlers.GetChannelKeyMetricsHistory(responsesMetricsManager, cfgManager, true))

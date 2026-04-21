@@ -267,7 +267,7 @@ func TestResumeChannel_RestoresBlacklistedKeys(t *testing.T) {
 		path        string
 		register    func(r *gin.Engine, sch *scheduler.ChannelScheduler, cfgManager *config.ConfigManager)
 		buildConfig func() config.Config
-		checkResult func(t *testing.T, got config.Config)
+		checkResult func(t *testing.T, sch *scheduler.ChannelScheduler, got config.Config)
 	}{
 		{
 			name: "messages",
@@ -290,7 +290,7 @@ func TestResumeChannel_RestoresBlacklistedKeys(t *testing.T) {
 					}},
 				}}}
 			},
-			checkResult: func(t *testing.T, got config.Config) {
+			checkResult: func(t *testing.T, sch *scheduler.ChannelScheduler, got config.Config) {
 				t.Helper()
 				if len(got.Upstream[0].DisabledAPIKeys) != 0 {
 					t.Fatalf("disabledApiKeys=%v, want empty", got.Upstream[0].DisabledAPIKeys)
@@ -304,6 +304,13 @@ func TestResumeChannel_RestoresBlacklistedKeys(t *testing.T) {
 				}
 				if !foundActive {
 					t.Fatalf("restored key not found in apiKeys: %v", got.Upstream[0].APIKeys)
+				}
+				baseURL := got.Upstream[0].BaseURL
+				serviceType := scheduler.NormalizedMetricsServiceType(scheduler.ChannelKindMessages, got.Upstream[0].ServiceType)
+				for _, key := range got.Upstream[0].APIKeys {
+					if state := sch.GetMessagesMetricsManager().GetKeyCircuitState(baseURL, key, serviceType); state != metrics.CircuitStateClosed {
+						t.Fatalf("messages circuit state for %s = %v, want closed", key, state)
+					}
 				}
 			},
 		},
@@ -328,7 +335,7 @@ func TestResumeChannel_RestoresBlacklistedKeys(t *testing.T) {
 					}},
 				}}}
 			},
-			checkResult: func(t *testing.T, got config.Config) {
+			checkResult: func(t *testing.T, sch *scheduler.ChannelScheduler, got config.Config) {
 				t.Helper()
 				if len(got.ResponsesUpstream[0].DisabledAPIKeys) != 0 {
 					t.Fatalf("disabledApiKeys=%v, want empty", got.ResponsesUpstream[0].DisabledAPIKeys)
@@ -342,6 +349,13 @@ func TestResumeChannel_RestoresBlacklistedKeys(t *testing.T) {
 				}
 				if !foundActive {
 					t.Fatalf("restored key not found in apiKeys: %v", got.ResponsesUpstream[0].APIKeys)
+				}
+				baseURL := got.ResponsesUpstream[0].BaseURL
+				serviceType := scheduler.NormalizedMetricsServiceType(scheduler.ChannelKindResponses, got.ResponsesUpstream[0].ServiceType)
+				for _, key := range got.ResponsesUpstream[0].APIKeys {
+					if state := sch.GetResponsesMetricsManager().GetKeyCircuitState(baseURL, key, serviceType); state != metrics.CircuitStateClosed {
+						t.Fatalf("responses circuit state for %s = %v, want closed", key, state)
+					}
 				}
 			},
 		},
@@ -366,7 +380,7 @@ func TestResumeChannel_RestoresBlacklistedKeys(t *testing.T) {
 					}},
 				}}}
 			},
-			checkResult: func(t *testing.T, got config.Config) {
+			checkResult: func(t *testing.T, sch *scheduler.ChannelScheduler, got config.Config) {
 				t.Helper()
 				if len(got.ChatUpstream[0].DisabledAPIKeys) != 0 {
 					t.Fatalf("disabledApiKeys=%v, want empty", got.ChatUpstream[0].DisabledAPIKeys)
@@ -380,6 +394,13 @@ func TestResumeChannel_RestoresBlacklistedKeys(t *testing.T) {
 				}
 				if !foundActive {
 					t.Fatalf("restored key not found in apiKeys: %v", got.ChatUpstream[0].APIKeys)
+				}
+				baseURL := got.ChatUpstream[0].BaseURL
+				serviceType := scheduler.NormalizedMetricsServiceType(scheduler.ChannelKindChat, got.ChatUpstream[0].ServiceType)
+				for _, key := range got.ChatUpstream[0].APIKeys {
+					if state := sch.GetChatMetricsManager().GetKeyCircuitState(baseURL, key, serviceType); state != metrics.CircuitStateClosed {
+						t.Fatalf("chat circuit state for %s = %v, want closed", key, state)
+					}
 				}
 			},
 		},
@@ -404,7 +425,7 @@ func TestResumeChannel_RestoresBlacklistedKeys(t *testing.T) {
 					}},
 				}}}
 			},
-			checkResult: func(t *testing.T, got config.Config) {
+			checkResult: func(t *testing.T, sch *scheduler.ChannelScheduler, got config.Config) {
 				t.Helper()
 				if len(got.GeminiUpstream[0].DisabledAPIKeys) != 0 {
 					t.Fatalf("disabledApiKeys=%v, want empty", got.GeminiUpstream[0].DisabledAPIKeys)
@@ -418,6 +439,13 @@ func TestResumeChannel_RestoresBlacklistedKeys(t *testing.T) {
 				}
 				if !foundActive {
 					t.Fatalf("restored key not found in apiKeys: %v", got.GeminiUpstream[0].APIKeys)
+				}
+				baseURL := got.GeminiUpstream[0].BaseURL
+				serviceType := scheduler.NormalizedMetricsServiceType(scheduler.ChannelKindGemini, got.GeminiUpstream[0].ServiceType)
+				for _, key := range got.GeminiUpstream[0].APIKeys {
+					if state := sch.GetGeminiMetricsManager().GetKeyCircuitState(baseURL, key, serviceType); state != metrics.CircuitStateClosed {
+						t.Fatalf("gemini circuit state for %s = %v, want closed", key, state)
+					}
 				}
 			},
 		},
@@ -456,6 +484,32 @@ func TestResumeChannel_RestoresBlacklistedKeys(t *testing.T) {
 			urlManager := warmup.NewURLManager(30*time.Second, 3)
 			sch := scheduler.NewChannelScheduler(cfgManager, messagesMetrics, responsesMetrics, geminiMetrics, chatMetrics, traceAffinity, urlManager)
 
+			var baseURL string
+			var kind scheduler.ChannelKind
+			var serviceType string
+			switch tt.name {
+			case "messages":
+				baseURL = cfg.Upstream[0].BaseURL
+				kind = scheduler.ChannelKindMessages
+				serviceType = scheduler.NormalizedMetricsServiceType(kind, cfg.Upstream[0].ServiceType)
+				messagesMetrics.MoveKeyToHalfOpen(baseURL, "sk-active", serviceType)
+			case "responses":
+				baseURL = cfg.ResponsesUpstream[0].BaseURL
+				kind = scheduler.ChannelKindResponses
+				serviceType = scheduler.NormalizedMetricsServiceType(kind, cfg.ResponsesUpstream[0].ServiceType)
+				responsesMetrics.MoveKeyToHalfOpen(baseURL, "sk-active", serviceType)
+			case "chat":
+				baseURL = cfg.ChatUpstream[0].BaseURL
+				kind = scheduler.ChannelKindChat
+				serviceType = scheduler.NormalizedMetricsServiceType(kind, cfg.ChatUpstream[0].ServiceType)
+				chatMetrics.MoveKeyToHalfOpen(baseURL, "sk-active", serviceType)
+			case "gemini":
+				baseURL = cfg.GeminiUpstream[0].BaseURL
+				kind = scheduler.ChannelKindGemini
+				serviceType = scheduler.NormalizedMetricsServiceType(kind, cfg.GeminiUpstream[0].ServiceType)
+				geminiMetrics.MoveKeyToHalfOpen(baseURL, "sk-active", serviceType)
+			}
+
 			r := gin.New()
 			tt.register(r, sch, cfgManager)
 
@@ -482,7 +536,7 @@ func TestResumeChannel_RestoresBlacklistedKeys(t *testing.T) {
 				t.Fatalf("restoredKeys=%d, want=1", resp.RestoredKeys)
 			}
 
-			tt.checkResult(t, cfgManager.GetConfig())
+			tt.checkResult(t, sch, cfgManager.GetConfig())
 		})
 	}
 }

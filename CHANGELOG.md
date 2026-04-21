@@ -1,3 +1,10 @@
+## [Unreleased]
+
+### Changed
+
+- **统一渠道状态管理暴露层与恢复编排** - 为 channels 列表、dashboard、metrics/history、status/promotion、resume 与 ping 抽取共享 view / handler / transition helper，收口 messages / responses / chat / gemini 四类渠道管理接口的重复实现，并保持状态语义、运行时状态与返回结构一致
+- **补齐渠道状态与连通性回归测试** - 新增和更新 handlers/config/scheduler/metrics/transitions 相关测试，覆盖统一状态视图、Chat 自动 suspended、promotion/status 接口、自动恢复编排，以及 chat / gemini / responses / messages 的 ping 路径
+
 ## [v2.6.66] - 2026-04-20
 
 ### Fixed

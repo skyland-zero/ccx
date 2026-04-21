@@ -29,13 +29,19 @@ func PingSingleBaseURLUpstream(upstream config.UpstreamConfig, builder PingReque
 
 func PingAllSingleBaseURLUpstreams(upstreams []config.UpstreamConfig, builder PingRequestBuilder, wrapInChannels bool) gin.H {
 	results := make([]gin.H, len(upstreams))
+	var wg sync.WaitGroup
 	for i, upstream := range upstreams {
-		result := PingSingleBaseURLUpstream(upstream, builder)
-		result["id"] = i
-		result["index"] = i
-		result["name"] = upstream.Name
-		results[i] = result
+		wg.Add(1)
+		go func(index int, up config.UpstreamConfig) {
+			defer wg.Done()
+			result := PingSingleBaseURLUpstream(up, builder)
+			result["id"] = index
+			result["index"] = index
+			result["name"] = up.Name
+			results[index] = result
+		}(i, upstream)
 	}
+	wg.Wait()
 	if wrapInChannels {
 		return gin.H{"channels": results}
 	}
@@ -122,11 +128,15 @@ func pingBaseURL(upstream config.UpstreamConfig, baseURL string, timeout time.Du
 	}
 	defer resp.Body.Close()
 
+	status := "error"
+	if resp.StatusCode >= 200 && resp.StatusCode < 400 {
+		status = "healthy"
+	}
 	return gin.H{
 		"success":    resp.StatusCode >= 200 && resp.StatusCode < 400,
 		"statusCode": resp.StatusCode,
 		"latency":    latency,
-		"status":     "healthy",
+		"status":     status,
 	}
 }
 

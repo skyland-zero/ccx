@@ -156,11 +156,10 @@ func (cm *ConfigManager) UpdateChatUpstream(index int, updates UpstreamUpdate) (
 		}
 		upstream.HistoricalAPIKeys = newHistoricalKeys
 
-		if len(upstream.APIKeys) == 1 && len(updates.APIKeys) == 1 &&
-			upstream.APIKeys[0] != updates.APIKeys[0] {
+		wasSuspended := upstream.Status == "suspended"
+		if applySingleKeyReplacementTransition(upstream, updates.APIKeys) {
 			shouldResetMetrics = true
-			if upstream.Status == "suspended" {
-				upstream.Status = "active"
+			if wasSuspended {
 				log.Printf("[Config-Upstream] Chat 渠道 [%d] %s 已从暂停状态自动激活（单 key 更换）", index, upstream.Name)
 			}
 		}
@@ -237,7 +236,6 @@ func (cm *ConfigManager) RemoveChatUpstream(index int) (*UpstreamConfig, error) 
 	removed := cm.config.ChatUpstream[index]
 	cm.config.ChatUpstream = append(cm.config.ChatUpstream[:index], cm.config.ChatUpstream[index+1:]...)
 
-	// 清理被删除渠道的失败 key 冷却记录
 	cm.clearFailedKeysForUpstream(&removed, "chat")
 
 	if err := cm.saveConfigLocked(cm.config); err != nil {

@@ -1,9 +1,13 @@
 package config
 
 import (
+	"bytes"
+	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestGetAdminAPIKeyPrefersActiveKey(t *testing.T) {
@@ -118,6 +122,131 @@ func TestAddAPIKeyRemovesDisabledEntryAndRestoreAvoidsDuplicate(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("restored key count = %d, want 1; keys=%v", count, finalCfg.Upstream[0].APIKeys)
+	}
+}
+
+func TestMarkKeyAsFailedCoolingWindowAndRecoveryLog(t *testing.T) {
+	cm := &ConfigManager{
+		failedKeysCache: make(map[string]*FailedKey),
+		keyRecoveryTime: 50 * time.Millisecond,
+		maxFailureCount: 2,
+	}
+
+	cm.MarkKeyAsFailed("sk-test", "Messages")
+	if !cm.IsKeyFailed("sk-test", "Messages") {
+		t.Fatal("IsKeyFailed() = false, want true immediately after failure")
+	}
+
+	cacheKey := failedKeyCacheKey("Messages", "sk-test")
+	cm.mu.Lock()
+	cm.failedKeysCache[cacheKey].Timestamp = time.Now().Add(-100 * time.Millisecond)
+	cm.mu.Unlock()
+
+	if cm.IsKeyFailed("sk-test", "Messages") {
+		t.Fatal("IsKeyFailed() = true, want false after recovery window elapsed")
+	}
+
+	var buf bytes.Buffer
+	origWriter := log.Writer()
+	log.SetOutput(&buf)
+	defer log.SetOutput(origWriter)
+
+	cm.mu.Lock()
+	cm.failedKeysCache[cacheKey] = &FailedKey{Timestamp: time.Now().Add(-100 * time.Millisecond), FailureCount: 1}
+	cm.mu.Unlock()
+
+	cm.mu.Lock()
+	now := time.Now()
+	for key, failure := range cm.failedKeysCache {
+		recoveryTime := cm.keyRecoveryTime
+		if failure.FailureCount > cm.maxFailureCount {
+			recoveryTime = cm.keyRecoveryTime * 2
+		}
+		if now.Sub(failure.Timestamp) > recoveryTime {
+			delete(cm.failedKeysCache, key)
+			log.Printf("[Config-Key] API密钥 %s 已从失败列表中恢复", key)
+		}
+	}
+	cm.mu.Unlock()
+
+	if _, exists := cm.failedKeysCache[cacheKey]; exists {
+		t.Fatal("failed key cache entry still exists after simulated cleanup")
+	}
+	if !strings.Contains(buf.String(), "已从失败列表中恢复") {
+		t.Fatalf("expected recovery log, got %q", buf.String())
+	}
+}
+
+func TestBlacklistAndRestoreLogsIncludeTransitionFields(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.json")
+	initialConfig := `{
+		"upstream": [{
+			"name": "test-channel",
+			"baseUrl": "https://example.com",
+			"apiKeys": ["sk-active"],
+			"serviceType": "claude"
+		}]
+	}`
+	if err := os.WriteFile(configPath, []byte(initialConfig), 0644); err != nil {
+		t.Fatalf("写入初始配置失败: %v", err)
+	}
+
+	cm, err := NewConfigManager(configPath)
+	if err != nil {
+		t.Fatalf("NewConfigManager() error = %v", err)
+	}
+	defer cm.Close()
+
+	var buf bytes.Buffer
+	origWriter := log.Writer()
+	log.SetOutput(&buf)
+	defer log.SetOutput(origWriter)
+
+	if err := cm.BlacklistKey("Messages", 0, "sk-active", "insufficient_balance", "no balance"); err != nil {
+		t.Fatalf("BlacklistKey() error = %v", err)
+	}
+	if err := cm.RestoreKey("Messages", 0, "sk-active"); err != nil {
+		t.Fatalf("RestoreKey() error = %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "from=active") || !strings.Contains(output, "to=disabled") || !strings.Contains(output, "cause=insufficient_balance") {
+		t.Fatalf("blacklist transition fields missing: %q", output)
+	}
+	if !strings.Contains(output, "from=disabled") || !strings.Contains(output, "to=active") || !strings.Contains(output, "cause=manual_restore") {
+		t.Fatalf("restore transition fields missing: %q", output)
+	}
+}
+
+func TestValidateChannelKeysSuspendsChatChannelWithoutKeys(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.json")
+	initialConfig := `{
+		"chatUpstream": [{
+			"name": "chat-channel",
+			"baseUrl": "https://example.com",
+			"apiKeys": [],
+			"status": "active",
+			"serviceType": "openai"
+		}]
+	}`
+	if err := os.WriteFile(configPath, []byte(initialConfig), 0644); err != nil {
+		t.Fatalf("写入初始配置失败: %v", err)
+	}
+
+	cm, err := NewConfigManager(configPath)
+	if err != nil {
+		t.Fatalf("NewConfigManager() error = %v", err)
+	}
+	defer cm.Close()
+
+	cfg := cm.GetConfig()
+	if len(cfg.ChatUpstream) != 1 {
+		t.Fatalf("len(ChatUpstream) = %d, want 1", len(cfg.ChatUpstream))
+	}
+	if got := cfg.ChatUpstream[0].Status; got != "suspended" {
+		t.Fatalf("Chat status = %s, want suspended", got)
 	}
 }
 

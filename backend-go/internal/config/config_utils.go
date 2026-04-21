@@ -135,6 +135,54 @@ func GetChannelStatus(upstream *UpstreamConfig) string {
 	return upstream.Status
 }
 
+// GetChannelAdminState 获取渠道管理员配置状态。
+func GetChannelAdminState(upstream *UpstreamConfig) string {
+	return GetChannelStatus(upstream)
+}
+
+// GetChannelRuntimeState 获取渠道运行时状态视图（不依赖 metrics，仅反映配置侧可观察状态）。
+func GetChannelRuntimeState(upstream *UpstreamConfig) string {
+	if upstream == nil {
+		return "unknown"
+	}
+	if len(upstream.DisabledAPIKeys) > 0 {
+		return "disabled_keys_present"
+	}
+	if len(upstream.APIKeys) == 0 {
+		return "no_active_keys"
+	}
+	return "ready"
+}
+
+// GetChannelEffectiveState 获取渠道当前有效状态视图。
+func GetChannelEffectiveState(upstream *UpstreamConfig) string {
+	if upstream == nil {
+		return "unknown"
+	}
+	adminState := GetChannelAdminState(upstream)
+	if adminState != "active" {
+		return adminState
+	}
+	if len(upstream.APIKeys) == 0 {
+		return "degraded"
+	}
+	return "active"
+}
+
+// applySingleKeyReplacementTransition 统一处理“单 key 更换”带来的自动激活与熔断重置判定。
+func applySingleKeyReplacementTransition(upstream *UpstreamConfig, newKeys []string) (shouldResetMetrics bool) {
+	if upstream == nil {
+		return false
+	}
+	if len(upstream.APIKeys) == 1 && len(newKeys) == 1 && upstream.APIKeys[0] != newKeys[0] {
+		if upstream.Status == "suspended" {
+			upstream.Status = "active"
+		}
+		return true
+	}
+	return false
+}
+
 // GetChannelPriority 获取渠道优先级（带默认值处理）
 func GetChannelPriority(upstream *UpstreamConfig, index int) int {
 	if upstream.Priority == 0 {

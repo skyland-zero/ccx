@@ -11,6 +11,7 @@ import (
 	"github.com/BenedictKing/ccx/internal/config"
 	"github.com/BenedictKing/ccx/internal/metrics"
 	"github.com/BenedictKing/ccx/internal/session"
+	"github.com/BenedictKing/ccx/internal/transitions"
 	"github.com/BenedictKing/ccx/internal/types"
 	"github.com/BenedictKing/ccx/internal/utils"
 	"github.com/BenedictKing/ccx/internal/warmup"
@@ -161,7 +162,13 @@ func NextScheduledRecoveryTimeUTC(now time.Time) time.Time {
 	return base.Add(24 * time.Hour)
 }
 
-func shouldSkipScheduledRecovery(disabledAt string, now time.Time) bool {
+func shouldSkipScheduledRecovery(disabledAt, recoverAt string, now time.Time) bool {
+	if recoverAt != "" {
+		parsed, err := time.Parse(time.RFC3339, recoverAt)
+		if err == nil {
+			return now.Before(parsed.UTC())
+		}
+	}
 	if disabledAt == "" {
 		return false
 	}
@@ -217,7 +224,7 @@ func (s *ChannelScheduler) restoreScheduledKeysForKind(kind ChannelKind, now tim
 			if !config.IsAutoRecoverableDisabledReason(dk.Reason) {
 				continue
 			}
-			if shouldSkipScheduledRecovery(dk.DisabledAt, now) {
+			if shouldSkipScheduledRecovery(dk.DisabledAt, dk.RecoverAt, now) {
 				continue
 			}
 			keysToRestore = append(keysToRestore, dk.Key)
@@ -226,11 +233,28 @@ func (s *ChannelScheduler) restoreScheduledKeysForKind(kind ChannelKind, now tim
 			continue
 		}
 
-		restoredKeys, err := s.configManager.RestoreDisabledKeys(apiType, idx, keysToRestore)
+		restoreResult, err := transitions.RestoreDisabledKeysAndActivate(
+			func(keys []string) ([]string, error) {
+				return s.configManager.RestoreDisabledKeys(apiType, idx, keys)
+			},
+			func(_ string, apiKey string) {
+				for _, baseURL := range upstream.GetAllBaseURLs() {
+					metricsManager.MoveKeyToHalfOpen(baseURL, apiKey, NormalizedMetricsServiceType(kind, upstream.ServiceType))
+				}
+			},
+			func(status string) error {
+				return s.setChannelStatusByKind(idx, kind, status)
+			},
+			func() bool {
+				latest := s.getUpstreamByIndex(idx, kind)
+				return latest != nil && upstream.Status == "suspended" && len(upstream.APIKeys) == 0 && latest.Status == "suspended"
+			},
+			keysToRestore,
+		)
 		if err != nil {
 			return nil, err
 		}
-		if len(restoredKeys) == 0 {
+		if len(restoreResult.RestoredKeys) == 0 {
 			continue
 		}
 
@@ -238,26 +262,13 @@ func (s *ChannelScheduler) restoreScheduledKeysForKind(kind ChannelKind, now tim
 		if updatedUpstream == nil {
 			continue
 		}
-		for _, baseURL := range updatedUpstream.GetAllBaseURLs() {
-			for _, apiKey := range restoredKeys {
-				metricsManager.MoveKeyToHalfOpen(baseURL, apiKey, NormalizedMetricsServiceType(kind, updatedUpstream.ServiceType))
-			}
-		}
-
-		activated := false
-		if upstream.Status == "suspended" && len(upstream.APIKeys) == 0 && updatedUpstream.Status == "suspended" {
-			if err := s.setChannelStatusByKind(idx, kind, "active"); err != nil {
-				return nil, err
-			}
-			activated = true
-		}
 
 		results = append(results, ScheduledRecoveryResult{
 			Kind:             kind,
 			ChannelIndex:     idx,
 			ChannelName:      updatedUpstream.Name,
-			RestoredKeys:     restoredKeys,
-			ActivatedChannel: activated,
+			RestoredKeys:     restoreResult.RestoredKeys,
+			ActivatedChannel: restoreResult.ActivatedChannel,
 		})
 	}
 

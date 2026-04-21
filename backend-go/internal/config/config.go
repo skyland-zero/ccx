@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/BenedictKing/ccx/internal/statelog"
 	"github.com/BenedictKing/ccx/internal/utils"
-
 	"github.com/fsnotify/fsnotify"
 )
 
@@ -57,9 +57,10 @@ type UpstreamConfig struct {
 // DisabledKeyInfo 被拉黑的 API Key 信息
 type DisabledKeyInfo struct {
 	Key        string `json:"key"`
-	Reason     string `json:"reason"`     // "authentication_error" / "permission_error" / "insufficient_balance"
-	Message    string `json:"message"`    // 原始错误信息
-	DisabledAt string `json:"disabledAt"` // ISO8601 时间戳
+	Reason     string `json:"reason"`              // "authentication_error" / "permission_error" / "insufficient_balance"
+	Message    string `json:"message"`             // 原始错误信息
+	DisabledAt string `json:"disabledAt"`          // ISO8601 时间戳
+	RecoverAt  string `json:"recoverAt,omitempty"` // 自动恢复时间（可选）
 }
 
 // IsAutoRecoverableDisabledReason 判断是否属于可自动恢复的拉黑原因。
@@ -476,11 +477,17 @@ func (cm *ConfigManager) BlacklistKey(apiType string, channelIndex int, apiKey s
 	upstream.APIKeys = append(upstream.APIKeys[:keyIdx], upstream.APIKeys[keyIdx+1:]...)
 
 	// 添加到 DisabledAPIKeys
+	disabledAt := time.Now().Format(time.RFC3339)
+	recoverAt := ""
+	if IsAutoRecoverableDisabledReason(reason) {
+		recoverAt = time.Now().Add(time.Hour).Format(time.RFC3339)
+	}
 	upstream.DisabledAPIKeys = append(upstream.DisabledAPIKeys, DisabledKeyInfo{
 		Key:        apiKey,
 		Reason:     reason,
 		Message:    message,
-		DisabledAt: time.Now().Format(time.RFC3339),
+		DisabledAt: disabledAt,
+		RecoverAt:  recoverAt,
 	})
 
 	// 同时添加到 HistoricalAPIKeys（保留统计数据）
@@ -490,6 +497,7 @@ func (cm *ConfigManager) BlacklistKey(apiType string, channelIndex int, apiKey s
 
 	log.Printf("[%s-Blacklist] Key %s 已被拉黑 (原因: %s, 渠道: %s, 剩余Key: %d)",
 		apiType, utils.MaskAPIKey(apiKey), reason, upstream.Name, len(upstream.APIKeys))
+	statelog.LogStateTransition(apiType+"-Blacklist", "key", utils.MaskAPIKey(apiKey), "active", "disabled", reason, "channel="+upstream.Name)
 
 	if len(upstream.APIKeys) == 0 {
 		log.Printf("[%s-Blacklist] 警告: 渠道 %s 的所有 Key 都已被拉黑！", apiType, upstream.Name)
@@ -537,6 +545,7 @@ func (cm *ConfigManager) RestoreKey(apiType string, channelIndex int, apiKey str
 	delete(cm.failedKeysCache, cacheKey)
 
 	log.Printf("[%s-Blacklist] Key %s 已恢复 (渠道: %s)", apiType, utils.MaskAPIKey(apiKey), upstream.Name)
+	statelog.LogStateTransition(apiType+"-Blacklist", "key", utils.MaskAPIKey(apiKey), "disabled", "active", "manual_restore", "channel="+upstream.Name)
 
 	return cm.saveConfigLocked(cm.config)
 }

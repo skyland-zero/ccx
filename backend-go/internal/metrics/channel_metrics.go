@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/BenedictKing/ccx/internal/statelog"
 	"github.com/BenedictKing/ccx/internal/types"
 	"github.com/BenedictKing/ccx/internal/utils"
 )
@@ -847,6 +848,7 @@ func (m *MetricsManager) handleBreakerSuccessLocked(metrics *KeyMetrics, now tim
 		if metrics.HalfOpenSuccesses >= m.halfOpenSuccessTarget {
 			m.resetCircuitStateLocked(metrics, true)
 			log.Printf("[Metrics-Circuit] Key [%s] (%s) half-open 探针成功，恢复 closed", metrics.KeyMask, metrics.BaseURL)
+			statelog.LogStateTransition("Metrics-Circuit", "key", metrics.KeyMask, "half_open", "closed", "probe_success", "baseURL="+metrics.BaseURL)
 		} else {
 			m.persistCircuitStateLocked(metrics)
 		}
@@ -877,6 +879,7 @@ func (m *MetricsManager) handleBreakerFailureLocked(metrics *KeyMetrics, failure
 		if m.isKeyCircuitBroken(metrics) {
 			m.moveCircuitToOpenLocked(metrics, now, false)
 			log.Printf("[Metrics-Circuit] Key [%s] (%s) 进入熔断状态（失败率: %.1f%%）", metrics.KeyMask, metrics.BaseURL, m.calculateKeyBreakerFailureRateInternal(metrics)*100)
+			statelog.LogStateTransition("Metrics-Circuit", "key", metrics.KeyMask, "closed", "open", "breaker_threshold", "baseURL="+metrics.BaseURL)
 		}
 	default:
 		// open 状态下继续记录内存统计，持久化仅在状态迁移时发生

@@ -43,7 +43,6 @@ func TestRestoreDisabledKeysAndActivate(t *testing.T) {
 	defer metricsManager.Stop()
 
 	activated := false
-	current := cfgManager.GetConfig().Upstream[0]
 	result, err := RestoreDisabledKeysAndActivate(
 		func(keys []string) ([]string, error) {
 			return cfgManager.RestoreDisabledKeys("Messages", 0, keys)
@@ -55,8 +54,10 @@ func TestRestoreDisabledKeysAndActivate(t *testing.T) {
 			activated = true
 			return cfgManager.SetChannelStatus(0, status)
 		},
-		current.Status,
-		len(current.APIKeys),
+		func() bool {
+			latest := cfgManager.GetConfig().Upstream[0]
+			return latest.Status == "suspended"
+		},
 		[]string{"sk-ready"},
 	)
 	if err != nil {
@@ -70,5 +71,25 @@ func TestRestoreDisabledKeysAndActivate(t *testing.T) {
 	}
 	if got := metricsManager.GetKeyCircuitState("https://example.com/v1", "sk-ready", "claude"); got != metrics.CircuitStateHalfOpen {
 		t.Fatalf("circuit state = %v, want half_open", got)
+	}
+}
+
+func TestRestoreDisabledKeysAndActivate_DoesNotOverrideDisabledChannel(t *testing.T) {
+	activated := false
+	result, err := RestoreDisabledKeysAndActivate(
+		func(keys []string) ([]string, error) { return keys, nil },
+		func(_ string, _ string) {},
+		func(string) error {
+			activated = true
+			return nil
+		},
+		func() bool { return false },
+		[]string{"sk-ready"},
+	)
+	if err != nil {
+		t.Fatalf("RestoreDisabledKeysAndActivate() error = %v", err)
+	}
+	if activated || result.ActivatedChannel {
+		t.Fatalf("ActivatedChannel = %v/%v, want false/false", activated, result.ActivatedChannel)
 	}
 }

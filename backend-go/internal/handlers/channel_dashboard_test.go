@@ -86,6 +86,9 @@ func TestGetChannelDashboard_IncludesBreakerFields(t *testing.T) {
 	if got := resp.Metrics[0]["circuitState"]; got != "open" {
 		t.Fatalf("circuitState=%v, want=open", got)
 	}
+	if got := resp.Metrics[0]["runtimeState"]; got != "open" {
+		t.Fatalf("runtimeState=%v, want=open", got)
+	}
 	if _, ok := resp.Metrics[0]["nextRetryAt"]; !ok {
 		t.Fatalf("缺少 nextRetryAt 字段: %v", resp.Metrics[0])
 	}
