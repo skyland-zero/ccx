@@ -519,6 +519,8 @@ func TestIsInsufficientBalanceMessage_HighConfidenceVariants(t *testing.T) {
 		{name: "english no balance", msg: "no balance", want: true},
 		{name: "english insufficient funds", msg: "payment declined: insufficient funds", want: true},
 		{name: "english quota used up", msg: "quota used up for current billing period", want: true},
+		{name: "english daily usage limit exceeded", msg: "daily usage limit exceeded", want: true},
+		{name: "english daily limit exceeded", msg: "reason=\"DAILY_LIMIT_EXCEEDED\" message=\"daily usage limit exceeded\"", want: true},
 		{name: "chinese balance exhausted", msg: "账户余额已用尽，请充值", want: true},
 		{name: "chinese quota used up", msg: "账户额度已用完", want: true},
 		{name: "chinese quota exhausted", msg: "当前额度耗尽", want: true},
@@ -620,6 +622,26 @@ func TestShouldBlacklistKey_BalanceMessages(t *testing.T) {
 				ShouldBlacklist: true,
 				Reason:          "insufficient_balance",
 				Message:         "insufficient quota for current billing period",
+			},
+		},
+		{
+			name:       "429 top level usage limit exceeded code should blacklist as insufficient balance",
+			statusCode: 429,
+			body:       `{"code":"USAGE_LIMIT_EXCEEDED","message":"error: code=429 reason=\"DAILY_LIMIT_EXCEEDED\" message=\"daily usage limit exceeded\" metadata=map[]"}`,
+			want: BlacklistResult{
+				ShouldBlacklist: true,
+				Reason:          "insufficient_balance",
+				Message:         "error: code=429 reason=\"DAILY_LIMIT_EXCEEDED\" message=\"daily usage limit exceeded\" metadata=map[]",
+			},
+		},
+		{
+			name:       "429 nested daily limit exceeded code should blacklist as insufficient balance",
+			statusCode: 429,
+			body:       `{"error":{"code":"DAILY_LIMIT_EXCEEDED","message":"daily usage limit exceeded"}}`,
+			want: BlacklistResult{
+				ShouldBlacklist: true,
+				Reason:          "insufficient_balance",
+				Message:         "daily usage limit exceeded",
 			},
 		},
 		{

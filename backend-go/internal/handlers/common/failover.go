@@ -593,8 +593,8 @@ func ShouldBlacklistKey(statusCode int, bodyBytes []byte) BlacklistResult {
 		}
 	}
 
-	// 余额不足的明确错误类型
-	if typeLower == "insufficient_balance" || typeLower == "insufficient_quota" || typeLower == "billing_error" {
+	// 余额不足的明确错误类型/错误码
+	if isInsufficientBalanceCode(errType) || typeLower == "billing_error" {
 		return BlacklistResult{
 			ShouldBlacklist: true,
 			Reason:          "insufficient_balance",
@@ -631,6 +631,8 @@ func isInsufficientBalanceMessage(msg string) bool {
 		"out of credits",
 		"quota exhausted",
 		"quota used up",
+		"daily limit exceeded",
+		"daily usage limit exceeded",
 		"tokenstatusexhausted",
 		"余额不足",
 		"余额已用尽",
@@ -638,6 +640,9 @@ func isInsufficientBalanceMessage(msg string) bool {
 		"额度已用尽",
 		"额度已用完",
 		"额度耗尽",
+		"当日额度已用尽",
+		"每日额度已用尽",
+		"日额度已用尽",
 		"令牌额度已用尽",
 		"预扣费额度失败",
 		"需要预扣费额度",
