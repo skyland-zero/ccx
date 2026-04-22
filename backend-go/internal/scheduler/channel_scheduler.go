@@ -162,6 +162,34 @@ func NextScheduledRecoveryTimeUTC(now time.Time) time.Time {
 	return base.Add(24 * time.Hour)
 }
 
+// LastScheduledRecoveryTimeUTC 返回当前时刻之前最近一个 UTC 0/8/16 点后 1 秒的恢复时刻。
+func LastScheduledRecoveryTimeUTC(now time.Time) time.Time {
+	now = now.UTC()
+	base := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 1, 0, time.UTC)
+	for i := len([]int{0, 8, 16}) - 1; i >= 0; i-- {
+		hour := []int{0, 8, 16}[i]
+		candidate := time.Date(base.Year(), base.Month(), base.Day(), hour, 0, 1, 0, time.UTC)
+		if !now.Before(candidate) {
+			return candidate
+		}
+	}
+	return base.Add(-8 * time.Hour)
+}
+
+// MissedScheduledRecoveryTimeUTC 返回 (lastChecked, now] 区间内最近错过的恢复槽位。
+func MissedScheduledRecoveryTimeUTC(lastChecked, now time.Time) (time.Time, bool) {
+	lastChecked = lastChecked.UTC()
+	now = now.UTC()
+	if !now.After(lastChecked) {
+		return time.Time{}, false
+	}
+	candidate := LastScheduledRecoveryTimeUTC(now)
+	if candidate.After(lastChecked) {
+		return candidate, true
+	}
+	return time.Time{}, false
+}
+
 func shouldSkipScheduledRecovery(disabledAt, recoverAt string, now time.Time) bool {
 	if recoverAt != "" {
 		parsed, err := time.Parse(time.RFC3339, recoverAt)
