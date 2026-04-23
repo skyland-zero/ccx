@@ -38,7 +38,7 @@ type ModelEntry struct {
 	OwnedBy string `json:"owned_by"`
 }
 
-// ModelsHandler 处理 /v1/models 请求，从 Messages 和 Responses 渠道获取并合并模型列表
+// ModelsHandler 处理 /v1/models 请求，从 Messages、Responses 和 Chat 渠道获取并合并模型列表
 func ModelsHandler(envCfg *config.EnvConfig, cfgManager *config.ConfigManager, channelScheduler *scheduler.ChannelScheduler) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		middleware.ProxyAuthMiddleware(envCfg)(c)
@@ -46,12 +46,11 @@ func ModelsHandler(envCfg *config.EnvConfig, cfgManager *config.ConfigManager, c
 			return
 		}
 
-		// 并行从两种渠道获取模型列表
-		messagesModels := fetchModelsFromChannels(c, cfgManager, channelScheduler, false)
-		responsesModels := fetchModelsFromChannels(c, cfgManager, channelScheduler, true)
+		messagesModels := fetchModelsFromChannels(c, cfgManager, channelScheduler, scheduler.ChannelKindMessages)
+		responsesModels := fetchModelsFromChannels(c, cfgManager, channelScheduler, scheduler.ChannelKindResponses)
+		chatModels := fetchModelsFromChannels(c, cfgManager, channelScheduler, scheduler.ChannelKindChat)
 
-		// 合并去重
-		mergedModels := mergeModels(messagesModels, responsesModels)
+		mergedModels := mergeModels(messagesModels, responsesModels, chatModels)
 
 		if len(mergedModels) == 0 {
 			c.JSON(http.StatusNotFound, gin.H{
@@ -68,8 +67,8 @@ func ModelsHandler(envCfg *config.EnvConfig, cfgManager *config.ConfigManager, c
 			Data:   mergedModels,
 		}
 
-		log.Printf("[Models] 合并完成: messages=%d, responses=%d, merged=%d",
-			len(messagesModels), len(responsesModels), len(mergedModels))
+		log.Printf("[Models] 合并完成: messages=%d, responses=%d, chat=%d, merged=%d",
+			len(messagesModels), len(responsesModels), len(chatModels), len(mergedModels))
 
 		c.JSON(http.StatusOK, response)
 	}
@@ -94,16 +93,15 @@ func ModelsDetailHandler(envCfg *config.EnvConfig, cfgManager *config.ConfigMana
 			return
 		}
 
-		// 先尝试 Messages 渠道
-		if body, ok := tryModelsRequest(c, cfgManager, channelScheduler, "GET", "/"+modelID, false); ok {
-			c.Data(http.StatusOK, "application/json", body)
-			return
-		}
-
-		// 再尝试 Responses 渠道
-		if body, ok := tryModelsRequest(c, cfgManager, channelScheduler, "GET", "/"+modelID, true); ok {
-			c.Data(http.StatusOK, "application/json", body)
-			return
+		for _, kind := range []scheduler.ChannelKind{
+			scheduler.ChannelKindMessages,
+			scheduler.ChannelKindResponses,
+			scheduler.ChannelKindChat,
+		} {
+			if body, ok := tryModelsRequest(c, cfgManager, channelScheduler, "GET", "/"+modelID, kind); ok {
+				c.Data(http.StatusOK, "application/json", body)
+				return
+			}
 		}
 
 		c.JSON(http.StatusNotFound, gin.H{
@@ -116,43 +114,32 @@ func ModelsDetailHandler(envCfg *config.EnvConfig, cfgManager *config.ConfigMana
 }
 
 // fetchModelsFromChannels 从指定类型的渠道获取模型列表
-func fetchModelsFromChannels(c *gin.Context, cfgManager *config.ConfigManager, channelScheduler *scheduler.ChannelScheduler, isResponses bool) []ModelEntry {
-	body, ok := tryModelsRequest(c, cfgManager, channelScheduler, "GET", "", isResponses)
+func fetchModelsFromChannels(c *gin.Context, cfgManager *config.ConfigManager, channelScheduler *scheduler.ChannelScheduler, kind scheduler.ChannelKind) []ModelEntry {
+	body, ok := tryModelsRequest(c, cfgManager, channelScheduler, "GET", "", kind)
 	if !ok {
 		return nil
 	}
 
 	var resp ModelsResponse
 	if err := json.Unmarshal(body, &resp); err != nil {
-		channelType := "Messages"
-		if isResponses {
-			channelType = "Responses"
-		}
-		log.Printf("[%s-Models] 解析渠道响应失败: %v", channelType, err)
+		log.Printf("[%s-Models] 解析渠道响应失败: %v", channelKindLabel(kind), err)
 		return nil
 	}
 
 	return resp.Data
 }
 
-// mergeModels 合并两个模型列表并去重（按 ID）
-func mergeModels(models1, models2 []ModelEntry) []ModelEntry {
+// mergeModels 合并多个模型列表并去重（按 ID）
+func mergeModels(modelLists ...[]ModelEntry) []ModelEntry {
 	seen := make(map[string]bool)
 	var result []ModelEntry
 
-	// 先添加第一个列表的模型
-	for _, m := range models1 {
-		if !seen[m.ID] {
-			seen[m.ID] = true
-			result = append(result, m)
-		}
-	}
-
-	// 再添加第二个列表中不重复的模型
-	for _, m := range models2 {
-		if !seen[m.ID] {
-			seen[m.ID] = true
-			result = append(result, m)
+	for _, models := range modelLists {
+		for _, m := range models {
+			if !seen[m.ID] {
+				seen[m.ID] = true
+				result = append(result, m)
+			}
 		}
 	}
 
@@ -160,21 +147,12 @@ func mergeModels(models1, models2 []ModelEntry) []ModelEntry {
 }
 
 // tryModelsRequest 使用调度器选择渠道，按故障转移顺序尝试请求 models 端点
-func tryModelsRequest(c *gin.Context, cfgManager *config.ConfigManager, channelScheduler *scheduler.ChannelScheduler, method, suffix string, isResponses bool) ([]byte, bool) {
+func tryModelsRequest(c *gin.Context, cfgManager *config.ConfigManager, channelScheduler *scheduler.ChannelScheduler, method, suffix string, kind scheduler.ChannelKind) ([]byte, bool) {
 	failedChannels := make(map[int]bool)
 	maxChannelRetries := 10 // 最多尝试 10 个渠道
-
-	channelType := "Messages"
-	if isResponses {
-		channelType = "Responses"
-	}
+	channelType := channelKindLabel(kind)
 
 	for attempt := 0; attempt < maxChannelRetries; attempt++ {
-		kind := scheduler.ChannelKindMessages
-		if isResponses {
-			kind = scheduler.ChannelKindResponses
-		}
-
 		selection, err := channelScheduler.SelectChannel(c.Request.Context(), "", failedChannels, kind, "", c.Param("routePrefix"))
 		if err != nil {
 			fallbackSelection, fallbackErr := selectChannelWithDisabledKeys(cfgManager, failedChannels, kind, c.Param("routePrefix"))
@@ -240,6 +218,17 @@ func tryModelsRequest(c *gin.Context, cfgManager *config.ConfigManager, channelS
 
 	log.Printf("[%s-Models] 所有渠道均失败: method=%s, suffix=%s", channelType, method, suffix)
 	return nil, false
+}
+
+func channelKindLabel(kind scheduler.ChannelKind) string {
+	switch kind {
+	case scheduler.ChannelKindResponses:
+		return "Responses"
+	case scheduler.ChannelKindChat:
+		return "Chat"
+	default:
+		return "Messages"
+	}
 }
 
 func selectChannelWithDisabledKeys(cfgManager *config.ConfigManager, failedChannels map[int]bool, kind scheduler.ChannelKind, routePrefix string) (*scheduler.SelectionResult, error) {
