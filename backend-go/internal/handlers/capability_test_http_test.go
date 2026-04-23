@@ -441,6 +441,95 @@ func TestExecuteModelTest_RespectsAutoBlacklistBalance(t *testing.T) {
 	}
 }
 
+func TestResumedCancelledJob_ReturnsUpdatedState(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	// 创建一个已取消的 job
+	job := newCapabilityTestJob(0, "test-channel", "messages", "claude", []string{"messages"}, 10*time.Second)
+	job.Lifecycle = CapabilityLifecycleCancelled
+	job.Outcome = CapabilityOutcomeCancelled
+	job.Status = CapabilityJobStatusCancelled
+	job.FinishedAt = time.Now().Format(time.RFC3339Nano)
+	job.Tests[0].Lifecycle = CapabilityLifecycleCancelled
+	job.Tests[0].Outcome = CapabilityOutcomeCancelled
+	for i := range job.Tests[0].ModelResults {
+		job.Tests[0].ModelResults[i].Status = CapabilityModelStatusSkipped
+		job.Tests[0].ModelResults[i].Lifecycle = CapabilityLifecycleCancelled
+		job.Tests[0].ModelResults[i].Outcome = CapabilityOutcomeCancelled
+	}
+	capabilityJobs.create(job)
+
+	tmpDir := t.TempDir()
+	configFile := filepath.Join(tmpDir, "config.json")
+	if err := os.WriteFile(configFile, []byte(`{"upstream":[{"name":"test-channel","serviceType":"claude","baseUrl":"https://example.com","apiKeys":["test"]}]}`), 0644); err != nil {
+		t.Fatalf("write config failed: %v", err)
+	}
+	cfgManager, err := config.NewConfigManager(configFile)
+	if err != nil {
+		t.Fatalf("create config manager failed: %v", err)
+	}
+	defer cfgManager.Close()
+
+	cfg := cfgManager.GetConfig()
+	channel := cfg.Upstream[0]
+	baseURL := ""
+	if len(channel.GetAllBaseURLs()) > 0 {
+		baseURL = channel.GetAllBaseURLs()[0]
+	}
+	apiKey := ""
+	if len(channel.APIKeys) > 0 {
+		apiKey = channel.APIKeys[0]
+	} else if len(channel.DisabledAPIKeys) > 0 {
+		apiKey = channel.DisabledAPIKeys[0].Key
+	}
+
+	// 绑定 lookupKey，模拟取消后保留的 lookupKey
+	cacheKey := buildCapabilityCacheKey(baseURL, apiKey, channel.ServiceType, []string{"messages"}, nil)
+	lookupKey := buildCapabilityJobLookupKey(cacheKey, "messages", 0)
+	capabilityJobs.bindLookupKey(lookupKey, job.JobID)
+
+	r := gin.New()
+	r.POST("/messages/channels/:id/capability-test", TestChannelCapability(cfgManager, nil, "messages"))
+
+	body := `{"targetProtocols":["messages"],"timeout":10000}`
+	req := httptest.NewRequest(http.MethodPost, "/messages/channels/0/capability-test", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d, want=%d, body=%s", w.Code, http.StatusOK, w.Body.String())
+	}
+
+	var resp struct {
+		JobID   string            `json:"jobId"`
+		Resumed bool              `json:"resumed"`
+		Job     CapabilityTestJob `json:"job"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response failed: %v", err)
+	}
+
+	if !resp.Resumed {
+		t.Fatalf("resumed=%v, want true", resp.Resumed)
+	}
+	if resp.JobID != job.JobID {
+		t.Fatalf("jobId=%s, want %s", resp.JobID, job.JobID)
+	}
+	if resp.Job.Lifecycle == CapabilityLifecycleCancelled {
+		t.Fatalf("job.lifecycle=%s, want not cancelled (should be pending or active)", resp.Job.Lifecycle)
+	}
+	if resp.Job.RunMode != CapabilityRunModeResumedCancelled {
+		t.Fatalf("job.runMode=%s, want resumed_cancelled", resp.Job.RunMode)
+	}
+	if resp.Job.FinishedAt != "" {
+		t.Fatalf("job.finishedAt=%s, want empty", resp.Job.FinishedAt)
+	}
+	if resp.Job.Outcome != CapabilityOutcomeUnknown {
+		t.Fatalf("job.outcome=%s, want unknown", resp.Job.Outcome)
+	}
+}
+
 func TestBuildTestRequestWithModel_NoAPIKey(t *testing.T) {
 	channel := &config.UpstreamConfig{
 		BaseURL: "https://example.com",

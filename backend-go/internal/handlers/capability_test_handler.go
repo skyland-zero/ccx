@@ -318,7 +318,7 @@ func TestChannelCapability(cfgManager *config.ConfigManager, channelLogStore *me
 			}
 
 			// 重置 failed/skipped 模型为 queued，准备重测
-			capabilityJobs.update(job.JobID, func(j *CapabilityTestJob) {
+			updatedJob, ok := capabilityJobs.update(job.JobID, func(j *CapabilityTestJob) {
 				j.Lifecycle = CapabilityLifecyclePending
 				j.Outcome = CapabilityOutcomeUnknown
 				j.Status = deriveCapabilityJobStatus(j.Lifecycle, j.Outcome)
@@ -344,10 +344,14 @@ func TestChannelCapability(cfgManager *config.ConfigManager, channelLogStore *me
 					}
 				}
 			})
+			if !ok {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to resume cancelled job"})
+				return
+			}
 
 			go runCapabilityTestJob(job.JobID, channelKind, id, *channel, protocols, timeout, cacheKey, lookupKey, previousResults, normalizedModels, cfgManager, channelLogStore)
 
-			c.JSON(http.StatusOK, gin.H{"jobId": job.JobID, "resumed": true, "job": job})
+			c.JSON(http.StatusOK, gin.H{"jobId": updatedJob.JobID, "resumed": true, "job": updatedJob})
 			return
 		}
 
