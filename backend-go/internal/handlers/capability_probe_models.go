@@ -10,9 +10,9 @@ import (
 // 测试时会按顺序分批启动，并汇总所有候选模型的结果
 const (
 	capabilityProbeModelMessages  = "claude-opus-4-7,claude-opus-4-6,claude-opus-4-5-20251101,claude-sonnet-4-6,claude-sonnet-4-5-20250929,claude-haiku-4-5-20251001"
-	capabilityProbeModelChat      = "gpt-5.4,gpt-5.3-codex,gpt-5.2,gpt-5.2-codex"
+	capabilityProbeModelChat = "gpt-5.5,gpt-5.4,gpt-5.3-codex,gpt-5.2,gpt-5.2-codex"
 	capabilityProbeModelGemini    = "gemini-3.1-pro-preview,gemini-3.1-pro,gemini-3-pro-preview,gemini-3-pro,gemini-3-flash-preview,gemini-3-flash"
-	capabilityProbeModelResponses = "gpt-5.4,gpt-5.3-codex,gpt-5.2,gpt-5.2-codex"
+	capabilityProbeModelResponses = "gpt-5.5,gpt-5.4,gpt-5.3-codex,gpt-5.2,gpt-5.2-codex"
 )
 
 var capabilityProbeModels = map[string]string{
