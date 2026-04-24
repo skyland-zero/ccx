@@ -255,7 +255,10 @@ export interface CapabilityTestJob {
   progress: CapabilityJobProgress
   error?: string
   cacheHit?: boolean
+  targetProtocols?: string[]
   timeoutMilliseconds?: number
+  snapshotSource?: 'local' | 'remote'
+  snapshotUpdatedAt?: string
 }
 
 export interface ModelTestResult {
@@ -266,6 +269,18 @@ export interface ModelTestResult {
   error?: string
   startedAt?: string
   testedAt: string
+}
+
+export interface CapabilitySnapshot {
+  identityKey: string
+  sourceType: string
+  tests: CapabilityProtocolJobResult[]
+  compatibleProtocols: string[]
+  totalDuration: number
+  progress: CapabilityJobProgress
+  lifecycle: CapabilityLifecycle
+  outcome: CapabilityOutcome
+  updatedAt: string
 }
 
 export interface ProtocolTestResult {
@@ -689,10 +704,11 @@ export class ApiService {
   async startChannelCapabilityTest(
     type: 'messages' | 'chat' | 'gemini' | 'responses',
     id: number,
+    targetProtocols: string[],
     previousJobId?: string
   ): Promise<CapabilityTestJobStartResponse> {
     const body: { targetProtocols: string[]; timeout: number; previousJobId?: string } = {
-      targetProtocols: ['messages', 'responses', 'chat', 'gemini'],
+      targetProtocols,
       timeout: 10000
     }
     if (previousJobId) {
@@ -706,6 +722,10 @@ export class ApiService {
 
   async getChannelCapabilityTestStatus(type: 'messages' | 'chat' | 'gemini' | 'responses', id: number, jobId: string): Promise<CapabilityTestJob> {
     return this.request(`/${type}/channels/${id}/capability-test/${jobId}`)
+  }
+
+  async getChannelCapabilitySnapshot(type: 'messages' | 'chat' | 'gemini' | 'responses', id: number): Promise<CapabilitySnapshot> {
+    return this.request(`/${type}/channels/${id}/capability-test/snapshot`)
   }
 
   async cancelCapabilityTest(type: 'messages' | 'chat' | 'gemini' | 'responses', id: number, jobId: string): Promise<void> {

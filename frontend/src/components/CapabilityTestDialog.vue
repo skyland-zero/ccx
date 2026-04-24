@@ -38,11 +38,17 @@
               <v-chip v-if="runMode !== 'fresh'" color="info" size="small" variant="tonal">
                 {{ getRunModeLabel(runMode) }}
               </v-chip>
+              <v-chip v-if="snapshotSourceLabel" color="info" size="small" variant="outlined">
+                {{ snapshotSourceLabel }}
+              </v-chip>
               <v-chip v-if="displayOutcome === 'partial'" color="warning" size="small" variant="tonal">
                 {{ t('capability.partial') }}
               </v-chip>
               <v-chip v-else-if="displayOutcome === 'cancelled'" color="grey" size="small" variant="tonal">
                 {{ t('capability.cancelled') }}
+              </v-chip>
+              <v-chip v-if="activeProtocolScopeLabel" color="secondary" size="small" variant="tonal">
+                {{ t('capability.scopeLabel', { protocols: activeProtocolScopeLabel }) }}
               </v-chip>
               <v-chip
                 v-for="proto in (job?.compatibleProtocols ?? [])"
@@ -65,6 +71,9 @@
               <span v-if="job?.progress?.totalModels && isJobActiveLike" class="text-caption text-medium-emphasis">
                 {{ t('capability.progressSummary', { done: job.progress.completedModels, total: job.progress.totalModels }) }}
               </span>
+              <span v-if="snapshotUpdatedText" class="text-caption text-medium-emphasis">
+                {{ snapshotUpdatedText }}
+              </span>
             </div>
 
             <v-btn
@@ -81,6 +90,21 @@
             </v-btn>
           </div>
 
+          <div class="capability-sections mb-4">
+            <v-alert v-if="snapshotSourceLabel" type="info" variant="tonal" rounded="lg">
+              <div class="text-body-2 font-weight-medium">{{ t('capability.sharedResultTitle') }}</div>
+              <div class="text-body-2">{{ snapshotSourceLabel }}<span v-if="snapshotUpdatedText"> · {{ snapshotUpdatedText }}</span></div>
+            </v-alert>
+            <v-alert v-if="state === 'pending' || state === 'running'" type="warning" variant="tonal" rounded="lg">
+              <div class="text-body-2 font-weight-medium">{{ t('capability.currentExecutionTitle') }}</div>
+              <div class="text-body-2">{{ t('capability.currentExecutionBody') }}</div>
+            </v-alert>
+          </div>
+
+          <v-alert v-if="isPartialScope" type="info" variant="tonal" rounded="lg" class="mb-4">
+            {{ t('capability.partialScopeNotice', { protocols: activeProtocolScopeLabel }) }}
+          </v-alert>
+
           <!-- 移动端卡片布局 -->
           <div class="mobile-layout">
             <div v-for="test in sortedTests" :key="test.protocol" class="protocol-card">
@@ -88,20 +112,32 @@
                 <v-chip :color="getProtocolColor(test.protocol)" size="small" variant="tonal">
                   {{ getProtocolDisplayName(test.protocol) }}
                 </v-chip>
-                <template v-if="!isProtocolFailed(test)">
-                  <div class="d-flex align-center ga-1">
-                    <v-icon :color="getProtocolStatusIconColor(test)" size="small">{{ getProtocolStatusIcon(test) }}</v-icon>
-                    <span :class="['text-body-2', getProtocolStatusTextClass(test)]">{{ getProtocolStatusText(test) }}</span>
-                  </div>
-                </template>
-                <v-tooltip v-else :text="getProtocolErrorText(test)" location="top" content-class="error-tooltip">
-                  <template #activator="{ props: activatorProps }">
-                    <div v-bind="activatorProps" class="d-flex align-center ga-1">
+                <div class="d-flex align-center ga-2 flex-wrap justify-end">
+                  <v-btn
+                    v-if="canTestProtocol(test)"
+                    size="x-small"
+                    color="secondary"
+                    variant="tonal"
+                    rounded="lg"
+                    @click="handleTestProtocol(test.protocol)"
+                  >
+                    {{ t('capability.startTest') }}
+                  </v-btn>
+                  <template v-if="!isProtocolFailed(test)">
+                    <div class="d-flex align-center ga-1">
                       <v-icon :color="getProtocolStatusIconColor(test)" size="small">{{ getProtocolStatusIcon(test) }}</v-icon>
                       <span :class="['text-body-2', getProtocolStatusTextClass(test)]">{{ getProtocolStatusText(test) }}</span>
                     </div>
                   </template>
-                </v-tooltip>
+                  <v-tooltip v-else :text="getProtocolErrorText(test)" location="top" content-class="error-tooltip">
+                    <template #activator="{ props: activatorProps }">
+                      <div v-bind="activatorProps" class="d-flex align-center ga-1">
+                        <v-icon :color="getProtocolStatusIconColor(test)" size="small">{{ getProtocolStatusIcon(test) }}</v-icon>
+                        <span :class="['text-body-2', getProtocolStatusTextClass(test)]">{{ getProtocolStatusText(test) }}</span>
+                      </div>
+                    </template>
+                  </v-tooltip>
+                </div>
               </div>
 
               <CapabilityModelResults
@@ -174,33 +210,45 @@
                     <span v-else class="text-body-2 text-medium-emphasis">-</span>
                   </td>
                   <td>
-                    <v-btn
-                      v-if="test.success && test.protocol !== currentTab"
-                      size="x-small"
-                      color="primary"
-                      variant="tonal"
-                      rounded="lg"
-                      class="copy-tab-btn"
-                      @click="$emit('copyToTab', test.protocol)"
-                    >
-                      {{ t('capability.copyToTab') }}
-                    </v-btn>
-                    <v-chip v-else-if="test.protocol === currentTab" size="x-small" color="grey" variant="tonal">
-                      {{ t('capability.currentTab') }}
-                    </v-chip>
-                    <div v-else-if="!test.success && test.protocol !== currentTab" class="d-flex flex-wrap ga-1">
+                    <div class="d-flex flex-wrap ga-1 align-center justify-end">
                       <v-btn
-                        v-for="successProto in getSuccessfulProtocols()"
-                        :key="successProto"
+                        v-if="canTestProtocol(test)"
                         size="x-small"
-                        :color="getProtocolColor(successProto)"
+                        color="secondary"
                         variant="tonal"
                         rounded="lg"
-                        class="convert-btn"
+                        @click="handleTestProtocol(test.protocol)"
+                      >
+                        {{ t('capability.startTest') }}
+                      </v-btn>
+                      <v-btn
+                        v-if="test.success && test.protocol !== currentTab"
+                        size="x-small"
+                        color="primary"
+                        variant="tonal"
+                        rounded="lg"
+                        class="copy-tab-btn"
                         @click="$emit('copyToTab', test.protocol)"
                       >
-                        {{ t('capability.convert', { protocol: getProtocolDisplayName(successProto) }) }}
+                        {{ t('capability.copyToTab') }}
                       </v-btn>
+                      <v-chip v-else-if="test.protocol === currentTab" size="x-small" color="grey" variant="tonal">
+                        {{ t('capability.currentTab') }}
+                      </v-chip>
+                      <div v-else-if="!test.success && test.protocol !== currentTab" class="d-flex flex-wrap ga-1">
+                        <v-btn
+                          v-for="successProto in getSuccessfulProtocols()"
+                          :key="successProto"
+                          size="x-small"
+                          :color="getProtocolColor(successProto)"
+                          variant="tonal"
+                          rounded="lg"
+                          class="convert-btn"
+                          @click="$emit('copyToTab', test.protocol)"
+                        >
+                          {{ t('capability.convert', { protocol: getProtocolDisplayName(successProto) }) }}
+                        </v-btn>
+                      </div>
                     </div>
                   </td>
                 </tr>
@@ -252,6 +300,7 @@ const emit = defineEmits<{
   'copyToTab': [protocol: string]
   'cancel': []
   'retryModel': [protocol: string, model: string]
+  'testProtocol': [protocol: string]
 }>()
 
 const { t } = useI18n()
@@ -461,6 +510,39 @@ const getAverageLatency = (test: CapabilityProtocolJobResult): number => {
 
 const hasProtocolLatency = (test: CapabilityProtocolJobResult): boolean => {
   return getAverageLatency(test) >= 0
+}
+
+const snapshotSourceLabel = computed(() => {
+  const source = props.capabilityJob?.snapshotSource
+  if (source === 'local') return t('capability.snapshotLocal')
+  if (source === 'remote') return t('capability.snapshotRemote')
+  return ''
+})
+
+const snapshotUpdatedText = computed(() => {
+  const updatedAt = props.capabilityJob?.snapshotUpdatedAt
+  if (!updatedAt) return ''
+  return t('capability.snapshotUpdated', { time: updatedAt })
+})
+
+const protocolScope = computed(() => {
+  const protocols = props.capabilityJob?.targetProtocols ?? []
+  return protocols.filter(isKnownProtocol)
+})
+
+const activeProtocolScopeLabel = computed(() => {
+  if (protocolScope.value.length === 0) return ''
+  return protocolScope.value.map(getProtocolDisplayName).join(' / ')
+})
+
+const isPartialScope = computed(() => protocolScope.value.length > 0 && protocolScope.value.length < knownProtocols.length)
+
+const canTestProtocol = (test: CapabilityProtocolJobResult): boolean => {
+  return !isJobActiveLike.value && state.value !== 'error'
+}
+
+const handleTestProtocol = (protocol: string) => {
+  emit('testProtocol', protocol)
 }
 
 const setError = (error: string) => {

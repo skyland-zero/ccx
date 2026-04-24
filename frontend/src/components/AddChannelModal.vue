@@ -230,6 +230,15 @@
                       variant="tonal"
                       color="primary"
                       prepend-icon="mdi-lightning-bolt"
+                      @click="applyModelMappingPreset('gpt-5.5')"
+                    >
+                      gpt-5.5
+                    </v-btn>
+                    <v-btn
+                      size="small"
+                      variant="tonal"
+                      color="secondary"
+                      prepend-icon="mdi-lightning-bolt"
                       @click="applyModelMappingPreset('gpt-5.4')"
                     >
                       gpt-5.4
@@ -1212,6 +1221,7 @@ const allSourceModelOptions = computed(() => {
     return [
       { title: 'codex', value: 'codex' },
       { title: 'gpt-5', value: 'gpt-5' },
+      { title: 'gpt-5.5', value: 'gpt-5.5' },
       { title: 'gpt-5.4', value: 'gpt-5.4' },
       { title: 'gpt-5.3-codex', value: 'gpt-5.3-codex' },
       { title: 'gpt-5.2-codex', value: 'gpt-5.2-codex' },
@@ -1235,6 +1245,7 @@ const allSourceModelOptions = computed(() => {
     return [
       { title: 'codex', value: 'codex' },
       { title: 'gpt-5', value: 'gpt-5' },
+      { title: 'gpt-5.5', value: 'gpt-5.5' },
       { title: 'gpt-5.4', value: 'gpt-5.4' },
       { title: 'gpt-5.3-codex', value: 'gpt-5.3-codex' },
       { title: 'gpt-5.2-codex', value: 'gpt-5.2-codex' },
@@ -1308,7 +1319,7 @@ const showModelMappingPresets = computed(() => {
 const modelNameCollator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' })
 
 const modelMappingPresets: Record<
-  'gpt-5.4' | 'gpt-5.3-codex' | 'gpt-5.2-codex',
+  'gpt-5.5' | 'gpt-5.4' | 'gpt-5.3-codex' | 'gpt-5.2-codex',
   {
     modelMapping: Record<string, string>
     reasoningMapping: Record<string, 'none' | 'low' | 'medium' | 'high' | 'xhigh'>
@@ -1316,6 +1327,20 @@ const modelMappingPresets: Record<
     textVerbosity: 'low' | 'medium' | 'high'
   }
 > = {
+  'gpt-5.5': {
+    modelMapping: {
+      opus: 'gpt-5.5',
+      sonnet: 'gpt-5.5',
+      haiku: 'gpt-5.5'
+    },
+    reasoningMapping: {
+      opus: 'xhigh',
+      sonnet: 'xhigh',
+      haiku: 'high'
+    },
+    fastMode: true,
+    textVerbosity: 'medium'
+  },
   'gpt-5.4': {
     modelMapping: {
       opus: 'gpt-5.4',
@@ -1381,6 +1406,7 @@ const modelPriorityPatterns: RegExp[] = [
   /sonnet-4-5/i,
   /haiku-4-6/i,
   /haiku-4-5/i,
+  /gpt-5\.5/i,
   /gpt-5\.4/i,
   /gpt-5\.3/i,
   /gpt-5\.2/i,

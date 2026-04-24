@@ -382,6 +382,7 @@
       @copy-to-tab="handleCopyToTab"
       @cancel="handleCancelCapabilityTest"
       @retry-model="handleRetryCapabilityModel"
+      @test-protocol="handleTestCapabilityProtocol"
     />
 
     <!-- 添加API密钥对话框 -->
@@ -445,6 +446,7 @@ import CapabilityTestDialog from './components/CapabilityTestDialog.vue'
 // 异步加载图表组件，减少首屏 JS 体积
 const GlobalStatsChart = defineAsyncComponent(() => import('./components/GlobalStatsChart.vue'))
 import { useAppTheme } from './composables/useTheme'
+import { metricsIdentityBaseUrl } from './utils/baseUrlSemantics'
 
 // Vuetify主题
 const theme = useTheme()
@@ -698,12 +700,36 @@ const capabilityTestPolling = ref<ReturnType<typeof setInterval> | null>(null)
 const capabilityTestJob = ref<CapabilityTestJob | null>(null)
 const capabilityTestPreviousJobId = ref('') // 记录上一次的 jobId，用于复用成功结果
 const capabilityRetryPendingUntil = ref<Record<string, number>>({})
+const capabilitySnapshots = ref<Record<string, CapabilityTestJob>>({})
+
+const buildCapabilityIdentityKey = (channel: Channel | undefined): string => {
+  if (!channel) return ''
+  const baseCandidates = Array.isArray(channel.baseUrls) && channel.baseUrls.length > 0
+    ? channel.baseUrls
+    : [channel.baseUrl]
+  const baseUrl = baseCandidates.map(url => metricsIdentityBaseUrl(url, channel.serviceType)).find(Boolean) || ''
+  const apiKey = channel.apiKeys[0] || channel.disabledApiKeys?.[0]?.key || ''
+  return `${channel.serviceType}:${baseUrl}:${apiKey}`
+}
+
+const cloneCapabilityJob = (job: CapabilityTestJob): CapabilityTestJob => ({
+  ...job,
+  tests: job.tests.map(test => ({
+    ...test,
+    modelResults: test.modelResults ? test.modelResults.map(modelResult => ({ ...modelResult })) : []
+  })),
+  compatibleProtocols: [...job.compatibleProtocols],
+  progress: { ...job.progress },
+  targetProtocols: job.targetProtocols ? [...job.targetProtocols] : undefined,
+  snapshotSource: job.snapshotSource,
+  snapshotUpdatedAt: job.snapshotUpdatedAt
+})
 
 const capabilityPlaceholderModels: Record<string, string[]> = {
   // 需与后端 capability_probe_models.go 保持一致，用于开始接口返回前的首屏占位
   messages: ['claude-opus-4-7', 'claude-opus-4-6', 'claude-opus-4-5-20251101', 'claude-sonnet-4-6', 'claude-sonnet-4-5-20250929', 'claude-haiku-4-5-20251001'],
   chat: ['gpt-5.4', 'gpt-5.3-codex', 'gpt-5.2', 'gpt-5.2-codex'],
-  responses: ['gpt-5.4', 'gpt-5.3-codex', 'gpt-5.2', 'gpt-5.2-codex'],
+  responses: ['gpt-5.5', 'gpt-5.4', 'gpt-5.3-codex', 'gpt-5.2', 'gpt-5.2-codex'],
   gemini: ['gemini-3.1-pro-preview', 'gemini-3.1-pro', 'gemini-3-pro-preview', 'gemini-3-pro', 'gemini-3-flash-preview', 'gemini-3-flash']
 }
 
@@ -855,12 +881,21 @@ const updateCapabilityJob = (job: CapabilityTestJob) => {
 
   capabilityTestJob.value = mergedJob
   capabilityTestJobId.value = job.jobId
+  const channel = channelStore.currentChannelsData.channels?.find(ch => ch.index === mergedJob.channelId)
+  const identityKey = buildCapabilityIdentityKey(channel)
+  if (identityKey) {
+    capabilitySnapshots.value[identityKey] = cloneCapabilityJob({
+      ...mergedJob,
+      snapshotSource: 'local',
+      snapshotUpdatedAt: mergedJob.updatedAt
+    })
+  }
   if (isCapabilityJobTerminal(mergedJob) && !(mergedJob.activeOperations && mergedJob.activeOperations > 0)) {
     stopCapabilityTestPolling()
   }
 }
 
-const testChannelCapability = async (channelId: number) => {
+const testChannelCapability = async (channelId: number, targetProtocols: string[] = [...capabilityProtocolOrder]) => {
   const channel = channelStore.currentChannelsData.channels?.find(ch => ch.index === channelId)
   capabilityTestChannelName.value = channel?.name || t('capability.channelFallback', { id: channelId })
   capabilityTestChannelId.value = channelId
@@ -874,11 +909,105 @@ const testChannelCapability = async (channelId: number) => {
   capabilityTestPreviousJobId.value = capabilityTestJobId.value
   capabilityTestJobId.value = ''
   capabilityTestJob.value = buildCapabilityPlaceholderJob(channelId, capabilityTestChannelName.value)
+  if (targetProtocols.length > 0 && capabilityTestJob.value) {
+    capabilityTestJob.value.tests = capabilityTestJob.value.tests.filter(test => targetProtocols.includes(test.protocol))
+    capabilityTestJob.value.targetProtocols = [...targetProtocols]
+    const totalModels = capabilityTestJob.value.tests.reduce((sum, test) => sum + (test.modelResults?.length ?? 0), 0)
+    capabilityTestJob.value.progress = {
+      totalModels,
+      queuedModels: totalModels,
+      runningModels: 0,
+      successModels: 0,
+      failedModels: 0,
+      skippedModels: 0,
+      completedModels: 0
+    }
+  }
+
+  const identityKey = buildCapabilityIdentityKey(channel)
+  let existingSnapshot = identityKey ? capabilitySnapshots.value[identityKey] : null
+  if (!existingSnapshot && channel) {
+    try {
+      const remoteSnapshot = await api.getChannelCapabilitySnapshot(channelStore.activeTab, channelId)
+      const snapshotProtocols = remoteSnapshot.tests.map(test => test.protocol)
+      const snapshotJob: CapabilityTestJob = {
+        jobId: '',
+        channelId,
+        channelName: capabilityTestChannelName.value,
+        channelKind: channelStore.activeTab,
+        sourceType: remoteSnapshot.sourceType,
+        status: remoteSnapshot.lifecycle === 'cancelled' ? 'cancelled' : remoteSnapshot.lifecycle === 'done' ? 'completed' : remoteSnapshot.lifecycle === 'active' ? 'running' : 'queued',
+        lifecycle: remoteSnapshot.lifecycle,
+        outcome: remoteSnapshot.outcome,
+        tests: remoteSnapshot.tests,
+        compatibleProtocols: remoteSnapshot.compatibleProtocols,
+        totalDuration: remoteSnapshot.totalDuration,
+        updatedAt: remoteSnapshot.updatedAt,
+        progress: remoteSnapshot.progress,
+        targetProtocols: snapshotProtocols,
+        snapshotSource: 'remote',
+        snapshotUpdatedAt: remoteSnapshot.updatedAt
+      }
+      existingSnapshot = snapshotJob
+      if (identityKey) {
+        capabilitySnapshots.value[identityKey] = cloneCapabilityJob(snapshotJob)
+      }
+    } catch {
+      existingSnapshot = null
+    }
+  }
+  if (existingSnapshot) {
+    const filteredSnapshot = cloneCapabilityJob(existingSnapshot)
+    filteredSnapshot.snapshotSource = existingSnapshot.snapshotSource
+    filteredSnapshot.snapshotUpdatedAt = existingSnapshot.snapshotUpdatedAt
+    filteredSnapshot.channelId = channelId
+    filteredSnapshot.channelName = capabilityTestChannelName.value
+    filteredSnapshot.channelKind = channelStore.activeTab
+    if (targetProtocols.length > 0) {
+      filteredSnapshot.tests = filteredSnapshot.tests.filter(test => targetProtocols.includes(test.protocol))
+      filteredSnapshot.targetProtocols = filteredSnapshot.tests.map(test => test.protocol)
+      const compatibleProtocols = filteredSnapshot.compatibleProtocols.filter(protocol => targetProtocols.includes(protocol))
+      filteredSnapshot.compatibleProtocols = compatibleProtocols
+      const totalModels = filteredSnapshot.tests.reduce((sum, test) => sum + (test.modelResults?.length ?? 0), 0)
+      const queuedModels = filteredSnapshot.tests.reduce((sum, test) => sum + (test.modelResults ?? []).filter(model => model.status === 'queued').length, 0)
+      const runningModels = filteredSnapshot.tests.reduce((sum, test) => sum + (test.modelResults ?? []).filter(model => model.status === 'running').length, 0)
+      const successModels = filteredSnapshot.tests.reduce((sum, test) => sum + (test.modelResults ?? []).filter(model => model.status === 'success').length, 0)
+      const failedModels = filteredSnapshot.tests.reduce((sum, test) => sum + (test.modelResults ?? []).filter(model => model.status === 'failed').length, 0)
+      const skippedModels = filteredSnapshot.tests.reduce((sum, test) => sum + (test.modelResults ?? []).filter(model => model.status === 'skipped').length, 0)
+      filteredSnapshot.progress = {
+        totalModels,
+        queuedModels,
+        runningModels,
+        successModels,
+        failedModels,
+        skippedModels,
+        completedModels: successModels + failedModels + skippedModels
+      }
+    }
+    capabilityTestJob.value = filteredSnapshot
+  } else {
+    capabilityTestJob.value = buildCapabilityPlaceholderJob(channelId, capabilityTestChannelName.value)
+    if (targetProtocols.length > 0 && capabilityTestJob.value) {
+      capabilityTestJob.value.tests = capabilityTestJob.value.tests.filter(test => targetProtocols.includes(test.protocol))
+      capabilityTestJob.value.targetProtocols = [...targetProtocols]
+      const totalModels = capabilityTestJob.value.tests.reduce((sum, test) => sum + (test.modelResults?.length ?? 0), 0)
+      capabilityTestJob.value.progress = {
+        totalModels,
+        queuedModels: totalModels,
+        runningModels: 0,
+        successModels: 0,
+        failedModels: 0,
+        skippedModels: 0,
+        completedModels: 0
+      }
+    }
+  }
 
   try {
     const startResp: CapabilityTestJobStartResponse = await api.startChannelCapabilityTest(
       channelStore.activeTab,
       channelId,
+      targetProtocols,
       capabilityTestPreviousJobId.value || undefined
     )
     capabilityTestJobId.value = startResp.jobId
@@ -896,6 +1025,11 @@ const testChannelCapability = async (channelId: number) => {
     const message = error instanceof Error ? error.message : t('system.unknown')
     capabilityTestDialogRef.value?.setError(t('toast.capabilityFailed', { message }))
   }
+}
+
+const handleTestCapabilityProtocol = async (protocol: string) => {
+  if (capabilityTestChannelId.value < 0) return
+  await testChannelCapability(capabilityTestChannelId.value, [protocol])
 }
 
 const handleCancelCapabilityTest = async () => {

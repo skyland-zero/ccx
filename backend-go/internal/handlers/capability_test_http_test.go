@@ -16,7 +16,17 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+func resetCapabilityTestState() {
+	capabilityJobs = &capabilityTestJobStore{jobs: make(map[string]*CapabilityTestJob), lookupKey: make(map[string]string)}
+	capabilitySnapshots = newCapabilitySnapshotStore()
+	capabilityTestDispatcherPool = newCapabilityTestDispatcherPool()
+	capabilityCache.Lock()
+	capabilityCache.entries = make(map[string]*capabilityCacheEntry)
+	capabilityCache.Unlock()
+}
+
 func TestCancelCapabilityTestJob_HTTP(t *testing.T) {
+	resetCapabilityTestState()
 	gin.SetMode(gin.TestMode)
 
 	job := newCapabilityTestJob(0, "channel", "messages", "claude", []string{"messages"}, 10*time.Second)
@@ -64,6 +74,7 @@ func TestCancelCapabilityTestJob_HTTP(t *testing.T) {
 }
 
 func TestGetCapabilityTestJobStatus_HTTP(t *testing.T) {
+	resetCapabilityTestState()
 	gin.SetMode(gin.TestMode)
 
 	job := newCapabilityTestJob(0, "channel", "messages", "claude", []string{"messages"}, 10*time.Second)
@@ -100,6 +111,72 @@ func TestGetCapabilityTestJobStatus_HTTP(t *testing.T) {
 	}
 	if resp.Outcome != CapabilityOutcomePartial {
 		t.Fatalf("outcome=%s, want partial", resp.Outcome)
+	}
+}
+
+func TestCapabilityCacheHit_DoesNotBindExecutionLookupKey(t *testing.T) {
+	resetCapabilityTestState()
+	gin.SetMode(gin.TestMode)
+
+	tmpDir := t.TempDir()
+	configFile := filepath.Join(tmpDir, "config.json")
+	configJSON := `{"upstream":[{"name":"channel-a","serviceType":"claude","baseUrl":"https://example.com","apiKeys":["test"]},{"name":"channel-b","serviceType":"claude","baseUrl":"https://example.com","apiKeys":["test"]}]}`
+	if err := os.WriteFile(configFile, []byte(configJSON), 0644); err != nil {
+		t.Fatalf("write config failed: %v", err)
+	}
+	cfgManager, err := config.NewConfigManager(configFile)
+	if err != nil {
+		t.Fatalf("create config manager failed: %v", err)
+	}
+	defer cfgManager.Close()
+
+	cfg := cfgManager.GetConfig()
+	channel := cfg.Upstream[0]
+	baseURL := channel.GetAllBaseURLs()[0]
+	apiKey := channel.APIKeys[0]
+	protocols := []string{"messages"}
+	cacheKey := buildCapabilityCacheKey(baseURL, apiKey, channel.ServiceType, protocols, nil)
+	identityKey := resolveCapabilityIdentityKey(&channel)
+	executionLookupKey := buildCapabilityExecutionLookupKey(identityKey, "messages", protocols, nil)
+
+	setCapabilityCache(cacheKey, CapabilityTestResponse{
+		ChannelID:           0,
+		ChannelName:         "channel-a",
+		SourceType:          channel.ServiceType,
+		Tests:               []ProtocolTestResult{{Protocol: "messages", Success: true, TestedAt: time.Now().Format(time.RFC3339Nano)}},
+		CompatibleProtocols: []string{"messages"},
+		TotalDuration:       12,
+	})
+
+	r := gin.New()
+	r.POST("/messages/channels/:id/capability-test", TestChannelCapability(cfgManager, nil, "messages"))
+
+	body := `{"targetProtocols":["messages"],"timeout":10000}`
+	req := httptest.NewRequest(http.MethodPost, "/messages/channels/1/capability-test", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d, want=%d, body=%s", w.Code, http.StatusOK, w.Body.String())
+	}
+
+	if _, ok := capabilityJobs.getByLookupKey(executionLookupKey); ok {
+		t.Fatal("expected cache-hit path not to bind execution lookup key")
+	}
+
+	var resp struct {
+		Resumed bool              `json:"resumed"`
+		Job     CapabilityTestJob `json:"job"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response failed: %v", err)
+	}
+	if resp.Resumed {
+		t.Fatal("expected cache-hit response not to be marked resumed")
+	}
+	if resp.Job.ExecutionKey != "" {
+		t.Fatalf("executionKey=%q, want empty", resp.Job.ExecutionKey)
 	}
 }
 
@@ -442,10 +519,12 @@ func TestExecuteModelTest_RespectsAutoBlacklistBalance(t *testing.T) {
 }
 
 func TestResumedCancelledJob_ReturnsUpdatedState(t *testing.T) {
+	resetCapabilityTestState()
 	gin.SetMode(gin.TestMode)
 
 	// 创建一个已取消的 job
 	job := newCapabilityTestJob(0, "test-channel", "messages", "claude", []string{"messages"}, 10*time.Second)
+	job.ChannelKind = "messages"
 	job.Lifecycle = CapabilityLifecycleCancelled
 	job.Outcome = CapabilityOutcomeCancelled
 	job.Status = CapabilityJobStatusCancelled
@@ -472,6 +551,7 @@ func TestResumedCancelledJob_ReturnsUpdatedState(t *testing.T) {
 
 	cfg := cfgManager.GetConfig()
 	channel := cfg.Upstream[0]
+	job.IdentityKey = resolveCapabilityIdentityKey(&channel)
 	baseURL := ""
 	if len(channel.GetAllBaseURLs()) > 0 {
 		baseURL = channel.GetAllBaseURLs()[0]
@@ -483,9 +563,11 @@ func TestResumedCancelledJob_ReturnsUpdatedState(t *testing.T) {
 		apiKey = channel.DisabledAPIKeys[0].Key
 	}
 
-	// 绑定 lookupKey，模拟取消后保留的 lookupKey
+	// 绑定 execution lookupKey，模拟取消后保留的 identity 运行复用键
+	executionLookupKey := buildCapabilityExecutionLookupKey(resolveCapabilityIdentityKey(&channel), "messages", []string{"messages"}, nil)
 	cacheKey := buildCapabilityCacheKey(baseURL, apiKey, channel.ServiceType, []string{"messages"}, nil)
 	lookupKey := buildCapabilityJobLookupKey(cacheKey, "messages", 0)
+	capabilityJobs.bindLookupKey(executionLookupKey, job.JobID)
 	capabilityJobs.bindLookupKey(lookupKey, job.JobID)
 
 	r := gin.New()
@@ -527,6 +609,147 @@ func TestResumedCancelledJob_ReturnsUpdatedState(t *testing.T) {
 	}
 	if resp.Job.Outcome != CapabilityOutcomeUnknown {
 		t.Fatalf("job.outcome=%s, want unknown", resp.Job.Outcome)
+	}
+}
+
+func TestCapabilityPreviousJobReuse_ByIdentityAcrossChannels(t *testing.T) {
+	resetCapabilityTestState()
+	gin.SetMode(gin.TestMode)
+
+	tmpDir := t.TempDir()
+	configFile := filepath.Join(tmpDir, "config.json")
+	configJSON := `{"upstream":[{"name":"channel-a","serviceType":"claude","baseUrl":"https://example.com","apiKeys":["test"]},{"name":"channel-b","serviceType":"claude","baseUrl":"https://example.com","apiKeys":["test"]}]}`
+	if err := os.WriteFile(configFile, []byte(configJSON), 0644); err != nil {
+		t.Fatalf("write config failed: %v", err)
+	}
+	cfgManager, err := config.NewConfigManager(configFile)
+	if err != nil {
+		t.Fatalf("create config manager failed: %v", err)
+	}
+	defer cfgManager.Close()
+
+	cfg := cfgManager.GetConfig()
+	sharedIdentity := resolveCapabilityIdentityKey(&cfg.Upstream[0])
+
+	prevJob := newCapabilityTestJob(0, "channel-a", "messages", "claude", []string{"messages"}, 10*time.Second)
+	prevJob.IdentityKey = sharedIdentity
+	prevJob.ChannelKind = "messages"
+	prevJob.Lifecycle = CapabilityLifecycleDone
+	prevJob.Outcome = CapabilityOutcomeSuccess
+	prevJob.Status = CapabilityJobStatusCompleted
+	prevJob.CompatibleProtocols = []string{"messages"}
+	prevJob.Tests[0].Success = true
+	prevJob.Tests[0].SuccessCount = 1
+	prevJob.Tests[0].AttemptedModels = 1
+	prevJob.Tests[0].ModelResults = []CapabilityModelJobResult{{
+		Model:              "claude-opus-4-7",
+		Status:             CapabilityModelStatusSuccess,
+		Lifecycle:          CapabilityLifecycleDone,
+		Outcome:            CapabilityOutcomeSuccess,
+		Success:            true,
+		StreamingSupported: true,
+		Latency:            123,
+		TestedAt:           time.Now().Format(time.RFC3339Nano),
+	}}
+	capabilityJobs.create(prevJob)
+
+	r := gin.New()
+	r.POST("/messages/channels/:id/capability-test", TestChannelCapability(cfgManager, nil, "messages"))
+
+	body := `{"targetProtocols":["messages"],"timeout":10000,"previousJobId":"` + prevJob.JobID + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/messages/channels/1/capability-test", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d, want=%d, body=%s", w.Code, http.StatusOK, w.Body.String())
+	}
+
+	var resp struct {
+		Job CapabilityTestJob `json:"job"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response failed: %v", err)
+	}
+
+	if !resp.Job.HasReusedResults {
+		t.Fatal("expected job to reuse previous results across same identity")
+	}
+	if resp.Job.RunMode != CapabilityRunModeReusedPreviousResult {
+		t.Fatalf("runMode=%s, want reused_previous_results", resp.Job.RunMode)
+	}
+}
+
+func TestCapabilityRunningJobReuse_ByIdentityAcrossChannels(t *testing.T) {
+	resetCapabilityTestState()
+	gin.SetMode(gin.TestMode)
+
+	runningJob := newCapabilityTestJob(0, "channel-a", "messages", "claude", []string{"messages"}, 10*time.Second)
+	runningJob.IdentityKey = "shared-identity"
+	runningJob.ChannelKind = "messages"
+	runningJob.Status = CapabilityJobStatusRunning
+	runningJob.Lifecycle = CapabilityLifecycleActive
+	capabilityJobs.create(runningJob)
+
+	tmpDir := t.TempDir()
+	configFile := filepath.Join(tmpDir, "config.json")
+	configJSON := `{"upstream":[{"name":"channel-a","serviceType":"claude","baseUrl":"https://example.com","apiKeys":["test"]},{"name":"channel-b","serviceType":"claude","baseUrl":"https://example.com","apiKeys":["test"]}]}`
+	if err := os.WriteFile(configFile, []byte(configJSON), 0644); err != nil {
+		t.Fatalf("write config failed: %v", err)
+	}
+	cfgManager, err := config.NewConfigManager(configFile)
+	if err != nil {
+		t.Fatalf("create config manager failed: %v", err)
+	}
+	defer cfgManager.Close()
+
+	cfg := cfgManager.GetConfig()
+	channel := cfg.Upstream[0]
+	cacheKey := buildCapabilityCacheKey(channel.GetAllBaseURLs()[0], channel.APIKeys[0], channel.ServiceType, []string{"messages"}, nil)
+	executionLookupKey := buildCapabilityExecutionLookupKey(resolveCapabilityIdentityKey(&channel), "messages", []string{"messages"}, nil)
+	lookupKey := buildCapabilityJobLookupKey(cacheKey, "messages", 0)
+	capabilityJobs.bindLookupKey(executionLookupKey, runningJob.JobID)
+	capabilityJobs.bindLookupKey(lookupKey, runningJob.JobID)
+
+	r := gin.New()
+	r.POST("/messages/channels/:id/capability-test", TestChannelCapability(cfgManager, nil, "messages"))
+
+	body := `{"targetProtocols":["messages"],"timeout":10000}`
+	req := httptest.NewRequest(http.MethodPost, "/messages/channels/1/capability-test", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d, want=%d, body=%s", w.Code, http.StatusOK, w.Body.String())
+	}
+
+	var resp struct {
+		Resumed bool              `json:"resumed"`
+		Job     CapabilityTestJob `json:"job"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response failed: %v", err)
+	}
+
+	if !resp.Resumed {
+		t.Fatal("expected running job to be reused across same identity")
+	}
+	if resp.Job.RunMode != CapabilityRunModeReusedRunning {
+		t.Fatalf("runMode=%s, want reused_running", resp.Job.RunMode)
+	}
+	if resp.Job.JobID != runningJob.JobID {
+		t.Fatalf("jobId=%s, want %s", resp.Job.JobID, runningJob.JobID)
+	}
+	if resp.Job.ChannelID != 1 {
+		t.Fatalf("channelId=%d, want 1", resp.Job.ChannelID)
+	}
+	if resp.Job.ChannelName != "channel-b" {
+		t.Fatalf("channelName=%s, want channel-b", resp.Job.ChannelName)
+	}
+	if resp.Job.SourceType != "claude" {
+		t.Fatalf("sourceType=%s, want claude", resp.Job.SourceType)
 	}
 }
 
