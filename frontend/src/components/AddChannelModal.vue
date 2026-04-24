@@ -1330,8 +1330,8 @@ const modelMappingPresets: Record<
   'gpt-5.5': {
     modelMapping: {
       opus: 'gpt-5.5',
-      sonnet: 'gpt-5.5',
-      haiku: 'gpt-5.5'
+      sonnet: 'gpt-5.4',
+      haiku: 'gpt-5.3-codex'
     },
     reasoningMapping: {
       opus: 'xhigh',
@@ -1345,7 +1345,7 @@ const modelMappingPresets: Record<
     modelMapping: {
       opus: 'gpt-5.4',
       sonnet: 'gpt-5.4',
-      haiku: 'gpt-5.4'
+      haiku: 'gpt-5.3-codex'
     },
     reasoningMapping: {
       opus: 'xhigh',
