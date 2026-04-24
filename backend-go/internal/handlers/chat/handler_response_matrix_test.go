@@ -282,6 +282,105 @@ func TestChatHandler_PassthroughPreservesMultimodalRequest(t *testing.T) {
 	}
 }
 
+func TestChatHandler_ImageEditPassthroughSucceeds(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+
+		var captured map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Fatalf("decode upstream request: %v", err)
+		}
+
+		messages, ok := captured["messages"].([]interface{})
+		if !ok || len(messages) != 1 {
+			t.Fatalf("captured messages = %#v, want single message", captured["messages"])
+		}
+
+		message, ok := messages[0].(map[string]interface{})
+		if !ok {
+			t.Fatalf("captured message = %#v, want object", messages[0])
+		}
+
+		content, ok := message["content"].([]interface{})
+		if !ok || len(content) != 2 {
+			t.Fatalf("captured content = %#v, want 2-part array", message["content"])
+		}
+
+		textPart, ok := content[0].(map[string]interface{})
+		if !ok || textPart["type"] != "text" || textPart["text"] != "修改这个图片" {
+			t.Fatalf("captured text part = %#v, want original prompt", content[0])
+		}
+
+		imagePart, ok := content[1].(map[string]interface{})
+		if !ok || imagePart["type"] != "image_url" {
+			t.Fatalf("captured image part = %#v, want image_url", content[1])
+		}
+
+		imageURL, ok := imagePart["image_url"].(map[string]interface{})
+		if !ok || imageURL["url"] != "https://example.com/image.png" {
+			t.Fatalf("captured image_url = %#v, want original url", imagePart["image_url"])
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"chatcmpl_imgedit_1","object":"chat.completion","created":1677652288,"choices":[{"index":0,"message":{"role":"assistant","content":"图片已修改完成"},"finish_reason":"stop"}],"usage":{"prompt_tokens":9,"completion_tokens":12,"total_tokens":21}}`))
+	}))
+	defer upstream.Close()
+
+	router := newChatTestRouter(t, config.UpstreamConfig{
+		Name:        "chat_openai_image_edit",
+		BaseURL:     upstream.URL,
+		APIKeys:     []string{"sk-test"},
+		ServiceType: "openai",
+		Status:      "active",
+	})
+
+	requestBody := `{"model":"gpt-4o-image","stream":false,"messages":[{"role":"user","content":[{"type":"text","text":"修改这个图片"},{"type":"image_url","image_url":{"url":"https://example.com/image.png"}}]}]}`
+	w := performChatHandlerRequest(t, router, requestBody)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body=%s", w.Code, http.StatusOK, w.Body.String())
+	}
+
+	var resp struct {
+		ID      string `json:"id"`
+		Object  string `json:"object"`
+		Choices []struct {
+			Message struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			} `json:"message"`
+			FinishReason string `json:"finish_reason"`
+		} `json:"choices"`
+		Usage struct {
+			PromptTokens     int `json:"prompt_tokens"`
+			CompletionTokens int `json:"completion_tokens"`
+			TotalTokens      int `json:"total_tokens"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v, body=%s", err, w.Body.String())
+	}
+
+	if resp.ID != "chatcmpl_imgedit_1" {
+		t.Fatalf("id = %q, want chatcmpl_imgedit_1", resp.ID)
+	}
+	if resp.Object != "chat.completion" {
+		t.Fatalf("object = %q, want chat.completion", resp.Object)
+	}
+	if len(resp.Choices) != 1 {
+		t.Fatalf("choices = %#v, want single choice", resp.Choices)
+	}
+	if resp.Choices[0].Message.Content != "图片已修改完成" {
+		t.Fatalf("content = %q, want 图片已修改完成", resp.Choices[0].Message.Content)
+	}
+	if resp.Choices[0].FinishReason != "stop" {
+		t.Fatalf("finish_reason = %q, want stop", resp.Choices[0].FinishReason)
+	}
+	if resp.Usage.PromptTokens != 9 || resp.Usage.CompletionTokens != 12 || resp.Usage.TotalTokens != 21 {
+		t.Fatalf("usage = %#v, want {9 12 21}", resp.Usage)
+	}
+}
+
 func TestChatHandler_NonStreamMatrix_ToolCalls(t *testing.T) {
 	// Claude 上游走 convertClaudeResponseToChat 转换，能正确输出 OpenAI tool_calls 格式
 	t.Run("chat_handler_tool_from_claude", func(t *testing.T) {
