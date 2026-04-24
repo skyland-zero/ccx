@@ -215,6 +215,73 @@ func TestChatHandler_NonStreamMatrix_Passthrough(t *testing.T) {
 	}
 }
 
+func TestChatHandler_PassthroughPreservesMultimodalRequest(t *testing.T) {
+	tests := []struct {
+		name        string
+		serviceType string
+	}{
+		{name: "handler_openai_multimodal_passthrough", serviceType: "openai"},
+		{name: "handler_responses_multimodal_passthrough", serviceType: "responses"},
+		{name: "handler_gemini_multimodal_passthrough", serviceType: "gemini"},
+	}
+
+	requestBody := `{"model":"gpt-4o-image","messages":[{"role":"user","content":[{"type":"text","text":"修改这个图片"},{"type":"image_url","image_url":{"url":"https://example.com/image.png"}}]}]}`
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var captured map[string]interface{}
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				defer r.Body.Close()
+				if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+					t.Fatalf("decode upstream request: %v", err)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"id":"chatcmpl_1","object":"chat.completion","model":"gpt-4o-image","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`))
+			}))
+			defer upstream.Close()
+
+			router := newChatTestRouter(t, config.UpstreamConfig{
+				Name:        tt.name,
+				BaseURL:     upstream.URL,
+				APIKeys:     []string{"sk-test"},
+				ServiceType: tt.serviceType,
+				Status:      "active",
+			})
+
+			w := performChatHandlerRequest(t, router, requestBody)
+			if w.Code != http.StatusOK {
+				t.Fatalf("status = %d, want %d, body=%s", w.Code, http.StatusOK, w.Body.String())
+			}
+
+			messages, ok := captured["messages"].([]interface{})
+			if !ok || len(messages) != 1 {
+				t.Fatalf("captured messages = %#v, want single message", captured["messages"])
+			}
+
+			message, ok := messages[0].(map[string]interface{})
+			if !ok {
+				t.Fatalf("captured message = %#v, want object", messages[0])
+			}
+
+			content, ok := message["content"].([]interface{})
+			if !ok || len(content) != 2 {
+				t.Fatalf("captured content = %#v, want 2-part array", message["content"])
+			}
+
+			imagePart, ok := content[1].(map[string]interface{})
+			if !ok || imagePart["type"] != "image_url" {
+				t.Fatalf("captured image part = %#v, want image_url", content[1])
+			}
+
+			imageURL, ok := imagePart["image_url"].(map[string]interface{})
+			if !ok || imageURL["url"] != "https://example.com/image.png" {
+				t.Fatalf("captured image_url = %#v, want original url", imagePart["image_url"])
+			}
+		})
+	}
+}
+
 func TestChatHandler_NonStreamMatrix_ToolCalls(t *testing.T) {
 	// Claude 上游走 convertClaudeResponseToChat 转换，能正确输出 OpenAI tool_calls 格式
 	t.Run("chat_handler_tool_from_claude", func(t *testing.T) {
