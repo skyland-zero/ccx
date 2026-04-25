@@ -33,33 +33,17 @@
         </div>
 
         <div v-else-if="job">
-          <div class="capability-toolbar mb-4">
-            <div v-if="state === 'idle'" class="flex-grow-1">
-              <v-alert type="info" variant="tonal" rounded="lg">
-                <div class="d-flex flex-column ga-2">
-                  <div class="text-subtitle-2">{{ t('capability.idleTitle') }}</div>
-                  <div class="text-body-2">{{ t('capability.idleBody') }}</div>
-                </div>
-              </v-alert>
-            </div>
-            <v-text-field
-              v-model.number="rpmValue"
-              :label="t('capability.rpmLabel')"
-              type="number"
-              min="1"
-              max="60"
-              step="1"
-              variant="outlined"
-              density="compact"
-              hide-details
-              class="capability-rpm-field"
-              prepend-inner-icon="mdi-speedometer"
-              @blur="handleRpmBlur"
-            />
+          <div v-if="state === 'idle'" class="mb-4">
+            <v-alert type="info" variant="tonal" rounded="lg">
+              <div class="d-flex flex-column ga-2">
+                <div class="text-subtitle-2">{{ t('capability.idleTitle') }}</div>
+                <div class="text-body-2">{{ t('capability.idleBody') }}</div>
+              </div>
+            </v-alert>
           </div>
 
           <div class="capability-status-bar mb-4">
-            <div class="d-flex align-center flex-wrap ga-2">
+            <div class="d-flex align-center flex-wrap ga-2 capability-status-summary">
               <v-chip v-if="runMode !== 'fresh'" color="info" size="small" variant="tonal">
                 {{ getRunModeLabel(runMode) }}
               </v-chip>
@@ -92,6 +76,19 @@
                 <v-progress-circular v-if="state === 'pending' || state === 'running'" indeterminate size="12" width="2" color="primary" />
                 <span>{{ state === 'idle' ? t('capability.notStarted') : state === 'pending' ? t('capability.modelQueued') : t('capability.protocolRunning') }}</span>
               </v-chip>
+              <label class="capability-rpm-inline" :aria-label="t('capability.rpmLabel')">
+                <v-icon size="small">mdi-speedometer</v-icon>
+                <span class="capability-rpm-label">{{ t('capability.rpmLabel') }}</span>
+                <input
+                  v-model.number="rpmValue"
+                  class="capability-rpm-input"
+                  type="number"
+                  min="1"
+                  max="60"
+                  step="1"
+                  @blur="handleRpmBlur"
+                >
+              </label>
 
               <span v-if="job?.progress?.totalModels && isJobActiveLike" class="text-caption text-medium-emphasis">
                 {{ t('capability.progressSummary', { done: job.progress.completedModels, total: job.progress.totalModels }) }}
@@ -607,22 +604,6 @@ defineExpose({ setError })
 </script>
 
 <style scoped>
-.capability-toolbar {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.capability-rpm-field {
-  width: 140px;
-  min-width: 140px;
-}
-
-.capability-rpm-field :deep(.v-input__details) {
-  display: none;
-}
-
 .dialog-title-wrapper {
   flex: 1;
   min-width: 0;
@@ -634,6 +615,60 @@ defineExpose({ setError })
   justify-content: space-between;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.capability-status-summary {
+  flex: 1;
+  min-width: 0;
+}
+
+.capability-rpm-inline {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 6px;
+  min-height: 26px;
+  padding: 0 8px;
+  border: 1px solid rgba(var(--v-theme-outline), 0.38);
+  border-radius: 6px;
+  color: rgba(var(--v-theme-on-surface), 0.78);
+  background: rgb(var(--v-theme-surface));
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+.capability-rpm-inline:focus-within {
+  border-color: rgb(var(--v-theme-primary));
+  box-shadow: 0 0 0 1px rgb(var(--v-theme-primary));
+}
+
+.capability-rpm-label {
+  white-space: nowrap;
+}
+
+.capability-rpm-input {
+  box-sizing: border-box;
+  width: 48px;
+  min-width: 48px;
+  border: 0;
+  outline: 0;
+  padding: 0;
+  -moz-appearance: textfield;
+  -webkit-appearance: none;
+  appearance: textfield;
+  background: transparent;
+  color: rgb(var(--v-theme-on-surface));
+  font: inherit;
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: right;
+}
+
+.capability-rpm-input::-webkit-outer-spin-button,
+.capability-rpm-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
 }
 
 .capability-table :deep(th) {
