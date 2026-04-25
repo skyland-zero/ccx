@@ -638,8 +638,13 @@ func (s *ChannelScheduler) getActiveChannels(kind ChannelKind, model string) []C
 		// 只选择 active 状态的渠道（suspended 也算在活跃序列中，但会被健康检查过滤）
 		if status != "disabled" {
 			// 过滤不支持当前模型的渠道
-			if model != "" && !upstream.SupportsModel(model) {
-				continue
+			if model != "" {
+				supported, reason := upstream.ExplainModelSupport(model)
+				if !supported {
+					prefix := kindSchedulerLogPrefix(kind)
+					log.Printf("[%s-ModelFilter] 跳过渠道 [%d] %s: 模型 %q 不被 supportedModels 支持 (%s)", prefix, i, upstream.Name, model, reason)
+					continue
+				}
 			}
 
 			priority := upstream.Priority

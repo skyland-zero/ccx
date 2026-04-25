@@ -39,6 +39,31 @@ func TestSupportsModel(t *testing.T) {
 	}
 }
 
+func TestExplainModelSupport(t *testing.T) {
+	tests := []struct {
+		name            string
+		supportedModels []string
+		model           string
+		wantSupported   bool
+		wantReason      string
+	}{
+		{"空列表匹配所有", nil, "gpt-5.5", true, ""},
+		{"命中排除规则", []string{"*", "!gpt-5.5"}, "gpt-5.5", false, "命中排除规则 !gpt-5.5"},
+		{"未命中包含规则", []string{"claude-*"}, "gpt-5.5", false, "未命中包含规则"},
+		{"命中包含规则", []string{"gpt-*"}, "gpt-5.5", true, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			u := &UpstreamConfig{SupportedModels: tt.supportedModels}
+			gotSupported, gotReason := u.ExplainModelSupport(tt.model)
+			if gotSupported != tt.wantSupported || gotReason != tt.wantReason {
+				t.Fatalf("ExplainModelSupport(%q) = (%v, %q), want (%v, %q)", tt.model, gotSupported, gotReason, tt.wantSupported, tt.wantReason)
+			}
+		})
+	}
+}
+
 func TestIsValidSupportedModelPattern(t *testing.T) {
 	tests := []struct {
 		name    string

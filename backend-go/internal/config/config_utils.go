@@ -259,25 +259,31 @@ func (u *UpstreamConfig) Clone() *UpstreamConfig {
 // SupportsModel 检查渠道是否支持指定模型
 // 空列表表示支持所有模型；支持精确匹配，以及 prefix* / *suffix / *contains* 形式的包含与排除规则。
 func (u *UpstreamConfig) SupportsModel(model string) bool {
+	supported, _ := u.ExplainModelSupport(model)
+	return supported
+}
+
+// ExplainModelSupport 返回渠道是否支持指定模型，以及不支持时的原因。
+func (u *UpstreamConfig) ExplainModelSupport(model string) (bool, string) {
 	if len(u.SupportedModels) == 0 {
-		return true
+		return true, ""
 	}
 
 	includes, excludes := splitSupportedModelRules(u.SupportedModels)
 	for _, pattern := range excludes {
 		if matchSupportedModelPattern(pattern, model) {
-			return false
+			return false, "命中排除规则 !" + pattern
 		}
 	}
 	if len(includes) == 0 {
-		return true
+		return true, ""
 	}
 	for _, pattern := range includes {
 		if matchSupportedModelPattern(pattern, model) {
-			return true
+			return true, ""
 		}
 	}
-	return false
+	return false, "未命中包含规则"
 }
 
 func splitSupportedModelRules(rules []string) (includes []string, excludes []string) {

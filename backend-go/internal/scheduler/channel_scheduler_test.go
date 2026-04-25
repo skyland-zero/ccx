@@ -1,10 +1,13 @@
 package scheduler
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -762,6 +765,29 @@ func TestSelectChannelFiltersSupportedModels(t *testing.T) {
 		}
 		if result.ChannelIndex != 1 {
 			t.Fatalf("期望选择 index=1，实际为 %d", result.ChannelIndex)
+		}
+	})
+
+	t.Run("模型过滤跳过渠道时记录命中排除规则", func(t *testing.T) {
+		var buf bytes.Buffer
+		oldOutput := log.Writer()
+		log.SetOutput(&buf)
+		defer log.SetOutput(oldOutput)
+
+		result, err := scheduler.SelectChannel(context.Background(), "test-user", make(map[int]bool), ChannelKindMessages, "gpt-4-image-preview", "")
+		if err != nil {
+			t.Fatalf("选择渠道失败: %v", err)
+		}
+		if result.ChannelIndex != 1 {
+			t.Fatalf("期望选择 index=1，实际为 %d", result.ChannelIndex)
+		}
+
+		logOutput := buf.String()
+		if !strings.Contains(logOutput, "[Scheduler-ModelFilter] 跳过渠道 [0] image-excluded") {
+			t.Fatalf("期望记录模型过滤跳过日志，实际日志: %s", logOutput)
+		}
+		if !strings.Contains(logOutput, "模型 \"gpt-4-image-preview\" 不被 supportedModels 支持 (命中排除规则 !*image*)") {
+			t.Fatalf("期望记录命中的排除规则，实际日志: %s", logOutput)
 		}
 	})
 
