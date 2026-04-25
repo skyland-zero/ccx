@@ -15,6 +15,9 @@ export function resolveChannelWatcherAction(params: {
   }
 
   if (newChannel) {
+    if (oldChannel && newChannel.index === oldChannel.index) {
+      return 'noop'
+    }
     return 'load-edit-channel'
   }
 

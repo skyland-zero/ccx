@@ -80,7 +80,7 @@ const apexchart = VueApexCharts
 // Props
 const props = defineProps<{
   channelId: number
-  channelType: 'messages' | 'chat' | 'responses' | 'gemini'
+  channelType: 'messages' | 'chat' | 'responses' | 'gemini' | 'images'
 }>()
 const { t } = useI18n()
 
@@ -710,6 +710,8 @@ const refreshData = async (isAutoRefresh = false) => {
       newData = await api.getResponsesChannelKeyMetricsHistory(props.channelId, selectedDuration.value)
     } else if (props.channelType === 'gemini') {
       newData = await api.getGeminiChannelKeyMetricsHistory(props.channelId, selectedDuration.value)
+    } else if (props.channelType === 'images') {
+      newData = await api.getImagesChannelKeyMetricsHistory(props.channelId, selectedDuration.value)
     } else {
       newData = await api.getChannelKeyMetricsHistory(props.channelId, selectedDuration.value)
     }

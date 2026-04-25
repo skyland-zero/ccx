@@ -191,9 +191,9 @@ export type CapabilityLifecycle = 'pending' | 'active' | 'done' | 'cancelled'
 export type CapabilityOutcome = 'unknown' | 'success' | 'failed' | 'partial' | 'cancelled'
 export type CapabilityRunMode = 'fresh' | 'reused_running' | 'resumed_cancelled' | 'cache_hit' | 'reused_previous_results'
 
-export type CapabilityTestJobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
-export type CapabilityProtocolJobStatus = 'queued' | 'running' | 'completed' | 'failed'
-export type CapabilityModelJobStatus = 'queued' | 'running' | 'success' | 'failed' | 'skipped'
+export type CapabilityTestJobStatus = 'idle' | 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
+export type CapabilityProtocolJobStatus = 'idle' | 'queued' | 'running' | 'completed' | 'failed'
+export type CapabilityModelJobStatus = 'idle' | 'queued' | 'running' | 'success' | 'failed' | 'skipped'
 
 export interface CapabilityJobProgress {
   totalModels: number

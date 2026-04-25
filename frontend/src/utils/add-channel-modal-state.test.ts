@@ -33,6 +33,18 @@ describe('resolveChannelWatcherAction', () => {
     })).toBe('load-edit-channel')
   })
 
+  it('同一渠道静默保存后仅更新基线，不重置本地草稿', () => {
+    expect(resolveChannelWatcherAction({
+      show: true,
+      newChannel: {
+        ...sampleChannel,
+        name: 'existing-channel-updated',
+        baseUrl: 'https://example.com/v2'
+      },
+      oldChannel: sampleChannel,
+    })).toBe('noop')
+  })
+
   it('编辑态 channel 被清空时保持 noop，避免误切快速添加', () => {
     expect(resolveChannelWatcherAction({
       show: true,

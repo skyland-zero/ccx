@@ -904,7 +904,7 @@ import { useI18n } from '../i18n'
 interface Props {
   show: boolean
   channel?: Channel | null
-  channelType?: 'messages' | 'chat' | 'responses' | 'gemini'
+  channelType?: 'messages' | 'chat' | 'responses' | 'gemini' | 'images'
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -1787,7 +1787,6 @@ const ensureLatestSavedChannel = async (): Promise<number | null> => {
     const latestChannel = channelStore.currentChannelsData.channels?.find(ch => ch.index === props.channel!.index) || null
     if (latestChannel) {
       dialogStore.editingChannel = latestChannel
-      loadChannelData(latestChannel)
     }
     return result.channelId ?? props.channel.index
   } catch (error) {

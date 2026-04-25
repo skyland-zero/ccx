@@ -100,7 +100,7 @@ const props = defineProps<{
   modelValue: boolean
   channelIndex: number
   channelName: string
-  channelType: 'messages' | 'chat' | 'responses' | 'gemini'
+  channelType: 'messages' | 'chat' | 'responses' | 'gemini' | 'images'
 }>()
 
 defineEmits<{

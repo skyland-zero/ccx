@@ -1,7 +1,7 @@
 import { isValidUrl } from './quickInputParser'
 import { buildExpectedRequestUrl, type ServiceType } from './baseUrlSemantics'
 
-export type ChannelType = 'messages' | 'chat' | 'responses' | 'gemini'
+export type ChannelType = 'messages' | 'chat' | 'responses' | 'gemini' | 'images'
 
 export interface ExpectedRequestUrlItem {
   baseUrl: string
