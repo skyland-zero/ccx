@@ -140,6 +140,9 @@ type Config struct {
 	// Chat Completions 接口专用配置（OpenAI /v1/chat/completions 兼容）
 	ChatUpstream []UpstreamConfig `json:"chatUpstream,omitempty"`
 
+	// Images 接口专用配置（OpenAI /v1/images/generations 兼容）
+	ImagesUpstream []UpstreamConfig `json:"imagesUpstream,omitempty"`
+
 	// Fuzzy 模式：启用时模糊处理错误，所有非 2xx 错误都尝试 failover
 	FuzzyModeEnabled bool `json:"fuzzyModeEnabled"`
 
@@ -210,6 +213,14 @@ func (cm *ConfigManager) GetConfig() Config {
 		cloned.ChatUpstream = make([]UpstreamConfig, len(cm.config.ChatUpstream))
 		for i := range cm.config.ChatUpstream {
 			cloned.ChatUpstream[i] = *cm.config.ChatUpstream[i].Clone()
+		}
+	}
+
+	// 深拷贝 ImagesUpstream slice
+	if len(cm.config.ImagesUpstream) > 0 {
+		cloned.ImagesUpstream = make([]UpstreamConfig, len(cm.config.ImagesUpstream))
+		for i := range cm.config.ImagesUpstream {
+			cloned.ImagesUpstream[i] = *cm.config.ImagesUpstream[i].Clone()
 		}
 	}
 
@@ -652,6 +663,8 @@ func (cm *ConfigManager) getUpstreamSliceLocked(apiType string) *[]UpstreamConfi
 		return &cm.config.GeminiUpstream
 	case "Chat":
 		return &cm.config.ChatUpstream
+	case "Images":
+		return &cm.config.ImagesUpstream
 	default:
 		return nil
 	}

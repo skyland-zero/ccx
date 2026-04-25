@@ -45,6 +45,7 @@ func newGeminiTestRouter(t *testing.T, upstream config.UpstreamConfig) *gin.Engi
 		metrics.NewMetricsManager(),
 		metrics.NewMetricsManager(),
 		metrics.NewMetricsManager(),
+		metrics.NewMetricsManager(),
 		session.NewTraceAffinityManager(),
 		nil,
 	)

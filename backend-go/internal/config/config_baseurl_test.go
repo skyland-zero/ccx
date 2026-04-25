@@ -109,6 +109,34 @@ func TestUpdateUpstream_BaseURLConsistency(t *testing.T) {
 	}
 }
 
+func TestAddImagesUpstream_RejectsUnsupportedServiceType(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.json")
+	initialConfig := `{"upstream":[],"imagesUpstream":[]}`
+	if err := os.WriteFile(configPath, []byte(initialConfig), 0644); err != nil {
+		t.Fatalf("写入初始配置失败: %v", err)
+	}
+
+	cm, err := NewConfigManager(configPath)
+	if err != nil {
+		t.Fatalf("初始化配置管理器失败: %v", err)
+	}
+	defer cm.Close()
+
+	err = cm.AddImagesUpstream(UpstreamConfig{
+		Name:        "images-gemini",
+		ServiceType: "gemini",
+		BaseURL:     "https://example.com",
+		APIKeys:     []string{"test-key"},
+	})
+	if err == nil {
+		t.Fatal("expected AddImagesUpstream to reject unsupported serviceType")
+	}
+	if err.Error() != "Images 渠道仅支持 openai serviceType，当前为 gemini" {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 // TestUpdateResponsesUpstream_BaseURLConsistency 测试 Responses 渠道的 baseUrl 一致性
 func TestUpdateResponsesUpstream_BaseURLConsistency(t *testing.T) {
 	tempDir := t.TempDir()

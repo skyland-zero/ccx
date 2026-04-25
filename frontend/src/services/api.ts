@@ -847,9 +847,9 @@ export class ApiService {
   }
 
   // 获取调度器统计信息
-  async getSchedulerStats(type?: 'messages' | 'responses' | 'gemini' | 'chat'): Promise<SchedulerStatsResponse> {
-    // Gemini 暂无调度器统计，返回默认值
-    if (type === 'gemini') {
+  async getSchedulerStats(type?: 'messages' | 'responses' | 'gemini' | 'chat' | 'images'): Promise<SchedulerStatsResponse> {
+    // Gemini 与 Images 暂无独立调度器统计页，返回默认值
+    if (type === 'gemini' || type === 'images') {
       return {
         multiChannelMode: false,
         activeChannelCount: 0,
@@ -864,7 +864,7 @@ export class ApiService {
   }
 
   // 获取渠道仪表盘数据（合并 channels + metrics + stats）
-  async getChannelDashboard(type: 'messages' | 'responses' | 'gemini' | 'chat' = 'messages'): Promise<ChannelDashboardResponse> {
+  async getChannelDashboard(type: 'messages' | 'responses' | 'gemini' | 'chat' | 'images' = 'messages'): Promise<ChannelDashboardResponse> {
     const query = type !== 'messages' ? `?type=${type}` : ''
     return this.request(`/messages/channels/dashboard${query}`)
   }
@@ -984,13 +984,13 @@ export class ApiService {
   }
   // ============== 模型统计 API ==============
 
-  async getModelStatsHistory(type: 'messages' | 'responses' | 'gemini' | 'chat', duration: string = '24h'): Promise<ModelStatsHistoryResponse> {
+  async getModelStatsHistory(type: 'messages' | 'responses' | 'gemini' | 'chat' | 'images', duration: string = '24h'): Promise<ModelStatsHistoryResponse> {
     return this.request(`/${type}/models/stats/history?duration=${duration}`)
   }
 
   // ============== 渠道日志 API ==============
 
-  async getChannelLogs(type: 'messages' | 'responses' | 'gemini' | 'chat', channelId: number): Promise<ChannelLogsResponse> {
+  async getChannelLogs(type: 'messages' | 'responses' | 'gemini' | 'chat' | 'images', channelId: number): Promise<ChannelLogsResponse> {
     return this.request(`/${type}/channels/${channelId}/logs`)
   }
 
@@ -1109,6 +1109,128 @@ export class ApiService {
 
   async getChatChannelModels(id: number, request: ChannelModelsRequest): Promise<ModelsResponse> {
     return this.request(`/chat/channels/${id}/models`, {
+      method: 'POST',
+      body: JSON.stringify(request)
+    })
+  }
+
+  // ============== Images 渠道管理 API ==============
+
+  async getImagesChannels(): Promise<ChannelsResponse> {
+    return this.request('/images/channels')
+  }
+
+  async addImagesChannel(channel: Omit<Channel, 'index' | 'latency' | 'status'>): Promise<void> {
+    await this.request('/images/channels', {
+      method: 'POST',
+      body: JSON.stringify(channel)
+    })
+  }
+
+  async updateImagesChannel(id: number, channel: Partial<Channel>): Promise<void> {
+    await this.request(`/images/channels/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(channel)
+    })
+  }
+
+  async deleteImagesChannel(id: number): Promise<void> {
+    await this.request(`/images/channels/${id}`, {
+      method: 'DELETE'
+    })
+  }
+
+  async addImagesApiKey(channelId: number, apiKey: string): Promise<void> {
+    await this.request(`/images/channels/${channelId}/keys`, {
+      method: 'POST',
+      body: JSON.stringify({ apiKey })
+    })
+  }
+
+  async removeImagesApiKey(channelId: number, apiKey: string): Promise<void> {
+    await this.request(`/images/channels/${channelId}/keys/${encodeURIComponent(apiKey)}`, {
+      method: 'DELETE'
+    })
+  }
+
+  async restoreImagesApiKey(channelId: number, apiKey: string): Promise<void> {
+    await this.request(`/images/channels/${channelId}/keys/restore`, {
+      method: 'POST',
+      body: JSON.stringify({ apiKey })
+    })
+  }
+
+  async moveImagesApiKeyToTop(channelId: number, apiKey: string): Promise<void> {
+    await this.request(`/images/channels/${channelId}/keys/${encodeURIComponent(apiKey)}/top`, {
+      method: 'POST'
+    })
+  }
+
+  async moveImagesApiKeyToBottom(channelId: number, apiKey: string): Promise<void> {
+    await this.request(`/images/channels/${channelId}/keys/${encodeURIComponent(apiKey)}/bottom`, {
+      method: 'POST'
+    })
+  }
+
+  async reorderImagesChannels(order: number[]): Promise<void> {
+    await this.request('/images/channels/reorder', {
+      method: 'POST',
+      body: JSON.stringify({ order })
+    })
+  }
+
+  async setImagesChannelStatus(channelId: number, status: ChannelStatus): Promise<void> {
+    await this.request(`/images/channels/${channelId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status })
+    })
+  }
+
+  async resumeImagesChannel(channelId: number): Promise<ResumeChannelResponse> {
+    return this.request(`/images/channels/${channelId}/resume`, {
+      method: 'POST'
+    })
+  }
+
+  async getImagesChannelMetrics(): Promise<ChannelMetrics[]> {
+    return this.request('/images/channels/metrics')
+  }
+
+  async setImagesChannelPromotion(channelId: number, durationSeconds: number): Promise<void> {
+    await this.request(`/images/channels/${channelId}/promotion`, {
+      method: 'POST',
+      body: JSON.stringify({ duration: durationSeconds })
+    })
+  }
+
+  async getImagesChannelMetricsHistory(duration: string = '24h'): Promise<MetricsHistoryResponse[]> {
+    return this.request(`/images/channels/metrics/history?duration=${duration}`)
+  }
+
+  async getImagesChannelKeyMetricsHistory(channelId: number, duration: string = '6h'): Promise<ChannelKeyMetricsHistoryResponse> {
+    return this.request(`/images/channels/${channelId}/keys/metrics/history?duration=${duration}`)
+  }
+
+  async getImagesGlobalStats(duration: string = '24h'): Promise<GlobalStatsHistoryResponse> {
+    return this.request(`/images/global/stats/history?duration=${duration}`)
+  }
+
+  async pingImagesChannel(id: number): Promise<PingResult> {
+    return this.request(`/images/ping/${id}`)
+  }
+
+  async pingAllImagesChannels(): Promise<Array<{ id: number; name: string; latency: number; status: string }>> {
+    const resp = await this.request('/images/ping')
+    return (resp.channels || []).map((ch: { index: number; name: string; latency: number; success: boolean }) => ({
+      id: ch.index,
+      name: ch.name,
+      latency: ch.latency,
+      status: ch.success ? 'healthy' : 'error'
+    }))
+  }
+
+  async getImagesChannelModels(id: number, request: ChannelModelsRequest): Promise<ModelsResponse> {
+    return this.request(`/images/channels/${id}/models`, {
       method: 'POST',
       body: JSON.stringify(request)
     })

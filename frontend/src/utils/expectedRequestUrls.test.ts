@@ -55,4 +55,26 @@ describe('buildExpectedRequestUrls', () => {
     expect(root[0].expectedUrl).toBe('https://new.timefiles.online/v1/chat/completions')
     expect(versioned[0].expectedUrl).toBe(root[0].expectedUrl)
   })
+
+  it('应为 images 渠道生成 OpenAI Images 端点', () => {
+    const result = buildExpectedRequestUrls('images', 'openai', 'https://api.openai.com')
+
+    expect(result).toEqual([
+      {
+        baseUrl: 'https://api.openai.com',
+        expectedUrl: 'https://api.openai.com/v1/images/generations'
+      }
+    ])
+  })
+
+  it('应为带 # 的 images 渠道保留无版本前缀语义', () => {
+    const result = buildExpectedRequestUrls('images', 'openai', 'https://api.openai.com#')
+
+    expect(result).toEqual([
+      {
+        baseUrl: 'https://api.openai.com#',
+        expectedUrl: 'https://api.openai.com/images/generations'
+      }
+    ])
+  })
 })

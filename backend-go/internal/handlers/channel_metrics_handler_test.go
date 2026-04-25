@@ -474,6 +474,7 @@ func TestResumeChannel_RestoresBlacklistedKeys(t *testing.T) {
 			responsesMetrics := metrics.NewMetricsManager()
 			geminiMetrics := metrics.NewMetricsManager()
 			chatMetrics := metrics.NewMetricsManager()
+			imagesMetrics := metrics.NewMetricsManager()
 			defer messagesMetrics.Stop()
 			defer responsesMetrics.Stop()
 			defer geminiMetrics.Stop()
@@ -482,7 +483,7 @@ func TestResumeChannel_RestoresBlacklistedKeys(t *testing.T) {
 			traceAffinity := session.NewTraceAffinityManager()
 			defer traceAffinity.Stop()
 			urlManager := warmup.NewURLManager(30*time.Second, 3)
-			sch := scheduler.NewChannelScheduler(cfgManager, messagesMetrics, responsesMetrics, geminiMetrics, chatMetrics, traceAffinity, urlManager)
+			sch := scheduler.NewChannelScheduler(cfgManager, messagesMetrics, responsesMetrics, geminiMetrics, chatMetrics, imagesMetrics, traceAffinity, urlManager)
 
 			var baseURL string
 			var kind scheduler.ChannelKind

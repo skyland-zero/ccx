@@ -269,12 +269,14 @@ func buildMetricsKeyMigrationMap(cfg config.Config) map[string]map[string]metric
 		"responses": {},
 		"gemini":    {},
 		"chat":      {},
+		"images":    {},
 	}
 
 	addUpstreamMetricsKeyMappings(mapping["messages"], cfg.Upstream, "claude")
 	addUpstreamMetricsKeyMappings(mapping["responses"], cfg.ResponsesUpstream, "responses")
 	addUpstreamMetricsKeyMappings(mapping["gemini"], cfg.GeminiUpstream, "gemini")
 	addUpstreamMetricsKeyMappings(mapping["chat"], cfg.ChatUpstream, "openai")
+	addUpstreamMetricsKeyMappings(mapping["images"], cfg.ImagesUpstream, "openai")
 
 	return mapping
 }

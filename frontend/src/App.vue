@@ -111,6 +111,9 @@
           <router-link to="/channels/gemini" class="api-type-text" :class="{ active: channelStore.activeTab === 'gemini' }">
             {{ t('app.tabs.gemini') }}
           </router-link>
+          <router-link to="/channels/images" class="api-type-text" :class="{ active: channelStore.activeTab === 'images' }">
+            {{ t('app.tabs.images') }}
+          </router-link>
           <span class="brand-text d-none d-md-inline">API Proxy - CCX</span>
         </div>
       </div>
@@ -485,6 +488,7 @@ const apiTabOptions = [
   { value: 'chat', labelKey: 'app.tabs.chat', route: '/channels/chat' },
   { value: 'responses', labelKey: 'app.tabs.responses', route: '/channels/responses' },
   { value: 'gemini', labelKey: 'app.tabs.gemini', route: '/channels/gemini' },
+  { value: 'images', labelKey: 'app.tabs.images', route: '/channels/images' },
 ] as const
 
 const translatedApiTabOptions = computed(() => {
@@ -643,6 +647,8 @@ const addApiKey = async () => {
   try {
     if (channelStore.activeTab === 'chat') {
       await api.addChatApiKey(dialogStore.selectedChannelForKey, dialogStore.newApiKey.trim())
+    } else if (channelStore.activeTab === 'images') {
+      await api.addImagesApiKey(dialogStore.selectedChannelForKey, dialogStore.newApiKey.trim())
     } else if (channelStore.activeTab === 'gemini') {
       await api.addGeminiApiKey(dialogStore.selectedChannelForKey, dialogStore.newApiKey.trim())
     } else if (channelStore.activeTab === 'responses') {
@@ -664,6 +670,8 @@ const _removeApiKey = async (channelId: number, apiKey: string) => {
   try {
     if (channelStore.activeTab === 'chat') {
       await api.removeChatApiKey(channelId, apiKey)
+    } else if (channelStore.activeTab === 'images') {
+      await api.removeImagesApiKey(channelId, apiKey)
     } else if (channelStore.activeTab === 'gemini') {
       await api.removeGeminiApiKey(channelId, apiKey)
     } else if (channelStore.activeTab === 'responses') {
@@ -704,7 +712,8 @@ const capabilityPlaceholderModels: Record<string, string[]> = {
   messages: ['claude-opus-4-7', 'claude-opus-4-6', 'claude-opus-4-5-20251101', 'claude-sonnet-4-6', 'claude-sonnet-4-5-20250929', 'claude-haiku-4-5-20251001'],
   chat: ['gpt-5.4', 'gpt-5.3-codex', 'gpt-5.2', 'gpt-5.2-codex'],
   responses: ['gpt-5.4', 'gpt-5.3-codex', 'gpt-5.2', 'gpt-5.2-codex'],
-  gemini: ['gemini-3.1-pro-preview', 'gemini-3.1-pro', 'gemini-3-pro-preview', 'gemini-3-pro', 'gemini-3-flash-preview', 'gemini-3-flash']
+  gemini: ['gemini-3.1-pro-preview', 'gemini-3.1-pro', 'gemini-3-pro-preview', 'gemini-3-pro', 'gemini-3-flash-preview', 'gemini-3-flash'],
+  images: ['gpt-image-1', 'dall-e-3', 'dall-e-2']
 }
 
 const capabilityProtocolOrder = ['messages', 'responses', 'chat', 'gemini'] as const
@@ -943,7 +952,7 @@ const handleCopyToTab = async (targetProtocol: string) => {
   // 构造渠道配置（仅复制核心连接信息）
   const channelConfig: Omit<Channel, 'index' | 'latency' | 'status'> = {
     name: sourceChannel.name,
-    serviceType: sourceChannel.serviceType,
+    serviceType: targetProtocol === 'images' ? 'openai' : sourceChannel.serviceType,
     baseUrl: sourceChannel.baseUrl,
     baseUrls: sourceChannel.baseUrls,
     apiKeys: [...sourceChannel.apiKeys],
@@ -978,6 +987,9 @@ const handleCopyToTab = async (targetProtocol: string) => {
         break
       case 'responses':
         await api.addResponsesChannel(channelConfig)
+        break
+      case 'images':
+        await api.addImagesChannel(channelConfig)
         break
       default:
         showToast(t('toast.unsupportedProtocol', { protocol: targetProtocol }), 'error')

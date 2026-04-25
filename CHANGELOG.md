@@ -1,3 +1,14 @@
+## [Unreleased]
+
+### Added
+
+- **新增独立 Images 渠道与 OpenAI Images 代理入口** - 新增 `imagesUpstream` 配置、`ChannelKindImages` 调度类型、`/v1/images/generations` 与 `/api/images/channels/*` 管理接口，支持独立的 key 管理、排序、状态切换、promotion、metrics/history、logs、ping 与 models 查询，避免图片请求与 Chat 渠道混用指标和熔断状态
+- **前端接入 Images 渠道页签与基础运维能力** - 在管理界面新增 Images 标签页，接入 dashboard、CRUD、排序、promotion、日志、图表和模型查询；Images 渠道默认走 OpenAI 兼容语义，并隐藏未实现的 capability test 入口
+
+### Changed
+
+- **扩展调度器、指标迁移与回归测试以支持第五类渠道** - `scheduler`、`channel_metrics_handler`、SQLite metrics key 迁移、模型查询 fallback 与相关 handler/scheduler 回归测试统一纳入 Images 渠道，保持与 messages / responses / chat / gemini 一致的隔离和恢复语义
+
 ## [v2.6.67] - 2026-04-22
 
 ### Changed

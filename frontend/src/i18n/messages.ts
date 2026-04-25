@@ -16,6 +16,7 @@ export type MessageKey =
   | 'app.tabs.chat'
   | 'app.tabs.responses'
   | 'app.tabs.gemini'
+  | 'app.tabs.images'
   | 'app.header.logout'
   | 'app.stats.trafficTitle'
   | 'app.stats.totalChannels'
@@ -379,6 +380,7 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'app.tabs.chat': 'OpenAI Chat',
     'app.tabs.responses': 'Codex',
     'app.tabs.gemini': 'Gemini',
+    'app.tabs.images': 'Images',
     'app.header.logout': 'Logout',
     'app.stats.trafficTitle': '{tab} traffic',
     'app.stats.totalChannels': 'Total channels',
@@ -741,6 +743,7 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'app.tabs.chat': 'OpenAI Chat',
     'app.tabs.responses': 'Codex',
     'app.tabs.gemini': 'Gemini',
+    'app.tabs.images': 'Images',
     'app.header.logout': 'Keluar',
     'app.stats.trafficTitle': 'Traffic {tab}',
     'app.stats.totalChannels': 'Total channel',
@@ -1103,6 +1106,7 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'app.tabs.chat': 'OpenAI Chat',
     'app.tabs.responses': 'Codex',
     'app.tabs.gemini': 'Gemini',
+    'app.tabs.images': 'Images',
     'app.header.logout': '注销',
     'app.stats.trafficTitle': '{tab} 流量统计',
     'app.stats.totalChannels': '总渠道数',

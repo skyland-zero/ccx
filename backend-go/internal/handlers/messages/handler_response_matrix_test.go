@@ -45,6 +45,7 @@ func newMessagesTestRouter(t *testing.T, upstream config.UpstreamConfig) *gin.En
 		metrics.NewMetricsManager(),
 		metrics.NewMetricsManager(),
 		metrics.NewMetricsManager(),
+		metrics.NewMetricsManager(),
 		session.NewTraceAffinityManager(),
 		nil,
 	)

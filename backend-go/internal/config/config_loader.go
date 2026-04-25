@@ -161,6 +161,20 @@ func (cm *ConfigManager) applyServiceTypeDefaults() bool {
 	apply(cm.config.ResponsesUpstream, "responses", "Responses")
 	apply(cm.config.GeminiUpstream, "gemini", "Gemini")
 	apply(cm.config.ChatUpstream, "openai", "Chat")
+	for i := range cm.config.ImagesUpstream {
+		normalized, err := normalizeImagesServiceType(cm.config.ImagesUpstream[i].ServiceType)
+		if err != nil {
+			cm.config.ImagesUpstream[i].ServiceType = "openai"
+			updated = true
+			log.Printf("[Config-Migration] Images 渠道 [%d] %s serviceType=%s 不受支持，已强制改为 openai", i, cm.config.ImagesUpstream[i].Name, normalizeUpstreamServiceType(cm.config.ImagesUpstream[i].ServiceType, "openai"))
+			continue
+		}
+		if cm.config.ImagesUpstream[i].ServiceType != normalized {
+			cm.config.ImagesUpstream[i].ServiceType = normalized
+			updated = true
+			log.Printf("[Config-Migration] Images 渠道 [%d] %s serviceType 为空，已回填为 %s", i, cm.config.ImagesUpstream[i].Name, normalized)
+		}
+	}
 
 	return updated
 }
@@ -285,6 +299,22 @@ func (cm *ConfigManager) validateChannelKeys() bool {
 			upstream.Status = "suspended"
 			modified = true
 			log.Printf("[Config-Validate] 警告: Gemini 渠道 [%d] %s 没有配置 API key，已自动暂停", i, upstream.Name)
+		}
+	}
+
+	// 检查 Images 渠道
+	for i := range cm.config.ImagesUpstream {
+		upstream := &cm.config.ImagesUpstream[i]
+		status := upstream.Status
+		if status == "" {
+			status = "active"
+		}
+
+		// 如果是 active 状态但没有配置 key，自动设为 suspended
+		if status == "active" && len(upstream.APIKeys) == 0 {
+			upstream.Status = "suspended"
+			modified = true
+			log.Printf("[Config-Validate] 警告: Images 渠道 [%d] %s 没有配置 API key，已自动暂停", i, upstream.Name)
 		}
 	}
 
