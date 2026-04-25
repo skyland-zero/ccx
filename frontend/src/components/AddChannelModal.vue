@@ -13,7 +13,7 @@
             {{ isEditing ? t('addChannel.editSubtitle') : isQuickMode ? t('addChannel.quickSubtitle') : t('addChannel.fullSubtitle') }}
           </div>
         </div>
-        <div v-if="isEditing" class="header-capability-actions">
+        <div v-if="isEditing && props.channelType !== 'images'" class="header-capability-actions">
           <v-btn
             color="success"
             variant="flat"
@@ -111,7 +111,7 @@
                   <div class="flex-grow-1">
                     <div class="text-body-2 font-weight-medium">{{ t('addChannel.channelType') }}</div>
                     <div class="text-caption text-medium-emphasis">
-                      {{ props.channelType === 'chat' ? 'OpenAI Chat' : props.channelType === 'gemini' ? 'Gemini' : props.channelType === 'responses' ? 'Responses (Codex)' : 'Claude (Messages)' }} -
+                      {{ props.channelType === 'chat' ? 'OpenAI Chat' : props.channelType === 'gemini' ? 'Gemini' : props.channelType === 'responses' ? 'Responses (Codex)' : props.channelType === 'images' ? 'Images' : 'Claude (Messages)' }} -
                       {{ getDefaultServiceType() }}
                     </div>
                   </div>
@@ -939,6 +939,10 @@ const detectedRawBaseUrls = ref<string[]>([])
 const detectedApiKeys = ref<string[]>([])
 const detectedServiceType = ref<'openai' | 'gemini' | 'claude' | 'responses' | null>(null)
 
+const getImagesServiceType = (_serviceType: 'openai' | 'gemini' | 'claude' | 'responses' | null | ''): 'openai' => {
+  return 'openai'
+}
+
 // 详细表单预期请求 URL 预览（防止输入时抖动）
 const formBaseUrlPreview = ref('')
 let formBaseUrlPreviewTimer: number | null = null
@@ -946,7 +950,9 @@ let formBaseUrlPreviewTimer: number | null = null
 // 切换模式时，将快速模式检测到的值同步到详细表单，但不清空快速模式输入
 const toggleMode = () => {
   if (isQuickMode.value) {
-    const effectiveServiceType = detectedServiceType.value || getDefaultServiceTypeValue()
+    const effectiveServiceType = props.channelType === 'images'
+      ? getImagesServiceType(detectedServiceType.value)
+      : (detectedServiceType.value || getDefaultServiceTypeValue())
     const sourceUrls = detectedRawBaseUrls.value.length > 0
       ? detectedRawBaseUrls.value.join('\n')
       : (detectedBaseUrl.value || '')
@@ -969,12 +975,15 @@ const toggleMode = () => {
 
 // 解析快速输入内容
 const parseQuickInput = () => {
-  const result = parseQuickInputUtil(quickInput.value, form.serviceType || getDefaultServiceTypeValue())
+  const fallbackServiceType = props.channelType === 'images'
+    ? getImagesServiceType(form.serviceType)
+    : (form.serviceType || getDefaultServiceTypeValue())
+  const result = parseQuickInputUtil(quickInput.value, fallbackServiceType)
   detectedBaseUrl.value = result.detectedBaseUrl
   detectedBaseUrls.value = result.detectedBaseUrls
   detectedRawBaseUrls.value = result.rawBaseUrls
   detectedApiKeys.value = result.detectedApiKeys
-  detectedServiceType.value = result.detectedServiceType
+  detectedServiceType.value = props.channelType === 'images' ? 'openai' : result.detectedServiceType
 }
 
 // 获取默认服务类型
@@ -987,6 +996,9 @@ const getDefaultServiceType = (): string => {
   }
   if (props.channelType === 'responses') {
     return 'Responses (Codex)'
+  }
+  if (props.channelType === 'images') {
+    return 'Images'
   }
   return 'Claude'
 }
@@ -1002,6 +1014,9 @@ const getDefaultServiceTypeValue = (): 'openai' | 'gemini' | 'claude' | 'respons
   if (props.channelType === 'responses') {
     return 'responses'
   }
+  if (props.channelType === 'images') {
+    return 'openai'
+  }
   return 'claude'
 }
 
@@ -1014,6 +1029,9 @@ const _getDefaultBaseUrl = (): string => {
     return 'https://generativelanguage.googleapis.com'
   }
   if (props.channelType === 'responses') {
+    return 'https://api.openai.com/v1'
+  }
+  if (props.channelType === 'images') {
     return 'https://api.openai.com/v1'
   }
   return 'https://api.anthropic.com'
@@ -1083,19 +1101,23 @@ const _expectedRequestUrl = computed(() => {
   const hasVersion = /\/v\d+[a-z]*$/.test(baseUrl)
 
   // 根据渠道类型和服务类型确定端点（与后端逻辑一致）
-  const serviceType = detectedServiceType.value || getDefaultServiceTypeValue()
+  const serviceType = props.channelType === 'images'
+    ? 'openai'
+    : (detectedServiceType.value || getDefaultServiceTypeValue())
   const endpoint =
-    props.channelType === 'responses'
-      ? serviceType === 'responses'
-        ? '/responses'
+    props.channelType === 'images'
+      ? '/images/generations'
+      : props.channelType === 'responses'
+        ? serviceType === 'responses'
+          ? '/responses'
+          : serviceType === 'claude'
+            ? '/messages'
+            : '/chat/completions'
         : serviceType === 'claude'
           ? '/messages'
-          : '/chat/completions'
-      : serviceType === 'claude'
-        ? '/messages'
-        : serviceType === 'gemini'
-          ? '/models/{model}:generateContent'
-          : '/chat/completions'
+          : serviceType === 'gemini'
+            ? '/models/{model}:generateContent'
+            : '/chat/completions'
 
   if (hasVersion || skipVersion) {
     return baseUrl + endpoint
@@ -1109,25 +1131,29 @@ const _expectedRequestUrl = computed(() => {
 const getExpectedRequestUrl = (inputBaseUrl: string): string => {
   if (!inputBaseUrl) return ''
 
-  const serviceType = detectedServiceType.value || getDefaultServiceTypeValue()
+  const serviceType = props.channelType === 'images'
+    ? 'openai'
+    : (detectedServiceType.value || getDefaultServiceTypeValue())
   const endpoint =
-    props.channelType === 'responses'
-      ? serviceType === 'responses'
-        ? '/responses'
+    props.channelType === 'images'
+      ? '/images/generations'
+      : props.channelType === 'responses'
+        ? serviceType === 'responses'
+          ? '/responses'
+          : serviceType === 'claude'
+            ? '/messages'
+            : serviceType === 'gemini'
+              ? '/models/{model}:generateContent'
+              : '/chat/completions'
         : serviceType === 'claude'
           ? '/messages'
           : serviceType === 'gemini'
             ? '/models/{model}:generateContent'
-            : '/chat/completions'
-      : serviceType === 'claude'
-        ? '/messages'
-        : serviceType === 'gemini'
-          ? '/models/{model}:generateContent'
-          : serviceType === 'responses'
-            ? props.channelType === 'chat'
-              ? '/chat/completions'
-              : '/responses'
-            : '/chat/completions'
+            : serviceType === 'responses'
+              ? props.channelType === 'chat'
+                ? '/chat/completions'
+                : '/responses'
+              : '/chat/completions'
 
   return buildExpectedRequestUrl(serviceType, endpoint, inputBaseUrl)
 }
@@ -1146,7 +1172,8 @@ const baseUrlHasError = computed(() => {
 
 // 详细模式所有 URL 的预期请求（支持多 BaseURL）
 const formExpectedRequestUrls = computed(() => {
-  return buildExpectedRequestUrls(props.channelType, form.serviceType, form.baseUrl, form.baseUrls)
+  const effectiveServiceType = props.channelType === 'images' ? 'openai' : form.serviceType
+  return buildExpectedRequestUrls(props.channelType, effectiveServiceType, form.baseUrl, form.baseUrls)
 })
 
 // 处理快速添加提交
@@ -1155,7 +1182,7 @@ const handleQuickSubmit = () => {
 
   const channelData = {
     name: generatedChannelName.value,
-    serviceType: detectedServiceType.value || getDefaultServiceTypeValue(),
+    serviceType: props.channelType === 'images' ? 'openai' : (detectedServiceType.value || getDefaultServiceTypeValue()),
     baseUrl: detectedBaseUrl.value,
     baseUrls: detectedBaseUrls.value,
     apiKeys: detectedApiKeys.value,
@@ -1192,6 +1219,8 @@ const serviceTypeOptions = computed(() => {
     case 'responses':
       // Responses API 入口，Responses 原生排第一
       return reorder(allOptions, 'responses')
+    case 'images':
+      return [{ title: 'OpenAI Images', value: 'openai' }]
     case 'gemini':
       // Gemini API 入口，Gemini 原生排第一
       return reorder(allOptions, 'gemini')
@@ -1212,6 +1241,13 @@ const allSourceModelOptions = computed(() => {
       { title: 'gpt-5.3-codex', value: 'gpt-5.3-codex' },
       { title: 'gpt-5.2-codex', value: 'gpt-5.2-codex' },
       { title: 'gpt-5.2', value: 'gpt-5.2' }
+    ]
+  }
+  if (props.channelType === 'images') {
+    return [
+      { title: 'gpt-image-1', value: 'gpt-image-1' },
+      { title: 'dall-e-3', value: 'dall-e-3' },
+      { title: 'dall-e-2', value: 'dall-e-2' }
     ]
   }
   if (props.channelType === 'gemini') {
@@ -1258,6 +1294,9 @@ const modelMappingHint = computed(() => {
   if (props.channelType === 'chat') {
     return t('addChannel.modelMappingHintChat')
   }
+  if (props.channelType === 'images') {
+    return t('addChannel.modelMappingHintChat')
+  }
   if (props.channelType === 'gemini') {
     return t('addChannel.modelMappingHintGemini')
   }
@@ -1270,6 +1309,9 @@ const modelMappingHint = computed(() => {
 
 const targetModelPlaceholder = computed(() => {
   if (props.channelType === 'chat') {
+    return t('addChannel.targetModelPlaceholderChat')
+  }
+  if (props.channelType === 'images') {
     return t('addChannel.targetModelPlaceholderChat')
   }
   if (props.channelType === 'responses') {
@@ -1802,7 +1844,7 @@ const ensureLatestSavedChannel = async (): Promise<number | null> => {
 const resetForm = () => {
   resetTransientUiState()
   form.name = ''
-  form.serviceType = ''
+  form.serviceType = props.channelType === 'images' ? 'openai' : ''
   form.baseUrl = ''
   form.baseUrls = []
   form.website = ''
@@ -1850,7 +1892,7 @@ const resetForm = () => {
 const loadChannelData = (channel: Channel) => {
   resetTransientUiState()
   form.name = channel.name
-  form.serviceType = channel.serviceType
+  form.serviceType = props.channelType === 'images' ? 'openai' : channel.serviceType
   form.baseUrl = channel.baseUrl
   form.baseUrls = channel.baseUrls || []
   form.website = channel.website || ''
@@ -1975,6 +2017,8 @@ const restoreDisabledKey = async (apiKey: string) => {
     const channelId = props.channel.index
     if (props.channelType === 'chat') {
       await apiService.restoreChatApiKey(channelId, apiKey)
+    } else if (props.channelType === 'images') {
+      await apiService.restoreImagesApiKey(channelId, apiKey)
     } else if (props.channelType === 'gemini') {
       await apiService.restoreGeminiApiKey(channelId, apiKey)
     } else if (props.channelType === 'responses') {
@@ -2127,9 +2171,13 @@ const fetchTargetModels = async () => {
 
   // modelsApiType 决定请求协议（Bearer/x-goog-api-key、/v1/models vs /v1beta/models）
   // 对于 gemini 渠道组内配置为 openai/claude serviceType 的渠道，应走对应协议而非 Gemini 协议
-  const effectiveServiceType = form.serviceType || detectedServiceType.value || getDefaultServiceTypeValue()
-  let modelsApiType: 'messages' | 'responses' | 'chat' | 'gemini'
-  if (effectiveServiceType === 'gemini') {
+  const effectiveServiceType = props.channelType === 'images'
+    ? 'openai'
+    : (form.serviceType || detectedServiceType.value || getDefaultServiceTypeValue())
+  let modelsApiType: 'messages' | 'responses' | 'chat' | 'gemini' | 'images'
+  if (props.channelType === 'images') {
+    modelsApiType = 'images'
+  } else if (effectiveServiceType === 'gemini') {
     modelsApiType = 'gemini'
   } else if (effectiveServiceType === 'responses') {
     modelsApiType = 'responses'
@@ -2164,6 +2212,9 @@ const fetchTargetModels = async () => {
           break
         case 'chat':
           response = await apiService.getChatChannelModels(id, request)
+          break
+        case 'images':
+          response = await apiService.getImagesChannelModels(id, request)
           break
         case 'gemini':
           response = await apiService.getGeminiChannelModels(id, request)

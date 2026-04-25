@@ -1051,6 +1051,8 @@ func channelKindToApiType(channelKind string) string {
 		return "Gemini"
 	case "responses":
 		return "Responses"
+	case "images":
+		return "Images"
 	default:
 		return "Messages"
 	}

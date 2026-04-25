@@ -1,8 +1,13 @@
 ## [Unreleased]
 
+### Added
+
+- **新增独立 Images 渠道与 OpenAI Images 代理入口** - 新增 `imagesUpstream` 配置、`ChannelKindImages` 调度类型、`/v1/images/generations` 与 `/api/images/channels/*` 管理接口，支持独立的 key 管理、排序、状态切换、promotion、metrics/history、logs、ping 与 models 查询，避免图片请求与 Chat 渠道混用指标和熔断状态
+- **前端接入 Images 渠道页签与基础运维能力** - 在管理界面新增 Images 标签页，接入 dashboard、CRUD、排序、promotion、日志、图表和模型查询；Images 渠道默认走 OpenAI 兼容语义，并隐藏未实现的 capability test 入口
+
 ### Changed
 
-- **补齐 Images 渠道前端管理入口与操作链路** - 在前端导航、渠道复制和渠道管理逻辑中接入 `images` 渠道，补齐新增 API Key、删除 API Key、复制到 Images、快速添加后重排与促销、删除渠道、延迟测试和本地缓存清理等分支，避免 Images 渠道沿用其他协议分支导致操作缺失或状态残留。
+- **扩展调度器、指标迁移与回归测试以支持第五类渠道** - `scheduler`、`channel_metrics_handler`、SQLite metrics key 迁移、模型查询 fallback 与相关 handler/scheduler 回归测试统一纳入 Images 渠道，保持与 messages / responses / chat / gemini 一致的隔离和恢复语义
 - **将能力测试 RPM 从渠道配置迁移到测试弹窗** - 在能力测试对话框新增默认值为 `10`、范围为 `1–60` 的 RPM 输入；前端请求与后端能力测试入口同步接收并钳制 `rpm`，同时从渠道级配置、payload 与管理视图中移除 `channel.rpm`，避免将测试速率持久化到渠道配置。
 - **保留能力测试多协议恢复与继续执行语义** - 取消后恢复旧任务时继续保留已选协议，未开始的协议仍可继续加入测试，减少多协议测试被中断后的状态丢失与重复操作。
 

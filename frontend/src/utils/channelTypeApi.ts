@@ -16,27 +16,27 @@ type ChannelApiSubset = Pick<ApiService,
   | 'getResponsesChannelMetrics'
   | 'getChatChannelMetrics'
   | 'getGeminiChannelMetrics'
+  | 'getImagesChannelMetrics'
   | 'getSchedulerStats'
   | 'reorderChannels'
   | 'reorderResponsesChannels'
   | 'reorderChatChannels'
   | 'reorderGeminiChannels'
+  | 'reorderImagesChannels'
   | 'setChannelStatus'
   | 'setResponsesChannelStatus'
   | 'setChatChannelStatus'
   | 'setGeminiChannelStatus'
+  | 'setImagesChannelStatus'
   | 'resumeChannel'
   | 'resumeResponsesChannel'
   | 'resumeChatChannel'
   | 'resumeGeminiChannel'
+  | 'resumeImagesChannel'
   | 'setChannelPromotion'
   | 'setResponsesChannelPromotion'
   | 'setChatChannelPromotion'
   | 'setGeminiChannelPromotion'
-  | 'getImagesChannelMetricsHistory'
-  | 'reorderImagesChannels'
-  | 'setImagesChannelStatus'
-  | 'resumeImagesChannel'
   | 'setImagesChannelPromotion'
 >
 
@@ -60,6 +60,15 @@ export const getChannelTypeApi = (api: ChannelApiSubset, channelType: ManagedCha
         resume: (channelId) => api.resumeGeminiChannel(channelId),
         promote: (channelId, durationSeconds) => api.setGeminiChannelPromotion(channelId, durationSeconds)
       }
+    case 'images':
+      return {
+        getMetrics: () => api.getImagesChannelMetrics(),
+        getSchedulerStats: () => api.getSchedulerStats('images'),
+        reorder: (order) => api.reorderImagesChannels(order),
+        setStatus: (channelId, status) => api.setImagesChannelStatus(channelId, status),
+        resume: (channelId) => api.resumeImagesChannel(channelId),
+        promote: (channelId, durationSeconds) => api.setImagesChannelPromotion(channelId, durationSeconds)
+      }
     case 'responses':
       return {
         getMetrics: () => api.getResponsesChannelMetrics(),
@@ -68,27 +77,6 @@ export const getChannelTypeApi = (api: ChannelApiSubset, channelType: ManagedCha
         setStatus: (channelId, status) => api.setResponsesChannelStatus(channelId, status),
         resume: (channelId) => api.resumeResponsesChannel(channelId),
         promote: (channelId, durationSeconds) => api.setResponsesChannelPromotion(channelId, durationSeconds)
-      }
-    case 'images':
-      return {
-        getMetrics: async () => {
-          const history = await api.getImagesChannelMetricsHistory('24h')
-          return history.map(item => ({
-            channelIndex: item.channelIndex,
-            requestCount: item.dataPoints.reduce((sum, point) => sum + point.requestCount, 0),
-            successCount: item.dataPoints.reduce((sum, point) => sum + point.successCount, 0),
-            failureCount: item.dataPoints.reduce((sum, point) => sum + point.failureCount, 0),
-            successRate: item.dataPoints.length > 0 ? item.dataPoints[item.dataPoints.length - 1].successRate : 0,
-            errorRate: item.dataPoints.length > 0 ? 100 - item.dataPoints[item.dataPoints.length - 1].successRate : 0,
-            consecutiveFailures: 0,
-            latency: 0,
-          }))
-        },
-        getSchedulerStats: () => api.getSchedulerStats('images'),
-        reorder: (order) => api.reorderImagesChannels(order),
-        setStatus: (channelId, status) => api.setImagesChannelStatus(channelId, status),
-        resume: (channelId) => api.resumeImagesChannel(channelId),
-        promote: (channelId, durationSeconds) => api.setImagesChannelPromotion(channelId, durationSeconds)
       }
     default:
       return {

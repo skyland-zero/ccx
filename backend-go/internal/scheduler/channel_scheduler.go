@@ -25,12 +25,14 @@ type ChannelScheduler struct {
 	responsesMetricsManager  *metrics.MetricsManager // Responses 渠道指标
 	geminiMetricsManager     *metrics.MetricsManager // Gemini 渠道指标
 	chatMetricsManager       *metrics.MetricsManager // Chat 渠道指标
+	imagesMetricsManager     *metrics.MetricsManager // Images 渠道指标
 	traceAffinity            *session.TraceAffinityManager
 	urlManager               *warmup.URLManager       // URL 管理器（非阻塞，动态排序）
 	messagesChannelLogStore  *metrics.ChannelLogStore // Messages 渠道请求日志
 	responsesChannelLogStore *metrics.ChannelLogStore // Responses 渠道请求日志
 	geminiChannelLogStore    *metrics.ChannelLogStore // Gemini 渠道请求日志
 	chatChannelLogStore      *metrics.ChannelLogStore // Chat 渠道请求日志
+	imagesChannelLogStore    *metrics.ChannelLogStore // Images 渠道请求日志
 }
 
 // ChannelKind 标识调度器所处理的渠道类型
@@ -43,6 +45,7 @@ const (
 	ChannelKindResponses ChannelKind = "responses"
 	ChannelKindGemini    ChannelKind = "gemini"
 	ChannelKindChat      ChannelKind = "chat"
+	ChannelKindImages    ChannelKind = "images"
 )
 
 // NewChannelScheduler 创建多渠道调度器
@@ -52,6 +55,7 @@ func NewChannelScheduler(
 	responsesMetrics *metrics.MetricsManager,
 	geminiMetrics *metrics.MetricsManager,
 	chatMetrics *metrics.MetricsManager,
+	imagesMetrics *metrics.MetricsManager,
 	traceAffinity *session.TraceAffinityManager,
 	urlMgr *warmup.URLManager,
 ) *ChannelScheduler {
@@ -61,12 +65,14 @@ func NewChannelScheduler(
 		responsesMetricsManager:  responsesMetrics,
 		geminiMetricsManager:     geminiMetrics,
 		chatMetricsManager:       chatMetrics,
+		imagesMetricsManager:     imagesMetrics,
 		traceAffinity:            traceAffinity,
 		urlManager:               urlMgr,
 		messagesChannelLogStore:  metrics.NewChannelLogStore(),
 		responsesChannelLogStore: metrics.NewChannelLogStore(),
 		geminiChannelLogStore:    metrics.NewChannelLogStore(),
 		chatChannelLogStore:      metrics.NewChannelLogStore(),
+		imagesChannelLogStore:    metrics.NewChannelLogStore(),
 	}
 }
 
@@ -79,6 +85,8 @@ func (s *ChannelScheduler) getMetricsManager(kind ChannelKind) *metrics.MetricsM
 		return s.geminiMetricsManager
 	case ChannelKindChat:
 		return s.chatMetricsManager
+	case ChannelKindImages:
+		return s.imagesMetricsManager
 	default:
 		return s.messagesMetricsManager
 	}
@@ -116,6 +124,8 @@ func NormalizedMetricsServiceType(kind ChannelKind, configured string) string {
 		return "responses"
 	case ChannelKindChat:
 		return "openai"
+	case ChannelKindImages:
+		return "openai"
 	default:
 		return "claude"
 	}
@@ -129,6 +139,8 @@ func (s *ChannelScheduler) setChannelStatusByKind(index int, kind ChannelKind, s
 		return s.configManager.SetGeminiChannelStatus(index, status)
 	case ChannelKindChat:
 		return s.configManager.SetChatChannelStatus(index, status)
+	case ChannelKindImages:
+		return s.configManager.SetImagesChannelStatus(index, status)
 	default:
 		return s.configManager.SetChannelStatus(index, status)
 	}
@@ -215,13 +227,15 @@ func kindAPIType(kind ChannelKind) string {
 		return "Gemini"
 	case ChannelKindChat:
 		return "Chat"
+	case ChannelKindImages:
+		return "Images"
 	default:
 		return "Messages"
 	}
 }
 
 func (s *ChannelScheduler) scheduledRecoveryKinds() []ChannelKind {
-	return []ChannelKind{ChannelKindMessages, ChannelKindResponses, ChannelKindGemini, ChannelKindChat}
+	return []ChannelKind{ChannelKindMessages, ChannelKindResponses, ChannelKindGemini, ChannelKindChat, ChannelKindImages}
 }
 
 func (s *ChannelScheduler) restoreScheduledKeysForKind(kind ChannelKind, now time.Time) ([]ScheduledRecoveryResult, error) {
@@ -234,6 +248,8 @@ func (s *ChannelScheduler) restoreScheduledKeysForKind(kind ChannelKind, now tim
 		upstreams = cfg.GeminiUpstream
 	case ChannelKindChat:
 		upstreams = cfg.ChatUpstream
+	case ChannelKindImages:
+		upstreams = cfg.ImagesUpstream
 	default:
 		upstreams = cfg.Upstream
 	}
@@ -340,6 +356,8 @@ func (s *ChannelScheduler) SelectChannel(
 			kindName = "Responses"
 		case ChannelKindChat:
 			kindName = "Chat"
+		case ChannelKindImages:
+			kindName = "Images"
 		}
 		if model != "" && len(s.getActiveChannels(kind, "")) > 0 {
 			return nil, fmt.Errorf("没有 %s 渠道支持模型 %q，请检查渠道的 supportedModels 配置", kindName, model)
@@ -379,6 +397,8 @@ func (s *ChannelScheduler) SelectChannel(
 				kindName = "Responses"
 			case ChannelKindChat:
 				kindName = "Chat"
+			case ChannelKindImages:
+				kindName = "Images"
 			}
 			return nil, fmt.Errorf("没有可用于默认路由的 %s 渠道，请使用带前缀路由访问", kindName)
 		}
@@ -601,6 +621,8 @@ func (s *ChannelScheduler) getActiveChannels(kind ChannelKind, model string) []C
 		upstreams = cfg.GeminiUpstream
 	case ChannelKindChat:
 		upstreams = cfg.ChatUpstream
+	case ChannelKindImages:
+		upstreams = cfg.ImagesUpstream
 	default:
 		upstreams = cfg.Upstream
 	}
@@ -685,6 +707,8 @@ func (s *ChannelScheduler) getUpstreamByIndex(index int, kind ChannelKind) *conf
 		upstreams = cfg.GeminiUpstream
 	case ChannelKindChat:
 		upstreams = cfg.ChatUpstream
+	case ChannelKindImages:
+		upstreams = cfg.ImagesUpstream
 	default:
 		upstreams = cfg.Upstream
 	}
@@ -758,6 +782,11 @@ func (s *ChannelScheduler) GetChatMetricsManager() *metrics.MetricsManager {
 	return s.chatMetricsManager
 }
 
+// GetImagesMetricsManager 获取 Images 指标管理器
+func (s *ChannelScheduler) GetImagesMetricsManager() *metrics.MetricsManager {
+	return s.imagesMetricsManager
+}
+
 // GetTraceAffinityManager 获取 Trace 亲和性管理器
 func (s *ChannelScheduler) GetTraceAffinityManager() *session.TraceAffinityManager {
 	return s.traceAffinity
@@ -772,6 +801,8 @@ func (s *ChannelScheduler) GetChannelLogStore(kind ChannelKind) *metrics.Channel
 		return s.geminiChannelLogStore
 	case ChannelKindChat:
 		return s.chatChannelLogStore
+	case ChannelKindImages:
+		return s.imagesChannelLogStore
 	default:
 		return s.messagesChannelLogStore
 	}
@@ -869,6 +900,8 @@ func (s *ChannelScheduler) collectUsedMetricsKeys(kind ChannelKind) map[string]b
 		upstreams = cfg.GeminiUpstream
 	case ChannelKindChat:
 		upstreams = cfg.ChatUpstream
+	case ChannelKindImages:
+		upstreams = cfg.ImagesUpstream
 	default:
 		upstreams = cfg.Upstream
 	}
@@ -905,6 +938,8 @@ func (s *ChannelScheduler) isUpstreamInConfig(upstream *config.UpstreamConfig, k
 		upstreams = cfg.GeminiUpstream
 	case ChannelKindChat:
 		upstreams = cfg.ChatUpstream
+	case ChannelKindImages:
+		upstreams = cfg.ImagesUpstream
 	default:
 		upstreams = cfg.Upstream
 	}
@@ -994,6 +1029,8 @@ func kindSchedulerLogPrefix(kind ChannelKind) string {
 		return "Scheduler-Gemini"
 	case ChannelKindChat:
 		return "Scheduler-Chat"
+	case ChannelKindImages:
+		return "Scheduler-Images"
 	default:
 		return "Scheduler"
 	}
@@ -1012,6 +1049,8 @@ func urlManagerChannelKeyOrdinal(kind ChannelKind) int {
 		return 2
 	case ChannelKindChat:
 		return 3
+	case ChannelKindImages:
+		return 4
 	default:
 		return 0
 	}

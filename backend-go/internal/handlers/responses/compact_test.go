@@ -24,6 +24,7 @@ func newCompactTestRouter(t *testing.T, upstreams []config.UpstreamConfig) (*gin
 	responsesMetrics := metrics.NewMetricsManager()
 	geminiMetrics := metrics.NewMetricsManager()
 	chatMetrics := metrics.NewMetricsManager()
+	imagesMetrics := metrics.NewMetricsManager()
 	traceAffinity := session.NewTraceAffinityManager()
 
 	t.Cleanup(func() {
@@ -31,6 +32,7 @@ func newCompactTestRouter(t *testing.T, upstreams []config.UpstreamConfig) (*gin
 		responsesMetrics.Stop()
 		geminiMetrics.Stop()
 		chatMetrics.Stop()
+		imagesMetrics.Stop()
 		traceAffinity.Stop()
 	})
 
@@ -40,6 +42,7 @@ func newCompactTestRouter(t *testing.T, upstreams []config.UpstreamConfig) (*gin
 		responsesMetrics,
 		geminiMetrics,
 		chatMetrics,
+		imagesMetrics,
 		traceAffinity,
 		nil,
 	)

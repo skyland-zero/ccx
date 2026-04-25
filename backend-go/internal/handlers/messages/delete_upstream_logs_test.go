@@ -55,12 +55,14 @@ func TestDeleteUpstream_PreservesRemainingChannelLogs(t *testing.T) {
 	responsesMetrics := metrics.NewMetricsManager()
 	geminiMetrics := metrics.NewMetricsManager()
 	chatMetrics := metrics.NewMetricsManager()
+	imagesMetrics := metrics.NewMetricsManager()
 	traceAffinity := session.NewTraceAffinityManager()
 	t.Cleanup(func() {
 		messagesMetrics.Stop()
 		responsesMetrics.Stop()
 		geminiMetrics.Stop()
 		chatMetrics.Stop()
+		imagesMetrics.Stop()
 		traceAffinity.Stop()
 	})
 
@@ -70,6 +72,7 @@ func TestDeleteUpstream_PreservesRemainingChannelLogs(t *testing.T) {
 		responsesMetrics,
 		geminiMetrics,
 		chatMetrics,
+		imagesMetrics,
 		traceAffinity,
 		nil,
 	)

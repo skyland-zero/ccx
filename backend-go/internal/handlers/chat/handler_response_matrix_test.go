@@ -45,6 +45,7 @@ func newChatTestRouter(t *testing.T, upstream config.UpstreamConfig) *gin.Engine
 		metrics.NewMetricsManager(),
 		metrics.NewMetricsManager(),
 		metrics.NewMetricsManager(),
+		metrics.NewMetricsManager(),
 		session.NewTraceAffinityManager(),
 		nil,
 	)

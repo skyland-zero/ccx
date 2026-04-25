@@ -6,7 +6,8 @@ const createApiMock = () => ({
   getChannelMetrics: vi.fn().mockResolvedValue([]),
   getResponsesChannelMetrics: vi.fn().mockResolvedValue([]),
   getChatChannelMetrics: vi.fn().mockResolvedValue([]),
-  getImagesChannelMetricsHistory: vi.fn().mockResolvedValue([]),
+  getGeminiChannelMetrics: vi.fn().mockResolvedValue([]),
+  getImagesChannelMetrics: vi.fn().mockResolvedValue([]),
   getSchedulerStats: vi.fn().mockResolvedValue({
     multiChannelMode: true,
     activeChannelCount: 2,
@@ -19,19 +20,23 @@ const createApiMock = () => ({
   reorderChannels: vi.fn().mockResolvedValue(undefined),
   reorderResponsesChannels: vi.fn().mockResolvedValue(undefined),
   reorderChatChannels: vi.fn().mockResolvedValue(undefined),
+  reorderGeminiChannels: vi.fn().mockResolvedValue(undefined),
   reorderImagesChannels: vi.fn().mockResolvedValue(undefined),
   setChannelStatus: vi.fn().mockResolvedValue(undefined),
   setResponsesChannelStatus: vi.fn().mockResolvedValue(undefined),
   setChatChannelStatus: vi.fn().mockResolvedValue(undefined),
+  setGeminiChannelStatus: vi.fn().mockResolvedValue(undefined),
   setImagesChannelStatus: vi.fn().mockResolvedValue(undefined),
   resumeChannel: vi.fn().mockResolvedValue({ success: true, message: 'ok', restoredKeys: 0 }),
   resumeResponsesChannel: vi.fn().mockResolvedValue({ success: true, message: 'ok', restoredKeys: 1 }),
   resumeChatChannel: vi.fn().mockResolvedValue({ success: true, message: 'ok', restoredKeys: 2 }),
+  resumeGeminiChannel: vi.fn().mockResolvedValue({ success: true, message: 'ok', restoredKeys: 3 }),
   resumeImagesChannel: vi.fn().mockResolvedValue({ success: true, message: 'ok', restoredKeys: 4 }),
   setChannelPromotion: vi.fn().mockResolvedValue(undefined),
   setResponsesChannelPromotion: vi.fn().mockResolvedValue(undefined),
   setChatChannelPromotion: vi.fn().mockResolvedValue(undefined),
-  setGeminiChannelPromotion: vi.fn().mockResolvedValue(undefined)
+  setGeminiChannelPromotion: vi.fn().mockResolvedValue(undefined),
+  setImagesChannelPromotion: vi.fn().mockResolvedValue(undefined)
 })
 
 describe('getChannelTypeApi', () => {
@@ -68,8 +73,16 @@ describe('getChannelTypeApi', () => {
       promoteMethod: 'setChatChannelPromotion'
     },
     {
+      type: 'gemini',
+      metricsMethod: 'getGeminiChannelMetrics',
+      reorderMethod: 'reorderGeminiChannels',
+      statusMethod: 'setGeminiChannelStatus',
+      resumeMethod: 'resumeGeminiChannel',
+      promoteMethod: 'setGeminiChannelPromotion'
+    },
+    {
       type: 'images',
-      metricsMethod: 'getImagesChannelMetricsHistory',
+      metricsMethod: 'getImagesChannelMetrics',
       reorderMethod: 'reorderImagesChannels',
       statusMethod: 'setImagesChannelStatus',
       resumeMethod: 'resumeImagesChannel',

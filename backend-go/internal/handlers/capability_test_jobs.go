@@ -658,6 +658,8 @@ func getCapabilityTestChannel(cfgManager *config.ConfigManager, channelKind stri
 		channels = cfg.GeminiUpstream
 	case "chat":
 		channels = cfg.ChatUpstream
+	case "images":
+		channels = cfg.ImagesUpstream
 	default:
 		return nil, fmt.Errorf("invalid channel kind")
 	}

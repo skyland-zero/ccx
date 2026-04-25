@@ -26,7 +26,9 @@ export function buildExpectedRequestUrls(
   if (urls.length === 0) return []
 
   let endpoint = ''
-  if (channelType === 'responses') {
+  if (channelType === 'images') {
+    endpoint = '/images/generations'
+  } else if (channelType === 'responses') {
     if (serviceType === 'responses') {
       endpoint = '/responses'
     } else if (serviceType === 'claude') {

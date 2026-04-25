@@ -48,10 +48,12 @@ func TestGetChannelDashboard_IncludesBreakerFields(t *testing.T) {
 	responsesMetrics := metrics.NewMetricsManager()
 	geminiMetrics := metrics.NewMetricsManager()
 	chatMetrics := metrics.NewMetricsManager()
+	imagesMetrics := metrics.NewMetricsManager()
 	defer messagesMetrics.Stop()
 	defer responsesMetrics.Stop()
 	defer geminiMetrics.Stop()
 	defer chatMetrics.Stop()
+	defer imagesMetrics.Stop()
 
 	for i := 0; i < 3; i++ {
 		messagesMetrics.RecordFailure("https://example.com", "sk-test", "claude")
@@ -60,7 +62,7 @@ func TestGetChannelDashboard_IncludesBreakerFields(t *testing.T) {
 	traceAffinity := session.NewTraceAffinityManager()
 	defer traceAffinity.Stop()
 	urlManager := warmup.NewURLManager(30*time.Second, 3)
-	sch := scheduler.NewChannelScheduler(cfgManager, messagesMetrics, responsesMetrics, geminiMetrics, chatMetrics, traceAffinity, urlManager)
+	sch := scheduler.NewChannelScheduler(cfgManager, messagesMetrics, responsesMetrics, geminiMetrics, chatMetrics, imagesMetrics, traceAffinity, urlManager)
 
 	r := gin.New()
 	r.GET("/messages/channels/dashboard", GetChannelDashboard(cfgManager, sch))
@@ -128,10 +130,12 @@ func TestGetChannelDashboard_GeminiFallbackServiceTypeReadsMetrics(t *testing.T)
 	responsesMetrics := metrics.NewMetricsManager()
 	geminiMetrics := metrics.NewMetricsManager()
 	chatMetrics := metrics.NewMetricsManager()
+	imagesMetrics := metrics.NewMetricsManager()
 	defer messagesMetrics.Stop()
 	defer responsesMetrics.Stop()
 	defer geminiMetrics.Stop()
 	defer chatMetrics.Stop()
+	defer imagesMetrics.Stop()
 
 	for i := 0; i < 3; i++ {
 		geminiMetrics.RecordFailure("https://example.com", "sk-test", "gemini")
@@ -140,7 +144,7 @@ func TestGetChannelDashboard_GeminiFallbackServiceTypeReadsMetrics(t *testing.T)
 	traceAffinity := session.NewTraceAffinityManager()
 	defer traceAffinity.Stop()
 	urlManager := warmup.NewURLManager(30*time.Second, 3)
-	sch := scheduler.NewChannelScheduler(cfgManager, messagesMetrics, responsesMetrics, geminiMetrics, chatMetrics, traceAffinity, urlManager)
+	sch := scheduler.NewChannelScheduler(cfgManager, messagesMetrics, responsesMetrics, geminiMetrics, chatMetrics, imagesMetrics, traceAffinity, urlManager)
 
 	r := gin.New()
 	r.GET("/messages/channels/dashboard", GetChannelDashboard(cfgManager, sch))
@@ -206,6 +210,7 @@ func TestGetChannelDashboard_Gemini_IncludesAdvancedOptionFields(t *testing.T) {
 	responsesMetrics := metrics.NewMetricsManager()
 	geminiMetrics := metrics.NewMetricsManager()
 	chatMetrics := metrics.NewMetricsManager()
+	imagesMetrics := metrics.NewMetricsManager()
 	t.Cleanup(func() {
 		messagesMetrics.Stop()
 		responsesMetrics.Stop()
@@ -215,7 +220,7 @@ func TestGetChannelDashboard_Gemini_IncludesAdvancedOptionFields(t *testing.T) {
 
 	traceAffinity := session.NewTraceAffinityManager()
 	urlManager := warmup.NewURLManager(30*time.Second, 3)
-	sch := scheduler.NewChannelScheduler(cfgManager, messagesMetrics, responsesMetrics, geminiMetrics, chatMetrics, traceAffinity, urlManager)
+	sch := scheduler.NewChannelScheduler(cfgManager, messagesMetrics, responsesMetrics, geminiMetrics, chatMetrics, imagesMetrics, traceAffinity, urlManager)
 
 	r := gin.New()
 	r.GET("/messages/channels/dashboard", GetChannelDashboard(cfgManager, sch))
@@ -301,10 +306,12 @@ func TestGetChannelDashboard_ChatFallbackServiceTypeReadsMetrics(t *testing.T) {
 	responsesMetrics := metrics.NewMetricsManager()
 	geminiMetrics := metrics.NewMetricsManager()
 	chatMetrics := metrics.NewMetricsManager()
+	imagesMetrics := metrics.NewMetricsManager()
 	defer messagesMetrics.Stop()
 	defer responsesMetrics.Stop()
 	defer geminiMetrics.Stop()
 	defer chatMetrics.Stop()
+	defer imagesMetrics.Stop()
 
 	for i := 0; i < 3; i++ {
 		chatMetrics.RecordFailure("https://example.com", "sk-test", "openai")
@@ -313,7 +320,7 @@ func TestGetChannelDashboard_ChatFallbackServiceTypeReadsMetrics(t *testing.T) {
 	traceAffinity := session.NewTraceAffinityManager()
 	defer traceAffinity.Stop()
 	urlManager := warmup.NewURLManager(30*time.Second, 3)
-	sch := scheduler.NewChannelScheduler(cfgManager, messagesMetrics, responsesMetrics, geminiMetrics, chatMetrics, traceAffinity, urlManager)
+	sch := scheduler.NewChannelScheduler(cfgManager, messagesMetrics, responsesMetrics, geminiMetrics, chatMetrics, imagesMetrics, traceAffinity, urlManager)
 
 	r := gin.New()
 	r.GET("/messages/channels/dashboard", GetChannelDashboard(cfgManager, sch))

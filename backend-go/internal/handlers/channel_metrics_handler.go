@@ -25,6 +25,8 @@ func channelUpstreamsByKind(cfg config.Config, kind scheduler.ChannelKind) []con
 		return cfg.GeminiUpstream
 	case scheduler.ChannelKindChat:
 		return cfg.ChatUpstream
+	case scheduler.ChannelKindImages:
+		return cfg.ImagesUpstream
 	default:
 		return cfg.Upstream
 	}
@@ -219,6 +221,9 @@ func GetSchedulerStats(sch *scheduler.ChannelScheduler) gin.HandlerFunc {
 		case "chat":
 			kind = scheduler.ChannelKindChat
 			metricsManager = sch.GetChatMetricsManager()
+		case "images":
+			kind = scheduler.ChannelKindImages
+			metricsManager = sch.GetImagesMetricsManager()
 		default:
 			kind = scheduler.ChannelKindMessages
 			metricsManager = sch.GetMessagesMetricsManager()
@@ -634,6 +639,10 @@ func GetChannelDashboard(cfgManager *config.ConfigManager, sch *scheduler.Channe
 			upstreams = cfg.ChatUpstream
 			metricsManager = sch.GetChatMetricsManager()
 			kind = scheduler.ChannelKindChat
+		case "images":
+			upstreams = cfg.ImagesUpstream
+			metricsManager = sch.GetImagesMetricsManager()
+			kind = scheduler.ChannelKindImages
 		case "gemini":
 			upstreams = cfg.GeminiUpstream
 			metricsManager = sch.GetGeminiMetricsManager()
@@ -710,6 +719,21 @@ func GetGeminiChannelMetrics(metricsManager *metrics.MetricsManager, cfgManager 
 	return getChannelMetricsWithKind(metricsManager, cfgManager, scheduler.ChannelKindGemini, false)
 }
 
+// GetImagesChannelMetrics 获取 Images 渠道指标
+func GetImagesChannelMetrics(metricsManager *metrics.MetricsManager, cfgManager *config.ConfigManager) gin.HandlerFunc {
+	return getChannelMetricsWithKind(metricsManager, cfgManager, scheduler.ChannelKindImages, true)
+}
+
+// GetImagesChannelMetricsHistory 获取 Images 渠道指标历史数据
+func GetImagesChannelMetricsHistory(metricsManager *metrics.MetricsManager, cfgManager *config.ConfigManager) gin.HandlerFunc {
+	return getChannelMetricsHistoryWithKind(metricsManager, cfgManager, scheduler.ChannelKindImages, false)
+}
+
+// GetImagesChannelKeyMetricsHistory 获取 Images 渠道下各 Key 的历史数据
+func GetImagesChannelKeyMetricsHistory(metricsManager *metrics.MetricsManager, cfgManager *config.ConfigManager) gin.HandlerFunc {
+	return getChannelKeyMetricsHistoryWithKind(metricsManager, cfgManager, scheduler.ChannelKindImages, false, 24*time.Hour)
+}
+
 // GetChatChannelMetrics 获取 Chat 渠道指标
 func GetChatChannelMetrics(metricsManager *metrics.MetricsManager, cfgManager *config.ConfigManager) gin.HandlerFunc {
 	return getChannelMetricsWithKind(metricsManager, cfgManager, scheduler.ChannelKindChat, true)
@@ -742,6 +766,8 @@ func ResumeChannelWithKind(sch *scheduler.ChannelScheduler, cfgManager *config.C
 			apiType = "Gemini"
 		case scheduler.ChannelKindChat:
 			apiType = "Chat"
+		case scheduler.ChannelKindImages:
+			apiType = "Images"
 		}
 
 		result, err := transitions.RestoreAllAndReset(

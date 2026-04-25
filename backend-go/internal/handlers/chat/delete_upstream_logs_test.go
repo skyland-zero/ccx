@@ -40,6 +40,7 @@ func TestDeleteUpstream_PreservesRemainingChannelLogs(t *testing.T) {
 	responsesMetrics := metrics.NewMetricsManager()
 	geminiMetrics := metrics.NewMetricsManager()
 	chatMetrics := metrics.NewMetricsManager()
+	imagesMetrics := metrics.NewMetricsManager()
 	traceAffinity := session.NewTraceAffinityManager()
 	t.Cleanup(func() {
 		messagesMetrics.Stop()
@@ -49,7 +50,7 @@ func TestDeleteUpstream_PreservesRemainingChannelLogs(t *testing.T) {
 		traceAffinity.Stop()
 	})
 
-	sch := scheduler.NewChannelScheduler(cm, messagesMetrics, responsesMetrics, geminiMetrics, chatMetrics, traceAffinity, nil)
+	sch := scheduler.NewChannelScheduler(cm, messagesMetrics, responsesMetrics, geminiMetrics, chatMetrics, imagesMetrics, traceAffinity, nil)
 	logStore := sch.GetChannelLogStore(scheduler.ChannelKindChat)
 	logStore.Record(0, &metrics.ChannelLog{Model: "deleted-channel"})
 	logStore.Record(1, &metrics.ChannelLog{Model: "remaining-channel"})

@@ -242,6 +242,8 @@ func selectChannelWithDisabledKeys(cfgManager *config.ConfigManager, failedChann
 		upstreams = cfg.GeminiUpstream
 	case scheduler.ChannelKindChat:
 		upstreams = cfg.ChatUpstream
+	case scheduler.ChannelKindImages:
+		upstreams = cfg.ImagesUpstream
 	default:
 		upstreams = cfg.Upstream
 	}

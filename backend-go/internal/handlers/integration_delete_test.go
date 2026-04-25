@@ -47,9 +47,10 @@ func TestGetChannelLogs_AfterChannelDeletion(t *testing.T) {
 	responsesMetrics := metrics.NewMetricsManager()
 	geminiMetrics := metrics.NewMetricsManager()
 	chatMetrics := metrics.NewMetricsManager()
+	imagesMetrics := metrics.NewMetricsManager()
 	traceAffinity := session.NewTraceAffinityManager()
 	urlManager := warmup.NewURLManager(30*0, 3)
-	sch := scheduler.NewChannelScheduler(cfgManager, messagesMetrics, responsesMetrics, geminiMetrics, chatMetrics, traceAffinity, urlManager)
+	sch := scheduler.NewChannelScheduler(cfgManager, messagesMetrics, responsesMetrics, geminiMetrics, chatMetrics, imagesMetrics, traceAffinity, urlManager)
 	t.Cleanup(func() {
 		messagesMetrics.Stop()
 		responsesMetrics.Stop()
@@ -140,9 +141,10 @@ func TestGetChannelDashboard_AfterChannelDeletion(t *testing.T) {
 	responsesMetrics := metrics.NewMetricsManager()
 	geminiMetrics := metrics.NewMetricsManager()
 	chatMetrics := metrics.NewMetricsManager()
+	imagesMetrics := metrics.NewMetricsManager()
 	traceAffinity := session.NewTraceAffinityManager()
 	urlManager := warmup.NewURLManager(0, 3)
-	sch := scheduler.NewChannelScheduler(cfgManager, messagesMetrics, responsesMetrics, geminiMetrics, chatMetrics, traceAffinity, urlManager)
+	sch := scheduler.NewChannelScheduler(cfgManager, messagesMetrics, responsesMetrics, geminiMetrics, chatMetrics, imagesMetrics, traceAffinity, urlManager)
 	t.Cleanup(func() {
 		messagesMetrics.Stop()
 		responsesMetrics.Stop()

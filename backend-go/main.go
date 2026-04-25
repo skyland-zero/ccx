@@ -87,7 +87,7 @@ func main() {
 		log.Printf("[Metrics-Init] 指标持久化已禁用，使用纯内存模式")
 	}
 
-	// 初始化多渠道调度器（Messages、Responses、Gemini 和 Chat 使用独立的指标管理器）
+	// 初始化多渠道调度器（Messages、Responses、Gemini、Chat 和 Images 使用独立的指标管理器）
 	var messagesMetricsManager, responsesMetricsManager, geminiMetricsManager, chatMetricsManager, imagesMetricsManager *metrics.MetricsManager
 	if metricsStore != nil {
 		if err := metricsStore.MigrateMetricsKeysToIdentity(cfgManager.GetConfig()); err != nil {
@@ -291,7 +291,6 @@ func main() {
 		apiGroup.GET("/messages/models/stats/history", handlers.GetModelStatsHistory(messagesMetricsManager))
 		apiGroup.GET("/messages/channels/:id/logs", handlers.GetChannelLogs(channelScheduler.GetChannelLogStore(scheduler.ChannelKindMessages)))
 		apiGroup.POST("/messages/channels/:id/capability-test", handlers.TestChannelCapability(cfgManager, channelScheduler.GetChannelLogStore(scheduler.ChannelKindMessages), "messages"))
-		apiGroup.GET("/messages/channels/:id/capability-test/snapshot", handlers.GetCapabilitySnapshot(cfgManager, "messages"))
 		apiGroup.GET("/messages/channels/:id/capability-test/:jobId", handlers.GetCapabilityTestJobStatus(cfgManager, "messages"))
 		apiGroup.DELETE("/messages/channels/:id/capability-test/:jobId", handlers.CancelCapabilityTestJob(cfgManager, "messages"))
 		apiGroup.POST("/messages/channels/:id/capability-test/:jobId/retry", handlers.RetryCapabilityTestModel(cfgManager, channelScheduler.GetChannelLogStore(scheduler.ChannelKindMessages), "messages"))
@@ -322,7 +321,6 @@ func main() {
 		apiGroup.GET("/responses/models/stats/history", handlers.GetModelStatsHistory(responsesMetricsManager))
 		apiGroup.GET("/responses/channels/:id/logs", handlers.GetChannelLogs(channelScheduler.GetChannelLogStore(scheduler.ChannelKindResponses)))
 		apiGroup.POST("/responses/channels/:id/capability-test", handlers.TestChannelCapability(cfgManager, channelScheduler.GetChannelLogStore(scheduler.ChannelKindResponses), "responses"))
-		apiGroup.GET("/responses/channels/:id/capability-test/snapshot", handlers.GetCapabilitySnapshot(cfgManager, "responses"))
 		apiGroup.GET("/responses/channels/:id/capability-test/:jobId", handlers.GetCapabilityTestJobStatus(cfgManager, "responses"))
 		apiGroup.DELETE("/responses/channels/:id/capability-test/:jobId", handlers.CancelCapabilityTestJob(cfgManager, "responses"))
 		apiGroup.POST("/responses/channels/:id/capability-test/:jobId/retry", handlers.RetryCapabilityTestModel(cfgManager, channelScheduler.GetChannelLogStore(scheduler.ChannelKindResponses), "responses"))
@@ -353,7 +351,6 @@ func main() {
 		apiGroup.GET("/gemini/models/stats/history", handlers.GetModelStatsHistory(geminiMetricsManager))
 		apiGroup.GET("/gemini/channels/:id/logs", handlers.GetChannelLogs(channelScheduler.GetChannelLogStore(scheduler.ChannelKindGemini)))
 		apiGroup.POST("/gemini/channels/:id/capability-test", handlers.TestChannelCapability(cfgManager, channelScheduler.GetChannelLogStore(scheduler.ChannelKindGemini), "gemini"))
-		apiGroup.GET("/gemini/channels/:id/capability-test/snapshot", handlers.GetCapabilitySnapshot(cfgManager, "gemini"))
 		apiGroup.GET("/gemini/channels/:id/capability-test/:jobId", handlers.GetCapabilityTestJobStatus(cfgManager, "gemini"))
 		apiGroup.DELETE("/gemini/channels/:id/capability-test/:jobId", handlers.CancelCapabilityTestJob(cfgManager, "gemini"))
 		apiGroup.POST("/gemini/channels/:id/capability-test/:jobId/retry", handlers.RetryCapabilityTestModel(cfgManager, channelScheduler.GetChannelLogStore(scheduler.ChannelKindGemini), "gemini"))
@@ -384,7 +381,6 @@ func main() {
 		apiGroup.GET("/chat/models/stats/history", handlers.GetModelStatsHistory(chatMetricsManager))
 		apiGroup.GET("/chat/channels/:id/logs", handlers.GetChannelLogs(channelScheduler.GetChannelLogStore(scheduler.ChannelKindChat)))
 		apiGroup.POST("/chat/channels/:id/capability-test", handlers.TestChannelCapability(cfgManager, channelScheduler.GetChannelLogStore(scheduler.ChannelKindChat), "chat"))
-		apiGroup.GET("/chat/channels/:id/capability-test/snapshot", handlers.GetCapabilitySnapshot(cfgManager, "chat"))
 		apiGroup.GET("/chat/channels/:id/capability-test/:jobId", handlers.GetCapabilityTestJobStatus(cfgManager, "chat"))
 		apiGroup.DELETE("/chat/channels/:id/capability-test/:jobId", handlers.CancelCapabilityTestJob(cfgManager, "chat"))
 		apiGroup.POST("/chat/channels/:id/capability-test/:jobId/retry", handlers.RetryCapabilityTestModel(cfgManager, channelScheduler.GetChannelLogStore(scheduler.ChannelKindChat), "chat"))
@@ -399,13 +395,21 @@ func main() {
 		apiGroup.DELETE("/images/channels/:id/keys/:apiKey", images.DeleteApiKey(cfgManager))
 		apiGroup.POST("/images/channels/:id/keys/:apiKey/top", images.MoveApiKeyToTop(cfgManager))
 		apiGroup.POST("/images/channels/:id/keys/:apiKey/bottom", images.MoveApiKeyToBottom(cfgManager))
+		apiGroup.POST("/images/channels/:id/keys/restore", handlers.RestoreBlacklistedKey(cfgManager, "Images"))
 
 		// Images 多渠道调度 API
 		apiGroup.POST("/images/channels/reorder", images.ReorderChannels(cfgManager))
 		apiGroup.PATCH("/images/channels/:id/status", images.SetChannelStatus(cfgManager))
 		apiGroup.POST("/images/channels/:id/resume", handlers.ResumeChannelWithKind(channelScheduler, cfgManager, scheduler.ChannelKindImages))
 		apiGroup.POST("/images/channels/:id/promotion", images.SetChannelPromotion(cfgManager))
-		apiGroup.GET("/images/channels/metrics", handlers.GetChannelMetricsWithConfig(imagesMetricsManager, cfgManager, false))
+		apiGroup.GET("/images/channels/metrics", handlers.GetImagesChannelMetrics(imagesMetricsManager, cfgManager))
+		apiGroup.GET("/images/channels/metrics/history", handlers.GetImagesChannelMetricsHistory(imagesMetricsManager, cfgManager))
+		apiGroup.GET("/images/channels/:id/keys/metrics/history", handlers.GetImagesChannelKeyMetricsHistory(imagesMetricsManager, cfgManager))
+		apiGroup.GET("/images/global/stats/history", handlers.GetGlobalStatsHistory(imagesMetricsManager))
+		apiGroup.GET("/images/ping/:id", images.PingChannel(cfgManager))
+		apiGroup.GET("/images/ping", images.PingAllChannels(cfgManager))
+		apiGroup.POST("/images/channels/:id/models", images.GetChannelModels(cfgManager))
+		apiGroup.GET("/images/models/stats/history", handlers.GetModelStatsHistory(imagesMetricsManager))
 		apiGroup.GET("/images/channels/:id/logs", handlers.GetChannelLogs(channelScheduler.GetChannelLogStore(scheduler.ChannelKindImages)))
 
 		// Fuzzy 模式设置
@@ -498,6 +502,7 @@ func main() {
 	fmt.Printf("[Server-Info] Gemini API: POST /v1beta/models/{model}:generateContent\n")
 	fmt.Printf("[Server-Info] Gemini API: POST /v1beta/models/{model}:streamGenerateContent\n")
 	fmt.Printf("[Server-Info] Chat Completions: POST /v1/chat/completions\n")
+	fmt.Printf("[Server-Info] Images Generations: POST /v1/images/generations\n")
 	fmt.Printf("[Server-Info] 健康检查: GET /health\n")
 	fmt.Printf("[Server-Info] 环境: %s\n", envCfg.Env)
 	// 生产环境检查：必须设置有效的访问密钥
