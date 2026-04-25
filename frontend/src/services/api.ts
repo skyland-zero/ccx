@@ -131,7 +131,6 @@ export interface Channel {
   injectDummyThoughtSignature?: boolean  // Gemini 特定：为 functionCall 注入 dummy thought_signature（兼容第三方 API）
   stripThoughtSignature?: boolean        // Gemini 特定：移除 thought_signature 字段（兼容旧版 Gemini API）
   supportedModels?: string[]  // 支持的模型白名单（空=全部），支持通配符如 gpt-4*
-  rpm?: number                // 能力测试发送速率（仅影响能力测试）
 }
 
 export interface ChannelsResponse {
@@ -175,6 +174,12 @@ export interface ResumeChannelResponse {
 }
 
 // ============== 能力测试类型 ==============
+
+export interface CapabilityProtocolJobRef {
+  jobId: string
+  channelKind: 'messages' | 'chat' | 'gemini' | 'responses'
+  channelId: number
+}
 
 export interface CapabilityTestJobStartResponse {
   jobId: string
@@ -233,6 +238,8 @@ export interface CapabilityProtocolJobResult {
 
 export interface CapabilityTestJob {
   jobId: string
+  protocolJobIds?: Record<string, string>
+  protocolJobRefs?: Record<string, CapabilityProtocolJobRef>
   channelId: number
   channelName: string
   channelKind: string
@@ -274,6 +281,8 @@ export interface ModelTestResult {
 export interface CapabilitySnapshot {
   identityKey: string
   sourceType: string
+  protocolJobIds?: Record<string, string>
+  protocolJobRefs?: Record<string, CapabilityProtocolJobRef>
   tests: CapabilityProtocolJobResult[]
   compatibleProtocols: string[]
   totalDuration: number
@@ -705,11 +714,13 @@ export class ApiService {
     type: 'messages' | 'chat' | 'gemini' | 'responses',
     id: number,
     targetProtocols: string[],
-    previousJobId?: string
+    previousJobId?: string,
+    rpm: number = 10
   ): Promise<CapabilityTestJobStartResponse> {
-    const body: { targetProtocols: string[]; timeout: number; previousJobId?: string } = {
+    const body: { targetProtocols: string[]; timeout: number; previousJobId?: string; rpm: number } = {
       targetProtocols,
-      timeout: 10000
+      timeout: 10000,
+      rpm: Math.min(60, Math.max(1, Math.floor(rpm) || 10))
     }
     if (previousJobId) {
       body.previousJobId = previousJobId
@@ -867,7 +878,7 @@ export class ApiService {
   }
 
   // 获取调度器统计信息
-  async getSchedulerStats(type?: 'messages' | 'responses' | 'gemini' | 'chat'): Promise<SchedulerStatsResponse> {
+  async getSchedulerStats(type?: 'messages' | 'responses' | 'gemini' | 'chat' | 'images'): Promise<SchedulerStatsResponse> {
     // Gemini 暂无调度器统计，返回默认值
     if (type === 'gemini') {
       return {
@@ -884,7 +895,7 @@ export class ApiService {
   }
 
   // 获取渠道仪表盘数据（合并 channels + metrics + stats）
-  async getChannelDashboard(type: 'messages' | 'responses' | 'gemini' | 'chat' = 'messages'): Promise<ChannelDashboardResponse> {
+  async getChannelDashboard(type: 'messages' | 'responses' | 'gemini' | 'chat' | 'images' = 'messages'): Promise<ChannelDashboardResponse> {
     const query = type !== 'messages' ? `?type=${type}` : ''
     return this.request(`/messages/channels/dashboard${query}`)
   }
@@ -1004,7 +1015,7 @@ export class ApiService {
   }
   // ============== 模型统计 API ==============
 
-  async getModelStatsHistory(type: 'messages' | 'responses' | 'gemini' | 'chat', duration: string = '24h'): Promise<ModelStatsHistoryResponse> {
+  async getModelStatsHistory(type: 'messages' | 'responses' | 'gemini' | 'chat' | 'images', duration: string = '24h'): Promise<ModelStatsHistoryResponse> {
     return this.request(`/${type}/models/stats/history?duration=${duration}`)
   }
 
@@ -1224,6 +1235,115 @@ export class ApiService {
       method: 'POST',
       body: JSON.stringify({ duration: durationSeconds })
     })
+  }
+
+  // ============== Images 渠道管理 API ==============
+
+  async getImagesChannels(): Promise<ChannelsResponse> {
+    return this.request('/images/channels')
+  }
+
+  async addImagesChannel(channel: Omit<Channel, 'index' | 'latency' | 'status'>): Promise<void> {
+    await this.request('/images/channels', {
+      method: 'POST',
+      body: JSON.stringify(channel)
+    })
+  }
+
+  async updateImagesChannel(id: number, channel: Partial<Channel>): Promise<void> {
+    await this.request(`/images/channels/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(channel)
+    })
+  }
+
+  async deleteImagesChannel(id: number): Promise<void> {
+    await this.request(`/images/channels/${id}`, {
+      method: 'DELETE'
+    })
+  }
+
+  async addImagesApiKey(channelId: number, apiKey: string): Promise<void> {
+    await this.request(`/images/channels/${channelId}/keys`, {
+      method: 'POST',
+      body: JSON.stringify({ apiKey })
+    })
+  }
+
+  async removeImagesApiKey(channelId: number, apiKey: string): Promise<void> {
+    await this.request(`/images/channels/${channelId}/keys/${encodeURIComponent(apiKey)}`, {
+      method: 'DELETE'
+    })
+  }
+
+  async moveImagesApiKeyToTop(channelId: number, apiKey: string): Promise<void> {
+    await this.request(`/images/channels/${channelId}/keys/${encodeURIComponent(apiKey)}/top`, {
+      method: 'POST'
+    })
+  }
+
+  async moveImagesApiKeyToBottom(channelId: number, apiKey: string): Promise<void> {
+    await this.request(`/images/channels/${channelId}/keys/${encodeURIComponent(apiKey)}/bottom`, {
+      method: 'POST'
+    })
+  }
+
+  // ============== Images 多渠道调度 API ==============
+
+  async reorderImagesChannels(order: number[]): Promise<void> {
+    await this.request('/images/channels/reorder', {
+      method: 'POST',
+      body: JSON.stringify({ order })
+    })
+  }
+
+  async setImagesChannelStatus(channelId: number, status: ChannelStatus): Promise<void> {
+    await this.request(`/images/channels/${channelId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status })
+    })
+  }
+
+  async resumeImagesChannel(channelId: number): Promise<ResumeChannelResponse> {
+    return this.request(`/images/channels/${channelId}/resume`, {
+      method: 'POST'
+    })
+  }
+
+  async setImagesChannelPromotion(channelId: number, durationSeconds: number): Promise<void> {
+    await this.request(`/images/channels/${channelId}/promotion`, {
+      method: 'POST',
+      body: JSON.stringify({ duration: durationSeconds })
+    })
+  }
+
+  async pingImagesChannel(id: number): Promise<PingResult> {
+    return this.request(`/images/ping/${id}`)
+  }
+
+  async pingAllImagesChannels(): Promise<Array<{ id: number; name: string; latency: number; status: string }>> {
+    return this.request('/images/ping')
+  }
+
+  async getImagesChannelModels(id: number, request: ChannelModelsRequest): Promise<ModelsResponse> {
+    return this.request(`/images/channels/${id}/models`, {
+      method: 'POST',
+      body: JSON.stringify(request)
+    })
+  }
+
+  // ============== Images 历史指标 API ==============
+
+  async getImagesChannelMetricsHistory(duration: string = '24h'): Promise<MetricsHistoryResponse[]> {
+    return this.request(`/images/channels/metrics/history?duration=${duration}`)
+  }
+
+  async getImagesChannelKeyMetricsHistory(channelId: number, duration: string = '6h'): Promise<ChannelKeyMetricsHistoryResponse> {
+    return this.request(`/images/channels/${channelId}/keys/metrics/history?duration=${duration}`)
+  }
+
+  async getImagesGlobalStats(duration: string = '24h'): Promise<GlobalStatsHistoryResponse> {
+    return this.request(`/images/global/stats/history?duration=${duration}`)
   }
 
   // ============== Gemini 历史指标 API ==============

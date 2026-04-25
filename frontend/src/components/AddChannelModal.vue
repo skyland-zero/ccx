@@ -24,19 +24,6 @@
           >
             {{ t('addChannel.testCapability') }}
           </v-btn>
-          <v-text-field
-            v-model.number="form.rpm"
-            :label="t('addChannel.rpmLabel')"
-            type="number"
-            min="1"
-            step="1"
-            variant="outlined"
-            density="compact"
-            hide-details
-            class="capability-rpm-field"
-            prepend-inner-icon="mdi-speedometer"
-            @blur="form.rpm = form.rpm > 0 ? Math.floor(form.rpm) : 10"
-          />
         </div>
         <!-- 模式切换按钮（仅在添加模式显示） -->
         <v-btn v-if="!isEditing" variant="outlined" size="small" class="mode-toggle-btn" @click="toggleMode">
@@ -1172,8 +1159,7 @@ const handleQuickSubmit = () => {
     baseUrl: detectedBaseUrl.value,
     baseUrls: detectedBaseUrls.value,
     apiKeys: detectedApiKeys.value,
-    modelMapping: {},
-    rpm: 10
+    modelMapping: {}
   }
 
   // 传递 isQuickAdd 标志，让 App.vue 知道需要进行后续处理
@@ -1462,7 +1448,6 @@ const form = reactive({
   supportedModels: [] as string[],
   autoBlacklistBalance: true,
   normalizeMetadataUserId: true,
-  rpm: 10
 })
 
 // 多 BaseURL 文本输入（独立变量，保留用户输入的换行）
@@ -1771,7 +1756,6 @@ const hasEditableDraftChanges = computed(() => {
     supportedModels: normalizeStringArray(props.channel.supportedModels || []),
     autoBlacklistBalance: props.channel.autoBlacklistBalance ?? true,
     normalizeMetadataUserId: props.channel.normalizeMetadataUserId ?? true,
-    rpm: props.channel.rpm ?? 10,
   }
 
   return JSON.stringify(currentPayload) !== JSON.stringify(originalPayload)
@@ -1840,7 +1824,6 @@ const resetForm = () => {
   supportedModelsError.value = ''
   form.autoBlacklistBalance = true
   form.normalizeMetadataUserId = true
-  form.rpm = 10
 
   // 重置 baseUrlsText
   baseUrlsText.value = ''
@@ -1902,7 +1885,6 @@ const loadChannelData = (channel: Channel) => {
   supportedModelsError.value = hasInvalidPatterns ? t('addChannel.supportedModelsInvalidPattern') : ''
   form.autoBlacklistBalance = channel.autoBlacklistBalance ?? true
   form.normalizeMetadataUserId = channel.normalizeMetadataUserId ?? true
-  form.rpm = channel.rpm ?? 10
 
   // 立即同步 baseUrl 到预览变量，避免等待 debounce
   formBaseUrlPreview.value = channel.baseUrl
@@ -2336,7 +2318,6 @@ watch(
     customHeaders: form.customHeaders,
     serviceType: form.serviceType,
     routePrefix: form.routePrefix,
-    rpm: form.rpm,
   }),
   () => {
     targetModelOptions.value = []
@@ -2492,15 +2473,6 @@ onUnmounted(() => {
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
-}
-
-.capability-rpm-field {
-  width: 110px;
-  min-width: 110px;
-}
-
-.capability-rpm-field :deep(.v-input__details) {
-  display: none;
 }
 
 .capability-test-btn :deep(.v-btn__content) {

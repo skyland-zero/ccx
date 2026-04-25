@@ -192,9 +192,6 @@ func (cm *ConfigManager) UpdateGeminiUpstream(index int, updates UpstreamUpdate)
 	if updates.LowQuality != nil {
 		upstream.LowQuality = *updates.LowQuality
 	}
-	if updates.RPM != nil {
-		upstream.RPM = *updates.RPM
-	}
 	if updates.AutoBlacklistBalance != nil {
 		v := *updates.AutoBlacklistBalance
 		upstream.AutoBlacklistBalance = &v

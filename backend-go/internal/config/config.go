@@ -36,7 +36,6 @@ type UpstreamConfig struct {
 	Status         string     `json:"status"`                   // 渠道状态：active（正常）, suspended（暂停）, disabled（备用池）
 	PromotionUntil *time.Time `json:"promotionUntil,omitempty"` // 促销期截止时间，在此期间内优先使用此渠道（忽略trace亲和）
 	LowQuality     bool       `json:"lowQuality,omitempty"`     // 低质量渠道标记：启用后强制本地估算 token，偏差>5%时使用本地值
-	RPM            int        `json:"rpm"`                      // 能力测试发送速率（每分钟请求数，仅影响能力测试）
 	// 自动拉黑开关
 	AutoBlacklistBalance *bool `json:"autoBlacklistBalance,omitempty"` // 余额不足时自动拉黑 Key（默认 true）
 	// metadata.user_id 规范化开关
@@ -109,7 +108,6 @@ type UpstreamUpdate struct {
 	Status                  *string    `json:"status"`
 	PromotionUntil          *time.Time `json:"promotionUntil"`
 	LowQuality              *bool      `json:"lowQuality"`
-	RPM                     *int       `json:"rpm"`
 	AutoBlacklistBalance    *bool      `json:"autoBlacklistBalance"`
 	NormalizeMetadataUserID *bool      `json:"normalizeMetadataUserId"`
 	// Gemini 特定配置

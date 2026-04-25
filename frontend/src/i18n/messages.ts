@@ -50,6 +50,10 @@ export type MessageKey =
   | 'capability.partialScopeNotice'
   | 'capability.loadingTitle'
   | 'capability.loadingBody'
+  | 'capability.idleTitle'
+  | 'capability.idleBody'
+  | 'capability.notStarted'
+  | 'capability.rpmLabel'
   | 'capability.compatibleProtocols'
   | 'capability.noCompatibleProtocols'
   | 'capability.table.protocol'
@@ -421,6 +425,10 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'capability.partialScopeNotice': 'The current result only covers the selected protocols ({protocols}), not the full channel compatibility.',
     'capability.loadingTitle': 'Testing protocol compatibility...',
     'capability.loadingBody': 'This may take a few seconds',
+    'capability.idleTitle': 'Ready to test',
+    'capability.idleBody': 'Click the "Test" button next to a protocol below to start testing',
+    'capability.notStarted': 'Not started',
+    'capability.rpmLabel': 'Test RPM',
     'capability.compatibleProtocols': 'Compatible protocols',
     'capability.noCompatibleProtocols': 'No compatible protocols',
     'capability.table.protocol': 'Protocol',
@@ -791,6 +799,10 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'capability.partialScopeNotice': 'Hasil saat ini hanya mencakup protokol terpilih ({protocols}), bukan kompatibilitas penuh channel.',
     'capability.loadingTitle': 'Menguji kompatibilitas protokol...',
     'capability.loadingBody': 'Ini mungkin butuh beberapa detik',
+    'capability.idleTitle': 'Siap untuk menguji',
+    'capability.idleBody': 'Klik tombol "Uji" di sebelah protokol di bawah untuk memulai pengujian',
+    'capability.notStarted': 'Belum dimulai',
+    'capability.rpmLabel': 'RPM tes',
     'capability.compatibleProtocols': 'Protokol kompatibel',
     'capability.noCompatibleProtocols': 'Tidak ada protokol kompatibel',
     'capability.table.protocol': 'Protokol',
@@ -1161,6 +1173,10 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'capability.partialScopeNotice': '当前结果仅覆盖所选协议（{protocols}），不代表整个渠道的完整兼容性。',
     'capability.loadingTitle': '正在测试协议兼容性...',
     'capability.loadingBody': '这可能需要几秒钟',
+    'capability.idleTitle': '等待开始测试',
+    'capability.idleBody': '请点击下方协议旁的"测试"按钮开始测试',
+    'capability.notStarted': '待测试',
+    'capability.rpmLabel': '测试 RPM',
     'capability.compatibleProtocols': '兼容协议',
     'capability.noCompatibleProtocols': '无兼容协议',
     'capability.table.protocol': '协议',

@@ -379,6 +379,8 @@
       :channel-name="capabilityTestChannelName"
       :current-tab="channelStore.activeTab"
       :capability-job="capabilityTestJob"
+      :capability-rpm="capabilityTestRpm"
+      @update:capability-rpm="capabilityTestRpm = $event"
       @copy-to-tab="handleCopyToTab"
       @cancel="handleCancelCapabilityTest"
       @retry-model="handleRetryCapabilityModel"
@@ -432,7 +434,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch, defineAsyncComponent } from 'vue'
 import { useTheme } from 'vuetify'
-import { api, fetchHealth, ApiError, type Channel, type CapabilityTestJob, type CapabilityTestJobStartResponse, type CapabilityProtocolJobResult, type CapabilityModelJobResult } from './services/api'
+import { api, fetchHealth, ApiError, type Channel, type CapabilityTestJob, type CapabilityTestJobStartResponse, type CapabilityProtocolJobResult, type CapabilityModelJobResult, type CapabilityProtocolJobRef } from './services/api'
 import { versionService } from './services/version'
 import { useAuthStore } from './stores/auth'
 import { useChannelStore } from './stores/channel'
@@ -698,9 +700,13 @@ const capabilityTestDialogRef = ref<InstanceType<typeof CapabilityTestDialog> | 
 const capabilityTestJobId = ref('')
 const capabilityTestPolling = ref<ReturnType<typeof setInterval> | null>(null)
 const capabilityTestJob = ref<CapabilityTestJob | null>(null)
+const capabilityTestRpm = ref(10)
 const capabilityTestPreviousJobId = ref('') // 记录上一次的 jobId，用于复用成功结果
 const capabilityRetryPendingUntil = ref<Record<string, number>>({})
 const capabilitySnapshots = ref<Record<string, CapabilityTestJob>>({})
+const capabilityProtocolJobIds = ref<Record<string, string>>({})
+const capabilityProtocolJobRefs = ref<Record<string, CapabilityProtocolJobRef>>({})
+const capabilityProtocolActiveJobIds = ref<Record<string, string>>({})
 
 const buildCapabilityIdentityKey = (channel: Channel | undefined): string => {
   if (!channel) return ''
@@ -714,6 +720,8 @@ const buildCapabilityIdentityKey = (channel: Channel | undefined): string => {
 
 const cloneCapabilityJob = (job: CapabilityTestJob): CapabilityTestJob => ({
   ...job,
+  protocolJobIds: job.protocolJobIds ? { ...job.protocolJobIds } : undefined,
+  protocolJobRefs: job.protocolJobRefs ? { ...job.protocolJobRefs } : undefined,
   tests: job.tests.map(test => ({
     ...test,
     modelResults: test.modelResults ? test.modelResults.map(modelResult => ({ ...modelResult })) : []
@@ -739,7 +747,7 @@ const buildPendingCapabilityModels = (protocol: string): CapabilityModelJobResul
   const now = new Date().toISOString()
   return (capabilityPlaceholderModels[protocol] ?? []).map(model => ({
     model,
-    status: 'queued',
+    status: 'idle' as any,
     lifecycle: 'pending',
     outcome: 'unknown',
     success: false,
@@ -802,7 +810,7 @@ const buildCapabilityPlaceholderJob = (channelId: number, channelName: string): 
     const modelResults = buildPendingCapabilityModels(protocol)
     return {
       protocol,
-      status: 'queued',
+      status: 'idle' as any,
       lifecycle: 'pending',
       outcome: 'unknown',
       success: false,
@@ -820,11 +828,13 @@ const buildCapabilityPlaceholderJob = (channelId: number, channelName: string): 
 
   return {
     jobId: '',
+    protocolJobIds: {},
+    protocolJobRefs: {},
     channelId,
     channelName,
     channelKind: channelStore.activeTab,
     sourceType: '',
-    status: 'queued',
+    status: 'idle' as any,
     lifecycle: 'pending',
     outcome: 'unknown',
     runMode: 'fresh',
@@ -844,10 +854,150 @@ const buildCapabilityPlaceholderJob = (channelId: number, channelName: string): 
   }
 }
 
+const mergeCapabilitySnapshotIntoPlaceholder = (
+  snapshot: CapabilityTestJob,
+  channelId: number,
+  channelName: string,
+  channelKind: string,
+  targetProtocols: string[]
+): CapabilityTestJob => {
+  const placeholder = buildCapabilityPlaceholderJob(channelId, channelName)
+  const snapshotTests = new Map(snapshot.tests.map(test => [test.protocol, test]))
+  const nextTargetProtocols = targetProtocols.length > 0 ? [...targetProtocols] : [...capabilityProtocolOrder]
+
+  const merged: CapabilityTestJob = {
+    ...placeholder,
+    ...snapshot,
+    protocolJobIds: {
+      ...(snapshot.protocolJobIds ?? {})
+    },
+    protocolJobRefs: {
+      ...(snapshot.protocolJobRefs ?? {})
+    },
+    channelId,
+    channelName,
+    channelKind,
+    targetProtocols: nextTargetProtocols,
+    compatibleProtocols: snapshot.compatibleProtocols.filter(protocol => nextTargetProtocols.includes(protocol)),
+    tests: placeholder.tests.map(test => {
+      const snapshotTest = snapshotTests.get(test.protocol)
+      if (!snapshotTest) {
+        return targetProtocols.length > 0 && !targetProtocols.includes(test.protocol)
+          ? test
+          : test
+      }
+      return {
+        ...snapshotTest,
+        modelResults: snapshotTest.modelResults ? snapshotTest.modelResults.map(modelResult => ({ ...modelResult })) : []
+      }
+    })
+  }
+
+  return recomputeCapabilityAggregateJob(merged)
+}
+
+const isIdleCapabilityStatus = (status: string | undefined): boolean => status === 'idle'
+
+const isProtocolRunningLike = (test: CapabilityProtocolJobResult): boolean => {
+  return test.lifecycle === 'active' || test.status === 'running'
+}
+
+const isProtocolPendingLike = (test: CapabilityProtocolJobResult): boolean => {
+  return !isIdleCapabilityStatus(test.status as string | undefined) && !isProtocolRunningLike(test) && test.lifecycle === 'pending'
+}
+
+const recomputeCapabilityAggregateJob = (job: CapabilityTestJob): CapabilityTestJob => {
+  const compatibleProtocols = job.tests
+    .filter(test => test.outcome === 'success' || test.outcome === 'partial')
+    .map(test => test.protocol)
+
+  const progress = job.tests.reduce((acc, test) => {
+    const modelResults = test.modelResults ?? []
+    acc.totalModels += modelResults.length
+    for (const model of modelResults) {
+      switch (model.status as string) {
+        case 'queued':
+          acc.queuedModels += 1
+          break
+        case 'running':
+          acc.runningModels += 1
+          break
+        case 'success':
+          acc.successModels += 1
+          break
+        case 'failed':
+          acc.failedModels += 1
+          break
+        case 'skipped':
+          acc.skippedModels += 1
+          break
+      }
+    }
+    return acc
+  }, {
+    totalModels: 0,
+    queuedModels: 0,
+    runningModels: 0,
+    successModels: 0,
+    failedModels: 0,
+    skippedModels: 0,
+    completedModels: 0
+  })
+  progress.completedModels = progress.successModels + progress.failedModels + progress.skippedModels
+
+  const anyRunning = job.tests.some(isProtocolRunningLike)
+  const anyPending = job.tests.some(isProtocolPendingLike)
+  const anyIdle = job.tests.some(test => isIdleCapabilityStatus(test.status as string | undefined))
+  const allCancelled = job.tests.length > 0 && job.tests.every(test => test.lifecycle === 'cancelled' || test.outcome === 'cancelled')
+
+  let status = job.status
+  let lifecycle = job.lifecycle
+  let outcome = job.outcome
+
+  if (anyRunning) {
+    status = 'running'
+    lifecycle = 'active'
+    outcome = 'unknown'
+  } else if (anyPending) {
+    status = 'queued'
+    lifecycle = 'pending'
+    outcome = 'unknown'
+  } else if (anyIdle) {
+    status = 'idle' as any
+    lifecycle = 'pending'
+    outcome = 'unknown'
+  } else if (allCancelled) {
+    status = 'cancelled'
+    lifecycle = 'cancelled'
+    outcome = 'cancelled'
+  } else {
+    status = 'completed'
+    lifecycle = 'done'
+    if (compatibleProtocols.length === job.tests.length && job.tests.length > 0) {
+      outcome = 'success'
+    } else if (compatibleProtocols.length > 0) {
+      outcome = 'partial'
+    } else {
+      outcome = 'failed'
+    }
+  }
+
+  return {
+    ...job,
+    status,
+    lifecycle,
+    outcome,
+    compatibleProtocols,
+    progress,
+    activeOperations: Object.keys(capabilityProtocolActiveJobIds.value).length
+  }
+}
+
 watch(showCapabilityTestDialog, (open) => {
   if (!open) {
     stopCapabilityTestPolling()
     capabilityRetryPendingUntil.value = {}
+    capabilityProtocolActiveJobIds.value = {}
   }
 })
 
@@ -858,20 +1008,58 @@ const stopCapabilityTestPolling = () => {
   }
 }
 
+const buildProtocolJobRef = (
+  jobId: string,
+  channelKind: CapabilityProtocolJobRef['channelKind'] = channelStore.activeTab as CapabilityProtocolJobRef['channelKind'],
+  channelId: number = capabilityTestChannelId.value
+): CapabilityProtocolJobRef => ({
+  jobId,
+  channelKind,
+  channelId
+})
+
+const getCapabilityProtocolJobRef = (protocol: string, jobId?: string): CapabilityProtocolJobRef | null => {
+  const existingRef = capabilityProtocolJobRefs.value[protocol] ?? capabilityTestJob.value?.protocolJobRefs?.[protocol]
+  if (existingRef) return existingRef
+  if (!jobId) return null
+  return buildProtocolJobRef(jobId)
+}
+
 const isCapabilityJobTerminal = (job: CapabilityTestJob | null | undefined) => {
   if (!job) return false
   return job.lifecycle === 'done' || job.lifecycle === 'cancelled'
 }
 
-const startCapabilityPolling = (channelId: number, jobId: string) => {
+const startCapabilityPolling = () => {
   stopCapabilityTestPolling()
   capabilityTestPolling.value = setInterval(async () => {
-    if (!jobId) return
-    try {
-      const latest = await api.getChannelCapabilityTestStatus(channelStore.activeTab, channelId, jobId)
-      updateCapabilityJob(latest)
-    } catch (error) {
-      console.error('Failed to poll capability test job:', error)
+    const activeEntries = Object.entries(capabilityProtocolActiveJobIds.value)
+    if (activeEntries.length === 0) return
+
+    const results = await Promise.allSettled(activeEntries.map(async ([protocol, jobId]) => {
+      const protocolJobRef = getCapabilityProtocolJobRef(protocol, jobId)
+      if (!protocolJobRef) {
+        throw new Error(`Missing capability job ref for protocol: ${protocol}`)
+      }
+      const latest = await api.getChannelCapabilityTestStatus(protocolJobRef.channelKind, protocolJobRef.channelId, protocolJobRef.jobId)
+      return { protocol, latest, jobId: protocolJobRef.jobId }
+    }))
+
+    for (const result of results) {
+      if (result.status === 'fulfilled') {
+        const { protocol, latest } = result.value
+        updateCapabilityJob(latest)
+        if (isCapabilityJobTerminal(latest) && !(latest.activeOperations && latest.activeOperations > 0)) {
+          delete capabilityProtocolActiveJobIds.value[protocol]
+        }
+        continue
+      }
+
+      console.error('Failed to poll capability test job:', result.reason)
+    }
+
+    if (Object.keys(capabilityProtocolActiveJobIds.value).length === 0) {
+      stopCapabilityTestPolling()
     }
   }, 1000)
 }
@@ -879,18 +1067,67 @@ const startCapabilityPolling = (channelId: number, jobId: string) => {
 const updateCapabilityJob = (job: CapabilityTestJob) => {
   const mergedJob = applyCapabilityRetryPending(job, capabilityRetryPendingUntil.value, Date.now())
 
-  capabilityTestJob.value = mergedJob
+  const currentJob = capabilityTestJob.value
+  const incomingProtocols = new Set(mergedJob.tests.map(test => test.protocol))
+  const shouldMergeIntoAggregate = Boolean(
+    currentJob &&
+    Array.isArray(currentJob.tests) &&
+    currentJob.tests.length > 0 &&
+    currentJob.tests.some(test => !incomingProtocols.has(test.protocol))
+  )
+
+  const nextJob = shouldMergeIntoAggregate
+    ? recomputeCapabilityAggregateJob({
+        ...currentJob!,
+        ...mergedJob,
+        protocolJobIds: {
+          ...(currentJob?.protocolJobIds ?? {}),
+          ...(mergedJob.protocolJobIds ?? {})
+        },
+        protocolJobRefs: {
+          ...(currentJob?.protocolJobRefs ?? {}),
+          ...(mergedJob.protocolJobRefs ?? {})
+        },
+        targetProtocols: currentJob!.targetProtocols ?? mergedJob.targetProtocols,
+        totalDuration: Math.max(currentJob!.totalDuration ?? 0, mergedJob.totalDuration ?? 0),
+        tests: currentJob!.tests.map(test => mergedJob.tests.find(candidate => candidate.protocol === test.protocol) ?? test)
+      })
+    : recomputeCapabilityAggregateJob(mergedJob)
+
+  capabilityTestJob.value = nextJob
   capabilityTestJobId.value = job.jobId
-  const channel = channelStore.currentChannelsData.channels?.find(ch => ch.index === mergedJob.channelId)
+  nextJob.protocolJobIds = {
+    ...(nextJob.protocolJobIds ?? {})
+  }
+  nextJob.protocolJobRefs = {
+    ...(nextJob.protocolJobRefs ?? {})
+  }
+  for (const test of job.tests) {
+    const protocolJobRef: CapabilityProtocolJobRef = {
+      jobId: job.jobId,
+      channelKind: job.channelKind as CapabilityProtocolJobRef['channelKind'],
+      channelId: job.channelId
+    }
+    capabilityProtocolJobIds.value[test.protocol] = job.jobId
+    capabilityProtocolJobRefs.value[test.protocol] = protocolJobRef
+    nextJob.protocolJobIds[test.protocol] = job.jobId
+    nextJob.protocolJobRefs[test.protocol] = protocolJobRef
+    if (test.lifecycle === 'active' || test.lifecycle === 'pending') {
+      capabilityProtocolActiveJobIds.value[test.protocol] = job.jobId
+    } else if (capabilityProtocolActiveJobIds.value[test.protocol] === job.jobId) {
+      delete capabilityProtocolActiveJobIds.value[test.protocol]
+    }
+  }
+  const channel = channelStore.currentChannelsData.channels?.find(ch => ch.index === nextJob.channelId)
   const identityKey = buildCapabilityIdentityKey(channel)
   if (identityKey) {
     capabilitySnapshots.value[identityKey] = cloneCapabilityJob({
-      ...mergedJob,
+      ...nextJob,
       snapshotSource: 'local',
-      snapshotUpdatedAt: mergedJob.updatedAt
+      snapshotUpdatedAt: nextJob.updatedAt
     })
   }
-  if (isCapabilityJobTerminal(mergedJob) && !(mergedJob.activeOperations && mergedJob.activeOperations > 0)) {
+  if (isCapabilityJobTerminal(nextJob) && !(nextJob.activeOperations && nextJob.activeOperations > 0)) {
     stopCapabilityTestPolling()
   }
 }
@@ -899,6 +1136,7 @@ const testChannelCapability = async (channelId: number, targetProtocols: string[
   const channel = channelStore.currentChannelsData.channels?.find(ch => ch.index === channelId)
   capabilityTestChannelName.value = channel?.name || t('capability.channelFallback', { id: channelId })
   capabilityTestChannelId.value = channelId
+  capabilityTestRpm.value = 10
 
   if (dialogStore.showAddChannelModal) {
     dialogStore.closeAddChannelModal()
@@ -908,14 +1146,16 @@ const testChannelCapability = async (channelId: number, targetProtocols: string[
   stopCapabilityTestPolling()
   capabilityTestPreviousJobId.value = capabilityTestJobId.value
   capabilityTestJobId.value = ''
+  capabilityProtocolJobIds.value = {}
+  capabilityProtocolJobRefs.value = {}
+  capabilityProtocolActiveJobIds.value = {}
   capabilityTestJob.value = buildCapabilityPlaceholderJob(channelId, capabilityTestChannelName.value)
-  if (targetProtocols.length > 0 && capabilityTestJob.value) {
-    capabilityTestJob.value.tests = capabilityTestJob.value.tests.filter(test => targetProtocols.includes(test.protocol))
+  if (capabilityTestJob.value) {
     capabilityTestJob.value.targetProtocols = [...targetProtocols]
     const totalModels = capabilityTestJob.value.tests.reduce((sum, test) => sum + (test.modelResults?.length ?? 0), 0)
     capabilityTestJob.value.progress = {
       totalModels,
-      queuedModels: totalModels,
+      queuedModels: 0,
       runningModels: 0,
       successModels: 0,
       failedModels: 0,
@@ -932,6 +1172,8 @@ const testChannelCapability = async (channelId: number, targetProtocols: string[
       const snapshotProtocols = remoteSnapshot.tests.map(test => test.protocol)
       const snapshotJob: CapabilityTestJob = {
         jobId: '',
+        protocolJobIds: remoteSnapshot.protocolJobIds ?? {},
+        protocolJobRefs: remoteSnapshot.protocolJobRefs ?? {},
         channelId,
         channelName: capabilityTestChannelName.value,
         channelKind: channelStore.activeTab,
@@ -957,43 +1199,34 @@ const testChannelCapability = async (channelId: number, targetProtocols: string[
     }
   }
   if (existingSnapshot) {
-    const filteredSnapshot = cloneCapabilityJob(existingSnapshot)
-    filteredSnapshot.snapshotSource = existingSnapshot.snapshotSource
-    filteredSnapshot.snapshotUpdatedAt = existingSnapshot.snapshotUpdatedAt
-    filteredSnapshot.channelId = channelId
-    filteredSnapshot.channelName = capabilityTestChannelName.value
-    filteredSnapshot.channelKind = channelStore.activeTab
-    if (targetProtocols.length > 0) {
-      filteredSnapshot.tests = filteredSnapshot.tests.filter(test => targetProtocols.includes(test.protocol))
-      filteredSnapshot.targetProtocols = filteredSnapshot.tests.map(test => test.protocol)
-      const compatibleProtocols = filteredSnapshot.compatibleProtocols.filter(protocol => targetProtocols.includes(protocol))
-      filteredSnapshot.compatibleProtocols = compatibleProtocols
-      const totalModels = filteredSnapshot.tests.reduce((sum, test) => sum + (test.modelResults?.length ?? 0), 0)
-      const queuedModels = filteredSnapshot.tests.reduce((sum, test) => sum + (test.modelResults ?? []).filter(model => model.status === 'queued').length, 0)
-      const runningModels = filteredSnapshot.tests.reduce((sum, test) => sum + (test.modelResults ?? []).filter(model => model.status === 'running').length, 0)
-      const successModels = filteredSnapshot.tests.reduce((sum, test) => sum + (test.modelResults ?? []).filter(model => model.status === 'success').length, 0)
-      const failedModels = filteredSnapshot.tests.reduce((sum, test) => sum + (test.modelResults ?? []).filter(model => model.status === 'failed').length, 0)
-      const skippedModels = filteredSnapshot.tests.reduce((sum, test) => sum + (test.modelResults ?? []).filter(model => model.status === 'skipped').length, 0)
-      filteredSnapshot.progress = {
-        totalModels,
-        queuedModels,
-        runningModels,
-        successModels,
-        failedModels,
-        skippedModels,
-        completedModels: successModels + failedModels + skippedModels
+    const mergedSnapshot = mergeCapabilitySnapshotIntoPlaceholder(
+      cloneCapabilityJob(existingSnapshot),
+      channelId,
+      capabilityTestChannelName.value,
+      channelStore.activeTab,
+      targetProtocols
+    )
+    capabilityTestJob.value = mergedSnapshot
+    Object.assign(capabilityProtocolJobIds.value, mergedSnapshot.protocolJobIds ?? {})
+    Object.assign(capabilityProtocolJobRefs.value, mergedSnapshot.protocolJobRefs ?? {})
+    for (const test of mergedSnapshot.tests) {
+      const protocolJobId = mergedSnapshot.protocolJobIds?.[test.protocol]
+      if (!protocolJobId) continue
+      if (test.lifecycle === 'pending' || test.lifecycle === 'active') {
+        capabilityProtocolActiveJobIds.value[test.protocol] = protocolJobId
       }
     }
-    capabilityTestJob.value = filteredSnapshot
+    if (Object.keys(capabilityProtocolActiveJobIds.value).length > 0) {
+      startCapabilityPolling()
+    }
   } else {
     capabilityTestJob.value = buildCapabilityPlaceholderJob(channelId, capabilityTestChannelName.value)
-    if (targetProtocols.length > 0 && capabilityTestJob.value) {
-      capabilityTestJob.value.tests = capabilityTestJob.value.tests.filter(test => targetProtocols.includes(test.protocol))
+    if (capabilityTestJob.value) {
       capabilityTestJob.value.targetProtocols = [...targetProtocols]
       const totalModels = capabilityTestJob.value.tests.reduce((sum, test) => sum + (test.modelResults?.length ?? 0), 0)
       capabilityTestJob.value.progress = {
         totalModels,
-        queuedModels: totalModels,
+        queuedModels: 0,
         runningModels: 0,
         successModels: 0,
         failedModels: 0,
@@ -1003,13 +1236,51 @@ const testChannelCapability = async (channelId: number, targetProtocols: string[
     }
   }
 
+  // 不再自动开始测试，等待用户选择协议后手动触发
+}
+
+const handleTestCapabilityProtocol = async (protocol: string) => {
+  if (capabilityTestChannelId.value < 0) return
+
+  const targetProtocols = [protocol]
+  const channelId = capabilityTestChannelId.value
+  const previousJobId = capabilityProtocolJobIds.value[protocol] || capabilityTestPreviousJobId.value || undefined
+
   try {
+    if (capabilityTestJob.value) {
+      capabilityTestJob.value = {
+        ...capabilityTestJob.value,
+        tests: capabilityTestJob.value.tests.map(test => {
+          if (test.protocol !== protocol) return test
+          return {
+            ...test,
+            status: 'queued' as any,
+            lifecycle: 'pending',
+            outcome: 'unknown',
+            reason: undefined,
+            error: undefined,
+            success: false,
+            latency: 0,
+            streamingSupported: false,
+            testedModel: '',
+            modelResults: buildPendingCapabilityModels(protocol)
+          }
+        })
+      }
+    }
+
     const startResp: CapabilityTestJobStartResponse = await api.startChannelCapabilityTest(
       channelStore.activeTab,
       channelId,
       targetProtocols,
-      capabilityTestPreviousJobId.value || undefined
+      previousJobId,
+      capabilityTestRpm.value
     )
+
+    const startedJobRef = buildProtocolJobRef(startResp.jobId, channelStore.activeTab as CapabilityProtocolJobRef['channelKind'], channelId)
+    capabilityProtocolJobIds.value[protocol] = startResp.jobId
+    capabilityProtocolJobRefs.value[protocol] = startedJobRef
+    capabilityProtocolActiveJobIds.value[protocol] = startResp.jobId
     capabilityTestJobId.value = startResp.jobId
 
     if (startResp.job) {
@@ -1017,40 +1288,65 @@ const testChannelCapability = async (channelId: number, targetProtocols: string[
     }
 
     if (isCapabilityJobTerminal(startResp.job) && !(startResp.job?.activeOperations && startResp.job.activeOperations > 0)) {
+      delete capabilityProtocolActiveJobIds.value[protocol]
       return
     }
 
-    startCapabilityPolling(channelId, startResp.jobId)
+    startCapabilityPolling()
   } catch (error) {
     const message = error instanceof Error ? error.message : t('system.unknown')
     capabilityTestDialogRef.value?.setError(t('toast.capabilityFailed', { message }))
   }
 }
 
-const handleTestCapabilityProtocol = async (protocol: string) => {
-  if (capabilityTestChannelId.value < 0) return
-  await testChannelCapability(capabilityTestChannelId.value, [protocol])
-}
-
 const handleCancelCapabilityTest = async () => {
-  if (!capabilityTestJobId.value) return
-  try {
-    await api.cancelCapabilityTest(channelStore.activeTab, capabilityTestChannelId.value, capabilityTestJobId.value)
+  const activeEntries = Object.entries(capabilityProtocolActiveJobIds.value)
+  if (activeEntries.length === 0) return
+
+  const uniqueJobRefs = [...new Map(activeEntries.map(([protocol, jobId]) => {
+    const protocolJobRef = getCapabilityProtocolJobRef(protocol, jobId) ?? buildProtocolJobRef(jobId)
+    return [`${protocolJobRef.channelKind}:${protocolJobRef.channelId}:${protocolJobRef.jobId}`, protocolJobRef]
+  })).values()]
+
+  const cancelResults = await Promise.allSettled(uniqueJobRefs.map(jobRef =>
+    api.cancelCapabilityTest(jobRef.channelKind, jobRef.channelId, jobRef.jobId)
+  ))
+  for (const result of cancelResults) {
+    if (result.status === 'rejected') {
+      console.error('Failed to cancel capability test:', result.reason)
+    }
+  }
+
+  // 对每个 job 拉取最新状态；只在刷新确认终态后由 updateCapabilityJob 清理 active 映射
+  const latestResults = await Promise.allSettled(uniqueJobRefs.map(async (jobRef) =>
+    api.getChannelCapabilityTestStatus(jobRef.channelKind, jobRef.channelId, jobRef.jobId)
+  ))
+  for (const result of latestResults) {
+    if (result.status === 'fulfilled') {
+      updateCapabilityJob(result.value)
+      continue
+    }
+    console.error('Failed to refresh status after cancel:', result.reason)
+  }
+
+  if (capabilityTestJob.value) {
+    capabilityTestJob.value = recomputeCapabilityAggregateJob(capabilityTestJob.value)
+  }
+
+  if (Object.keys(capabilityProtocolActiveJobIds.value).length === 0) {
     stopCapabilityTestPolling()
-    const latest = await api.getChannelCapabilityTestStatus(channelStore.activeTab, capabilityTestChannelId.value, capabilityTestJobId.value)
-    updateCapabilityJob(latest)
-  } catch (error) {
-    console.error('Failed to cancel capability test:', error)
   }
 }
 
 const handleRetryCapabilityModel = async (protocol: string, model: string) => {
-  if (!capabilityTestJobId.value || !capabilityTestJob.value) return
-  if (
-    capabilityTestJob.value.lifecycle === 'pending' ||
-    capabilityTestJob.value.lifecycle === 'active' ||
-    (capabilityTestJob.value.activeOperations && capabilityTestJob.value.activeOperations > 0)
-  ) return
+  const jobId = capabilityProtocolJobIds.value[protocol] || capabilityTestJob.value?.protocolJobIds?.[protocol]
+  const protocolJobRef = getCapabilityProtocolJobRef(protocol, jobId)
+  if (!capabilityTestJob.value) return
+  if (!jobId || !protocolJobRef) {
+    capabilityTestDialogRef.value?.setError(t('toast.capabilityFailed', { message: t('capability.reasonNotRun') }))
+    return
+  }
+  if (capabilityProtocolActiveJobIds.value[protocol]) return
   try {
     const pendingKey = `${protocol}:${model}`
     capabilityRetryPendingUntil.value[pendingKey] = Date.now() + 1000
@@ -1059,8 +1355,9 @@ const handleRetryCapabilityModel = async (protocol: string, model: string) => {
       capabilityTestJob.value = markCapabilityModelRetrying(capabilityTestJob.value, protocol, model)
     }
 
-    await api.retryCapabilityTestModel(channelStore.activeTab, capabilityTestChannelId.value, capabilityTestJobId.value, protocol, model)
-    startCapabilityPolling(capabilityTestChannelId.value, capabilityTestJobId.value)
+    await api.retryCapabilityTestModel(protocolJobRef.channelKind, protocolJobRef.channelId, protocolJobRef.jobId, protocol, model)
+    capabilityProtocolActiveJobIds.value[protocol] = protocolJobRef.jobId
+    startCapabilityPolling()
   } catch (error) {
     console.error('Failed to retry capability test model:', error)
   }
@@ -1096,7 +1393,6 @@ const handleCopyToTab = async (targetProtocol: string) => {
     injectDummyThoughtSignature: sourceChannel.injectDummyThoughtSignature,
     stripThoughtSignature: sourceChannel.stripThoughtSignature,
     supportedModels: sourceChannel.supportedModels,
-    rpm: sourceChannel.rpm ?? 10,
   }
 
   try {

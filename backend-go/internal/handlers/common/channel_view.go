@@ -30,7 +30,6 @@ func BuildChannelView(up config.UpstreamConfig, index int) gin.H {
 		"priority":                priority,
 		"promotionUntil":          up.PromotionUntil,
 		"lowQuality":              up.LowQuality,
-		"rpm":                     up.RPM,
 		"customHeaders":           up.CustomHeaders,
 		"proxyUrl":                up.ProxyURL,
 		"supportedModels":         up.SupportedModels,

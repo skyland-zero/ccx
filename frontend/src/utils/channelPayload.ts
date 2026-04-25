@@ -24,7 +24,6 @@ export interface ChannelFormLike {
   supportedModels: string[]
   autoBlacklistBalance: boolean
   normalizeMetadataUserId: boolean
-  rpm?: number
 
 }
 
@@ -60,7 +59,6 @@ export function buildChannelPayload(form: ChannelFormLike): Omit<Channel, 'index
     supportedModels: form.supportedModels,
     autoBlacklistBalance: form.autoBlacklistBalance,
     normalizeMetadataUserId: form.normalizeMetadataUserId,
-    rpm: form.rpm && form.rpm > 0 ? form.rpm : 10
   }
 
   if (deduplicatedUrls.length > 1) {

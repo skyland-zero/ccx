@@ -2,7 +2,7 @@
   <v-dialog
     :model-value="modelValue"
     max-width="960"
-    :scrim="false"
+    :scrim="true"
     scrollable
     @update:model-value="$emit('update:modelValue', $event)"
   >
@@ -33,6 +33,31 @@
         </div>
 
         <div v-else-if="job">
+          <div class="capability-toolbar mb-4">
+            <div v-if="state === 'idle'" class="flex-grow-1">
+              <v-alert type="info" variant="tonal" rounded="lg">
+                <div class="d-flex flex-column ga-2">
+                  <div class="text-subtitle-2">{{ t('capability.idleTitle') }}</div>
+                  <div class="text-body-2">{{ t('capability.idleBody') }}</div>
+                </div>
+              </v-alert>
+            </div>
+            <v-text-field
+              v-model.number="rpmValue"
+              :label="t('capability.rpmLabel')"
+              type="number"
+              min="1"
+              max="60"
+              step="1"
+              variant="outlined"
+              density="compact"
+              hide-details
+              class="capability-rpm-field"
+              prepend-inner-icon="mdi-speedometer"
+              @blur="handleRpmBlur"
+            />
+          </div>
+
           <div class="capability-status-bar mb-4">
             <div class="d-flex align-center flex-wrap ga-2">
               <v-chip v-if="runMode !== 'fresh'" color="info" size="small" variant="tonal">
@@ -64,8 +89,8 @@
                 {{ t('capability.noCompatibleProtocols') }}
               </v-chip>
               <v-chip v-else-if="hasNoCompatibleProtocolsYet" color="grey" size="small" variant="tonal" class="d-flex align-center ga-2">
-                <v-progress-circular indeterminate size="12" width="2" color="primary" />
-                <span>{{ state === 'pending' ? t('capability.modelQueued') : t('capability.protocolRunning') }}</span>
+                <v-progress-circular v-if="state === 'pending' || state === 'running'" indeterminate size="12" width="2" color="primary" />
+                <span>{{ state === 'idle' ? t('capability.notStarted') : state === 'pending' ? t('capability.modelQueued') : t('capability.protocolRunning') }}</span>
               </v-chip>
 
               <span v-if="job?.progress?.totalModels && isJobActiveLike" class="text-caption text-medium-emphasis">
@@ -144,7 +169,7 @@
                 :test="test"
                 :pending-text="getProtocolPendingText(test)"
                 :show-label="false"
-                :retry-enabled="!isJobActiveLike"
+                :retry-enabled="!isJobActiveLike && Boolean(job?.protocolJobIds?.[test.protocol])"
                 @retry-model="handleRetryModel"
               />
             </div>
@@ -259,7 +284,7 @@
                         :test="test"
                         :pending-text="getProtocolPendingText(test)"
                         :show-label="false"
-                        :retry-enabled="!isJobActiveLike"
+                        :retry-enabled="!isJobActiveLike && Boolean(job?.protocolJobIds?.[test.protocol])"
                         @retry-model="handleRetryModel"
                       />
                     </div>
@@ -292,11 +317,13 @@ interface Props {
   channelName: string
   currentTab: string
   capabilityJob: CapabilityTestJob | null
+  capabilityRpm: number
 }
 
 const props = defineProps<Props>()
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
+  'update:capabilityRpm': [value: number]
   'copyToTab': [protocol: string]
   'cancel': []
   'retryModel': [protocol: string, model: string]
@@ -307,6 +334,11 @@ const { t } = useI18n()
 
 const errorMessage = ref('')
 const cancelling = ref(false)
+const rpmValue = ref(10)
+
+watch(() => props.capabilityRpm, (value) => {
+  rpmValue.value = value >= 1 && value <= 60 ? Math.floor(value) : 10
+}, { immediate: true })
 
 watch(() => props.modelValue, (open) => {
   if (open) {
@@ -333,6 +365,7 @@ watch(() => props.capabilityJob?.error, (error) => {
 const state = computed(() => {
   if (errorMessage.value) return 'error'
   if (!props.capabilityJob) return 'initializing'
+  if ((props.capabilityJob.status as any) === 'idle') return 'idle'
   if (props.capabilityJob.lifecycle === 'cancelled') return 'cancelled'
   if (props.capabilityJob.lifecycle === 'done') return 'completed'
   if (props.capabilityJob.lifecycle === 'pending') return 'pending'
@@ -417,7 +450,8 @@ const sortedTests = computed(() => {
     })
 })
 
-const getProtocolDisplayState = (test: CapabilityProtocolJobResult): 'pending' | 'running' | 'success' | 'partial' | 'cancelled' | 'failed' => {
+const getProtocolDisplayState = (test: CapabilityProtocolJobResult): 'idle' | 'pending' | 'running' | 'success' | 'partial' | 'cancelled' | 'failed' => {
+  if ((test.status as any) === 'idle') return 'idle'
   if (test.lifecycle === 'active') return 'running'
   if (test.lifecycle === 'pending') return 'pending'
   if (test.outcome === 'partial') return 'partial'
@@ -432,6 +466,7 @@ const isProtocolFailed = (test: CapabilityProtocolJobResult): boolean => {
 
 const getProtocolStatusIcon = (test: CapabilityProtocolJobResult): string => {
   switch (getProtocolDisplayState(test)) {
+    case 'idle': return 'mdi-clock-outline'
     case 'pending': return 'mdi-timer-sand'
     case 'running': return 'mdi-progress-clock'
     case 'success': return 'mdi-check-circle'
@@ -453,6 +488,7 @@ const getProtocolStatusIconColor = (test: CapabilityProtocolJobResult): string =
 
 const getProtocolStatusText = (test: CapabilityProtocolJobResult): string => {
   switch (getProtocolDisplayState(test)) {
+    case 'idle': return t('capability.notStarted')
     case 'pending': return t('capability.modelQueued')
     case 'running': return t('capability.protocolRunning')
     case 'success': return t('capability.success')
@@ -480,6 +516,7 @@ const getProtocolErrorText = (test: CapabilityProtocolJobResult): string => {
 
 const getProtocolPendingText = (test: CapabilityProtocolJobResult): string => {
   const displayState = getProtocolDisplayState(test)
+  if (displayState === 'idle') return t('capability.notStarted')
   if (displayState === 'pending') return t('capability.modelQueued')
   if (displayState === 'running') return t('capability.protocolRunning')
   return t('capability.modelDetailsUnavailable')
@@ -538,11 +575,19 @@ const activeProtocolScopeLabel = computed(() => {
 const isPartialScope = computed(() => protocolScope.value.length > 0 && protocolScope.value.length < knownProtocols.length)
 
 const canTestProtocol = (test: CapabilityProtocolJobResult): boolean => {
-  return !isJobActiveLike.value && state.value !== 'error'
+  const displayState = getProtocolDisplayState(test)
+  return displayState !== 'pending' && displayState !== 'running'
 }
 
 const handleTestProtocol = (protocol: string) => {
   emit('testProtocol', protocol)
+}
+
+const handleRpmBlur = () => {
+  const parsedValue = Number.isFinite(rpmValue.value) ? Math.floor(rpmValue.value) : 10
+  const nextValue = Math.min(60, Math.max(1, parsedValue || 10))
+  rpmValue.value = nextValue
+  emit('update:capabilityRpm', nextValue)
 }
 
 const setError = (error: string) => {
@@ -562,6 +607,22 @@ defineExpose({ setError })
 </script>
 
 <style scoped>
+.capability-toolbar {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.capability-rpm-field {
+  width: 140px;
+  min-width: 140px;
+}
+
+.capability-rpm-field :deep(.v-input__details) {
+  display: none;
+}
+
 .dialog-title-wrapper {
   flex: 1;
   min-width: 0;
