@@ -2188,14 +2188,15 @@ func (m *MetricsManager) ToResponseMultiURL(channelIndex int, baseURLs []string,
 		}
 	}
 
+	now := time.Now()
 	var latestSuccess, latestFailure, latestCircuitBroken, latestNextRetry *time.Time
 	var totalResults []bool
 	var maxConsecutiveFailures int64
 	var maxHalfOpenSuccesses int
-	channelState := CircuitStateClosed
+	channelState := m.channelCircuitStateMultiURLLocked(baseURLs, activeKeys, serviceType, now)
 
 	for _, metrics := range seenMetrics {
-		m.advanceCircuitStateIfDueLocked(metrics, time.Now())
+		m.advanceCircuitStateIfDueLocked(metrics, now)
 		resp.RequestCount += metrics.RequestCount
 		resp.SuccessCount += metrics.SuccessCount
 		resp.FailureCount += metrics.FailureCount
@@ -2205,9 +2206,6 @@ func (m *MetricsManager) ToResponseMultiURL(channelIndex int, baseURLs []string,
 		}
 		if metrics.HalfOpenSuccesses > maxHalfOpenSuccesses {
 			maxHalfOpenSuccesses = metrics.HalfOpenSuccesses
-		}
-		if metrics.CircuitState > channelState {
-			channelState = metrics.CircuitState
 		}
 		totalResults = append(totalResults, metrics.breakerResults...)
 
@@ -2592,8 +2590,11 @@ func (m *MetricsManager) GetChannelCircuitStateMultiURL(baseURLs []string, activ
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	return m.channelCircuitStateMultiURLLocked(baseURLs, activeKeys, serviceType, time.Now())
+}
+
+func (m *MetricsManager) channelCircuitStateMultiURLLocked(baseURLs []string, activeKeys []string, serviceType string, now time.Time) CircuitState {
 	hasHalfOpen := false
-	now := time.Now()
 	for _, baseURL := range baseURLs {
 		for _, apiKey := range activeKeys {
 			metrics := m.getIdentityMetricsLocked(baseURL, apiKey, serviceType)

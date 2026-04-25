@@ -61,6 +61,37 @@ func TestMoveKeyToHalfOpenKeepsBreakerHistory(t *testing.T) {
 	}
 }
 
+func TestToResponseMultiURLCircuitStateUsesChannelAvailability(t *testing.T) {
+	m := NewMetricsManager()
+	defer m.Stop()
+
+	m.MoveKeyToHalfOpen("https://example.com", "sk-recovered", "claude")
+	m.RecordSuccess("https://example.com", "sk-active", "claude")
+
+	resp := m.ToResponseMultiURL(0, []string{"https://example.com"}, []string{"sk-active", "sk-recovered"}, "claude", 0)
+
+	if resp.CircuitState != "closed" {
+		t.Fatalf("CircuitState = %q, want closed when another active key is healthy", resp.CircuitState)
+	}
+}
+
+func TestToResponseMultiURLCircuitStateClosedWhenOneBaseURLRecovered(t *testing.T) {
+	m := NewMetricsManager()
+	defer m.Stop()
+
+	baseURLs := []string{"https://primary.example.com", "https://backup.example.com"}
+	for _, baseURL := range baseURLs {
+		m.MoveKeyToHalfOpen(baseURL, "sk-recovered", "claude")
+	}
+	m.RecordSuccess("https://primary.example.com", "sk-recovered", "claude")
+
+	resp := m.ToResponseMultiURL(0, baseURLs, []string{"sk-recovered"}, "claude", 0)
+
+	if resp.CircuitState != "closed" {
+		t.Fatalf("CircuitState = %q, want closed when any baseURL/key candidate is healthy", resp.CircuitState)
+	}
+}
+
 func TestCircuitLogsIncludeTransitionFields(t *testing.T) {
 	m := NewMetricsManager()
 	defer m.Stop()
