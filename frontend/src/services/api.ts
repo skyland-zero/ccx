@@ -188,6 +188,12 @@ export interface CapabilityTestJobStartResponse {
   job?: CapabilityTestJob
 }
 
+export interface StartCapabilityTestOptions {
+  targetProtocols?: string[]
+  previousJobId?: string
+  rpm?: number
+}
+
 export type CapabilityLifecycle = 'pending' | 'active' | 'done' | 'cancelled'
 export type CapabilityOutcome = 'unknown' | 'success' | 'failed' | 'partial' | 'cancelled'
 export type CapabilityRunMode = 'fresh' | 'reused_running' | 'resumed_cancelled' | 'cache_hit' | 'reused_previous_results'
@@ -267,6 +273,20 @@ export interface CapabilityTestJob {
   timeoutMilliseconds?: number
   snapshotSource?: 'local' | 'remote'
   snapshotUpdatedAt?: string
+}
+
+export interface CapabilitySnapshot {
+  identityKey: string
+  sourceType: string
+  protocolJobIds?: Record<string, string>
+  protocolJobRefs?: Record<string, CapabilityProtocolJobRef>
+  tests: CapabilityProtocolJobResult[]
+  compatibleProtocols: string[]
+  totalDuration: number
+  progress: CapabilityJobProgress
+  lifecycle: CapabilityLifecycle
+  outcome: CapabilityOutcome
+  updatedAt: string
 }
 
 export interface ModelTestResult {
@@ -700,19 +720,24 @@ export class ApiService {
   async startChannelCapabilityTest(
     type: 'messages' | 'chat' | 'gemini' | 'responses',
     id: number,
-    previousJobId?: string
+    options: StartCapabilityTestOptions = {}
   ): Promise<CapabilityTestJobStartResponse> {
-    const body: { targetProtocols: string[]; timeout: number; previousJobId?: string } = {
-      targetProtocols: ['messages', 'responses', 'chat', 'gemini'],
-      timeout: 10000
+    const body: { targetProtocols: string[]; timeout: number; previousJobId?: string; rpm?: number } = {
+      targetProtocols: options.targetProtocols?.length ? options.targetProtocols : ['messages', 'responses', 'chat', 'gemini'],
+      timeout: 10000,
+      rpm: options.rpm
     }
-    if (previousJobId) {
-      body.previousJobId = previousJobId
+    if (options.previousJobId) {
+      body.previousJobId = options.previousJobId
     }
     return this.request(`/${type}/channels/${id}/capability-test`, {
       method: 'POST',
       body: JSON.stringify(body)
     })
+  }
+
+  async getChannelCapabilitySnapshot(type: 'messages' | 'chat' | 'gemini' | 'responses', id: number): Promise<CapabilitySnapshot> {
+    return this.request(`/${type}/channels/${id}/capability-snapshot`)
   }
 
   async getChannelCapabilityTestStatus(type: 'messages' | 'chat' | 'gemini' | 'responses', id: number, jobId: string): Promise<CapabilityTestJob> {

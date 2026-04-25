@@ -72,9 +72,9 @@
               <v-chip v-if="hasNoCompatibleProtocolsYet && (state === 'completed' || state === 'cancelled')" color="grey" size="small" variant="tonal">
                 {{ t('capability.noCompatibleProtocols') }}
               </v-chip>
-              <v-chip v-else-if="hasNoCompatibleProtocolsYet" color="grey" size="small" variant="tonal" class="d-flex align-center ga-2">
+              <v-chip v-else-if="hasNoCompatibleProtocolsYet && state !== 'idle'" color="grey" size="small" variant="tonal" class="d-flex align-center ga-2">
                 <v-progress-circular v-if="state === 'pending' || state === 'running'" indeterminate size="12" width="2" color="primary" />
-                <span>{{ state === 'idle' ? t('capability.notStarted') : state === 'pending' ? t('capability.modelQueued') : t('capability.protocolRunning') }}</span>
+                <span>{{ state === 'pending' ? t('capability.modelQueued') : t('capability.protocolRunning') }}</span>
               </v-chip>
               <label class="capability-rpm-inline" :aria-label="t('capability.rpmLabel')">
                 <v-icon size="small">mdi-speedometer</v-icon>
@@ -573,7 +573,7 @@ const isPartialScope = computed(() => protocolScope.value.length > 0 && protocol
 
 const canTestProtocol = (test: CapabilityProtocolJobResult): boolean => {
   const displayState = getProtocolDisplayState(test)
-  return displayState !== 'pending' && displayState !== 'running'
+  return !isJobActiveLike.value && displayState !== 'pending' && displayState !== 'running'
 }
 
 const handleTestProtocol = (protocol: string) => {
@@ -648,8 +648,8 @@ defineExpose({ setError })
 
 .capability-rpm-input {
   box-sizing: border-box;
-  width: 48px;
-  min-width: 48px;
+  width: 24px;
+  min-width: 24px;
   border: 0;
   outline: 0;
   padding: 0;
