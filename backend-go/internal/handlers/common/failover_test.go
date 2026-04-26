@@ -519,6 +519,7 @@ func TestIsInsufficientBalanceMessage_HighConfidenceVariants(t *testing.T) {
 		{name: "english no balance", msg: "no balance", want: true},
 		{name: "english insufficient funds", msg: "payment declined: insufficient funds", want: true},
 		{name: "english quota used up", msg: "quota used up for current billing period", want: true},
+		{name: "english token quota not enough", msg: "token quota is not enough, token remain quota: ¥0.100000, need quota: ¥0.300000", want: true},
 		{name: "english daily usage limit exceeded", msg: "daily usage limit exceeded", want: true},
 		{name: "english daily limit exceeded", msg: "reason=\"DAILY_LIMIT_EXCEEDED\" message=\"daily usage limit exceeded\"", want: true},
 		{name: "chinese balance exhausted", msg: "账户余额已用尽，请充值", want: true},
@@ -612,6 +613,16 @@ func TestShouldBlacklistKey_BalanceMessages(t *testing.T) {
 				ShouldBlacklist: true,
 				Reason:          "insufficient_balance",
 				Message:         "预扣费额度失败, 用户剩余额度: ＄0.411202, 需要预扣费额度: ＄0.553368",
+			},
+		},
+		{
+			name:       "403 token quota not enough message should blacklist as insufficient balance",
+			statusCode: 403,
+			body:       `{"error":{"message":"token quota is not enough, token remain quota: ¥0.100000, need quota: ¥0.300000 (request id: 20260426121858142194522mDUp325B)","type":"new_api_error","param":"","code":"pre_consume_quota_failed"},"type":"error"}`,
+			want: BlacklistResult{
+				ShouldBlacklist: true,
+				Reason:          "insufficient_balance",
+				Message:         "token quota is not enough, token remain quota: ¥0.100000, need quota: ¥0.300000 (request id: 20260426121858142194522mDUp325B)",
 			},
 		},
 		{
