@@ -136,11 +136,12 @@
                 </v-chip>
                 <div class="d-flex align-center ga-2 flex-wrap justify-end">
                   <v-btn
-                    v-if="canTestProtocol(test)"
+                    v-if="shouldShowTestProtocolButton(test)"
                     size="x-small"
                     color="secondary"
                     variant="tonal"
                     rounded="lg"
+                    :disabled="isTestProtocolButtonDisabled(test)"
                     @click="handleTestProtocol(test.protocol)"
                   >
                     {{ t('capability.startTest') }}
@@ -234,11 +235,12 @@
                   <td>
                     <div class="d-flex flex-wrap ga-1 align-center justify-end">
                       <v-btn
-                        v-if="canTestProtocol(test)"
+                        v-if="shouldShowTestProtocolButton(test)"
                         size="x-small"
                         color="secondary"
                         variant="tonal"
                         rounded="lg"
+                        :disabled="isTestProtocolButtonDisabled(test)"
                         @click="handleTestProtocol(test.protocol)"
                       >
                         {{ t('capability.startTest') }}
@@ -571,12 +573,18 @@ const activeProtocolScopeLabel = computed(() => {
 
 const isPartialScope = computed(() => protocolScope.value.length > 0 && protocolScope.value.length < knownProtocols.length)
 
-const canTestProtocol = (test: CapabilityProtocolJobResult): boolean => {
+const shouldShowTestProtocolButton = (test: CapabilityProtocolJobResult): boolean => {
   const displayState = getProtocolDisplayState(test)
-  return !isJobActiveLike.value && displayState !== 'pending' && displayState !== 'running'
+  return displayState !== 'pending' && displayState !== 'running'
+}
+
+const isTestProtocolButtonDisabled = (test: CapabilityProtocolJobResult): boolean => {
+  const displayState = getProtocolDisplayState(test)
+  return isJobActiveLike.value || displayState === 'pending' || displayState === 'running'
 }
 
 const handleTestProtocol = (protocol: string) => {
+  if (isJobActiveLike.value) return
   emit('testProtocol', protocol)
 }
 
