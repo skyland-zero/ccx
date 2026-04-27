@@ -133,6 +133,11 @@ func logRequestDetails(req *http.Request, envCfg *config.EnvConfig, apiType stri
 	log.Printf("[%s-Request-Headers] 实际请求头:\n%s", apiType, string(reqHeadersJSON))
 
 	if req.Body != nil {
+		contentType := req.Header.Get("Content-Type")
+		if strings.HasPrefix(strings.ToLower(contentType), "multipart/form-data") {
+			log.Printf("[%s-Request-Body] 实际请求体: [multipart/form-data omitted]", apiType)
+			return
+		}
 		bodyBytes, err := io.ReadAll(req.Body)
 		if err == nil {
 			req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
@@ -156,13 +161,18 @@ func LogOriginalRequest(c *gin.Context, bodyBytes []byte, envCfg *config.EnvConf
 	log.Printf("[Request-Receive] 收到%s请求: %s %s", apiType, c.Request.Method, c.Request.URL.Path)
 
 	if envCfg.IsDevelopment() {
-		var formattedBody string
-		if envCfg.RawLogOutput {
-			formattedBody = utils.FormatJSONBytesRaw(bodyBytes)
+		contentType := c.GetHeader("Content-Type")
+		if strings.HasPrefix(strings.ToLower(contentType), "multipart/form-data") {
+			log.Printf("[Request-OriginalBody] 原始请求体: [multipart/form-data omitted]")
 		} else {
-			formattedBody = utils.FormatJSONBytesForLog(bodyBytes, 500)
+			var formattedBody string
+			if envCfg.RawLogOutput {
+				formattedBody = utils.FormatJSONBytesRaw(bodyBytes)
+			} else {
+				formattedBody = utils.FormatJSONBytesForLog(bodyBytes, 500)
+			}
+			log.Printf("[Request-OriginalBody] 原始请求体:\n%s", formattedBody)
 		}
-		log.Printf("[Request-OriginalBody] 原始请求体:\n%s", formattedBody)
 
 		sanitizedHeaders := make(map[string]string)
 		for key, values := range c.Request.Header {

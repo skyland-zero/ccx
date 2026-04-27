@@ -2,6 +2,7 @@
 
 ### Added
 
+- **新增 OpenAI Images edits/variations 代理入口** - 补齐 `/v1/images/edits` 与 `/v1/images/variations`（含 `routePrefix` 变体），支持沿用 Images 渠道的多 key failover、metrics、channel logs 与 `#` BaseURL 语义，并新增 multipart 请求重写与回归测试覆盖 `model` 映射、文件字段保留和流式标记识别
 - **新增独立 Images 渠道与 OpenAI Images 代理入口** - 新增 `imagesUpstream` 配置、`ChannelKindImages` 调度类型、`/v1/images/generations` 与 `/api/images/channels/*` 管理接口，支持独立的 key 管理、排序、状态切换、promotion、metrics/history、logs、ping 与 models 查询，避免图片请求与 Chat 渠道混用指标和熔断状态
 - **前端接入 Images 渠道页签与基础运维能力** - 在管理界面新增 Images 标签页，接入 dashboard、CRUD、排序、promotion、日志、图表和模型查询；Images 渠道默认走 OpenAI 兼容语义，并隐藏未实现的 capability test 入口
 
@@ -14,6 +15,7 @@
 
 ### Fixed
 
+- **避免 multipart 图片请求在开发日志中输出原始二进制体** - `multipart/form-data` 的 Images 请求在开发环境下仅记录省略提示和请求头，避免日志污染与大体积二进制输出影响排查效率
 - **修复编辑渠道时目标模型查询触发表单重载** - 编辑弹窗在静默保存当前渠道后不再对同一渠道执行 `loadChannelData` 回填，并让同一渠道的 watcher 更新保持 `noop`，避免点击目标模型名时重复请求 `/models` 且清空用户已选的源模型名；同时补充对应回归测试覆盖同渠道静默保存场景。
 - **补齐能力测试 RPM 的前后端边界保护** - 前端发起请求前统一将 `rpm` 约束到 `1–60`，后端在缺省或越界时回退到安全值（默认 `10`，最大 `60`），保证能力测试速率行为一致且可控。
 - **修复能力测试 snapshot 跨协议覆盖丢失** - `replaceFromJob` 从全量替换改为协议级合并，确保多协议独立 job 的 `ProtocolJobIDs` 和 `Tests` 不会互相覆盖，重新打开对话框能正确恢复所有协议的任务状态。

@@ -94,6 +94,27 @@ func extractMultipartField(bodyBytes []byte, contentType string, fieldName strin
 	}
 }
 
+func validateMultipartBody(bodyBytes []byte, contentType string) error {
+	reader, err := newMultipartReader(bodyBytes, contentType)
+	if err != nil {
+		return err
+	}
+	for {
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		_, readErr := io.Copy(io.Discard, part)
+		part.Close()
+		if readErr != nil {
+			return readErr
+		}
+	}
+}
+
 func rewriteMultipartFormField(bodyBytes []byte, contentType string, fieldName string, fieldValue string) ([]byte, string, error) {
 	reader, err := newMultipartReader(bodyBytes, contentType)
 	if err != nil {
@@ -116,11 +137,13 @@ func rewriteMultipartFormField(bodyBytes []byte, contentType string, fieldName s
 		formName := part.FormName()
 		fileName := part.FileName()
 		if formName == fieldName && fileName == "" {
-			if err := writer.WriteField(fieldName, fieldValue); err != nil {
-				part.Close()
-				return nil, "", err
+			if !fieldWritten {
+				if err := writer.WriteField(fieldName, fieldValue); err != nil {
+					part.Close()
+					return nil, "", err
+				}
+				fieldWritten = true
 			}
-			fieldWritten = true
 			part.Close()
 			continue
 		}

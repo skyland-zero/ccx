@@ -468,6 +468,10 @@ func main() {
 	imagesHandler := images.Handler(envCfg, cfgManager, channelScheduler)
 	r.POST("/v1/images/generations", imagesHandler)
 	r.POST("/:routePrefix/v1/images/generations", imagesHandler)
+	r.POST("/v1/images/edits", imagesHandler)
+	r.POST("/:routePrefix/v1/images/edits", imagesHandler)
+	r.POST("/v1/images/variations", imagesHandler)
+	r.POST("/:routePrefix/v1/images/variations", imagesHandler)
 
 	// 静态文件服务 (嵌入的前端)
 	if envCfg.EnableWebUI {
@@ -507,6 +511,8 @@ func main() {
 	fmt.Printf("[Server-Info] Gemini API: POST /v1beta/models/{model}:streamGenerateContent\n")
 	fmt.Printf("[Server-Info] Chat Completions: POST /v1/chat/completions\n")
 	fmt.Printf("[Server-Info] Images Generations: POST /v1/images/generations\n")
+	fmt.Printf("[Server-Info] Images Edits: POST /v1/images/edits\n")
+	fmt.Printf("[Server-Info] Images Variations: POST /v1/images/variations\n")
 	fmt.Printf("[Server-Info] 健康检查: GET /health\n")
 	fmt.Printf("[Server-Info] 环境: %s\n", envCfg.Env)
 	// 生产环境检查：必须设置有效的访问密钥

@@ -11,6 +11,25 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+func newImagesTestConfigManager(t *testing.T) *config.ConfigManager {
+	t.Helper()
+	cfgFile := t.TempDir() + "/config.json"
+	if err := os.WriteFile(cfgFile, []byte(`{"upstream":[],"imagesUpstream":[]}`), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	cfgManager, err := config.NewConfigManager(cfgFile)
+	if err != nil {
+		t.Fatalf("config manager: %v", err)
+	}
+	return cfgManager
+}
+
+func newImagesTestEnvConfig() *config.EnvConfig {
+	envCfg := config.NewEnvConfig()
+	envCfg.ProxyAccessKey = "test-key"
+	return envCfg
+}
+
 func TestBuildProviderRequest_URLVariants(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
@@ -32,6 +51,14 @@ func TestBuildProviderRequest_URLVariants(t *testing.T) {
 	}
 	if req.URL.String() != "https://api.openai.com/images/generations" {
 		t.Fatalf("unexpected # url: %s", req.URL.String())
+	}
+
+	req, err = buildProviderRequest(c, upstream, "https://api.openai.com/#", "sk-test", []byte(`{"model":"image-default","prompt":"hello"}`), "image-default")
+	if err != nil {
+		t.Fatalf("buildProviderRequest() error = %v", err)
+	}
+	if req.URL.String() != "https://api.openai.com/images/generations" {
+		t.Fatalf("unexpected /# url: %s", req.URL.String())
 	}
 }
 
@@ -108,18 +135,10 @@ func TestHandler_MissingModel(t *testing.T) {
 
 func TestHandler_MissingPrompt(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	cfgFile := t.TempDir() + "/config.json"
-	if err := os.WriteFile(cfgFile, []byte(`{"upstream":[]}`), 0o600); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
-	cfgManager, err := config.NewConfigManager(cfgFile)
-	if err != nil {
-		t.Fatalf("config manager: %v", err)
-	}
+	cfgManager := newImagesTestConfigManager(t)
 	defer cfgManager.Close()
 
-	envCfg := config.NewEnvConfig()
-	envCfg.ProxyAccessKey = "test-key"
+	envCfg := newImagesTestEnvConfig()
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -129,5 +148,27 @@ func TestHandler_MissingPrompt(t *testing.T) {
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestHandler_InvalidMultipartEditsReturnsBadRequest(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfgManager := newImagesTestConfigManager(t)
+	defer cfgManager.Close()
+
+	envCfg := newImagesTestEnvConfig()
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/edits", strings.NewReader("broken"))
+	c.Request.Header.Set("Authorization", "Bearer test-key")
+	c.Request.Header.Set("Content-Type", "multipart/form-data")
+	Handler(envCfg, cfgManager, nil)(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d, body=%s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "invalid_multipart") {
+		t.Fatalf("unexpected body: %s", w.Body.String())
 	}
 }
