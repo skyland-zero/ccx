@@ -7,7 +7,7 @@ import (
 
 func TestCapabilitySnapshotStore_ReplaceFromJob(t *testing.T) {
 	store := newCapabilitySnapshotStore()
-	job := newCapabilityTestJob(1, "channel", "messages", "claude", []string{"messages"}, 0)
+	job := newCapabilityTestJob(1, "channel", "messages", "claude", []string{"messages"}, 0, 10)
 	job.IdentityKey = "identity-a"
 	job.Tests[0].Outcome = CapabilityOutcomeSuccess
 	job.Tests[0].Lifecycle = CapabilityLifecycleDone
@@ -37,7 +37,7 @@ func TestCapabilitySnapshotStore_ReplaceFromJob(t *testing.T) {
 func TestCapabilitySnapshotStore_IsolatesDifferentIdentities(t *testing.T) {
 	store := newCapabilitySnapshotStore()
 
-	jobA := newCapabilityTestJob(1, "channel-a", "messages", "claude", []string{"messages"}, 0)
+	jobA := newCapabilityTestJob(1, "channel-a", "messages", "claude", []string{"messages"}, 0, 10)
 	jobA.IdentityKey = "identity-a"
 	jobA.Lifecycle = CapabilityLifecycleDone
 	jobA.Outcome = CapabilityOutcomeSuccess
@@ -45,7 +45,7 @@ func TestCapabilitySnapshotStore_IsolatesDifferentIdentities(t *testing.T) {
 	jobA.Tests[0].Outcome = CapabilityOutcomeSuccess
 	store.replaceFromJob(jobA.IdentityKey, jobA)
 
-	jobB := newCapabilityTestJob(2, "channel-b", "messages", "claude", []string{"responses"}, 0)
+	jobB := newCapabilityTestJob(2, "channel-b", "messages", "claude", []string{"responses"}, 0, 10)
 	jobB.IdentityKey = "identity-b"
 	jobB.Lifecycle = CapabilityLifecycleCancelled
 	jobB.Outcome = CapabilityOutcomeCancelled
@@ -77,7 +77,7 @@ func TestCapabilitySnapshotStore_MergesMultipleJobsSameIdentity(t *testing.T) {
 	const identityKey = "shared-identity"
 
 	// Step 1: jobA (messages) → snapshot 含 messages
-	jobA := newCapabilityTestJob(1, "ch", "messages", "claude", []string{"messages"}, 0)
+	jobA := newCapabilityTestJob(1, "ch", "messages", "claude", []string{"messages"}, 0, 10)
 	jobA.IdentityKey = identityKey
 	jobA.Lifecycle = CapabilityLifecycleActive
 	jobA.Outcome = CapabilityOutcomeUnknown
@@ -100,7 +100,7 @@ func TestCapabilitySnapshotStore_MergesMultipleJobsSameIdentity(t *testing.T) {
 	}
 
 	// Step 2: jobB (chat) → snapshot 含 messages + chat，messages 保持 active
-	jobB := newCapabilityTestJob(1, "ch", "messages", "claude", []string{"chat"}, 0)
+	jobB := newCapabilityTestJob(1, "ch", "messages", "claude", []string{"chat"}, 0, 10)
 	jobB.IdentityKey = identityKey
 	jobB.Lifecycle = CapabilityLifecycleDone
 	jobB.Outcome = CapabilityOutcomeSuccess
@@ -141,7 +141,7 @@ func TestCapabilitySnapshotStore_MergesMultipleJobsSameIdentity(t *testing.T) {
 	}
 
 	// Step 3: jobC (messages, done) → messages 更新为 done，chat 保持 done
-	jobC := newCapabilityTestJob(1, "ch", "messages", "claude", []string{"messages"}, 0)
+	jobC := newCapabilityTestJob(1, "ch", "messages", "claude", []string{"messages"}, 0, 10)
 	jobC.IdentityKey = identityKey
 	jobC.Lifecycle = CapabilityLifecycleDone
 	jobC.Outcome = CapabilityOutcomeSuccess

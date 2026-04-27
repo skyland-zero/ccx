@@ -167,7 +167,7 @@
                 :test="test"
                 :pending-text="getProtocolPendingText(test)"
                 :show-label="false"
-                :retry-enabled="!isJobActiveLike && Boolean(job?.protocolJobIds?.[test.protocol])"
+                :retry-enabled="!isProtocolBusy(test) && Boolean(job?.protocolJobIds?.[test.protocol])"
                 @retry-model="handleRetryModel"
               />
             </div>
@@ -283,7 +283,7 @@
                         :test="test"
                         :pending-text="getProtocolPendingText(test)"
                         :show-label="false"
-                        :retry-enabled="!isJobActiveLike && Boolean(job?.protocolJobIds?.[test.protocol])"
+                        :retry-enabled="!isProtocolBusy(test) && Boolean(job?.protocolJobIds?.[test.protocol])"
                         @retry-model="handleRetryModel"
                       />
                     </div>
@@ -463,6 +463,11 @@ const isProtocolFailed = (test: CapabilityProtocolJobResult): boolean => {
   return getProtocolDisplayState(test) === 'failed'
 }
 
+const isProtocolBusy = (test: CapabilityProtocolJobResult): boolean => {
+  const displayState = getProtocolDisplayState(test)
+  return displayState === 'pending' || displayState === 'running'
+}
+
 const getProtocolStatusIcon = (test: CapabilityProtocolJobResult): string => {
   switch (getProtocolDisplayState(test)) {
     case 'idle': return 'mdi-clock-outline'
@@ -580,11 +585,10 @@ const shouldShowTestProtocolButton = (test: CapabilityProtocolJobResult): boolea
 
 const isTestProtocolButtonDisabled = (test: CapabilityProtocolJobResult): boolean => {
   const displayState = getProtocolDisplayState(test)
-  return isJobActiveLike.value || displayState === 'pending' || displayState === 'running'
+  return displayState === 'pending' || displayState === 'running'
 }
 
 const handleTestProtocol = (protocol: string) => {
-  if (isJobActiveLike.value) return
   emit('testProtocol', protocol)
 }
 

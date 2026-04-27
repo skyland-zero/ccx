@@ -247,7 +247,7 @@ func TestChannelCapability(cfgManager *config.ConfigManager, channelLogStore *me
 				CompatibleProtocols: []string{},
 				TotalDuration:       0,
 			}
-			job := createCapabilityJobFromResponse(id, channel.Name, channelKind, channel.ServiceType, protocols, timeout, resp, false)
+			job := createCapabilityJobFromResponse(id, channel.Name, channelKind, channel.ServiceType, protocols, timeout, effectiveRPM, resp, false)
 			job.Lifecycle = CapabilityLifecycleDone
 			job.Outcome = CapabilityOutcomeFailed
 			job.Status = deriveCapabilityJobStatus(job.Lifecycle, job.Outcome)
@@ -280,7 +280,7 @@ func TestChannelCapability(cfgManager *config.ConfigManager, channelLogStore *me
 			cached.ChannelID = id
 			cached.ChannelName = channel.Name
 			cached.SourceType = channel.ServiceType
-			job := createCapabilityJobFromResponse(id, channel.Name, channelKind, channel.ServiceType, protocols, timeout, *cached, true)
+			job := createCapabilityJobFromResponse(id, channel.Name, channelKind, channel.ServiceType, protocols, timeout, effectiveRPM, *cached, true)
 			job.RunMode = CapabilityRunModeCacheHit
 			job.CacheHit = true
 			job.IdentityKey = identityKey
@@ -293,7 +293,7 @@ func TestChannelCapability(cfgManager *config.ConfigManager, channelLogStore *me
 		}
 
 		job, reused := capabilityJobs.getOrCreateByLookupKey(executionLookupKey, func() *CapabilityTestJob {
-			created := newCapabilityTestJob(id, channel.Name, channelKind, channel.ServiceType, protocols, timeout)
+			created := newCapabilityTestJob(id, channel.Name, channelKind, channel.ServiceType, protocols, timeout, effectiveRPM)
 			created.IdentityKey = identityKey
 			created.ExecutionKey = executionLookupKey
 			return created
@@ -341,6 +341,7 @@ func TestChannelCapability(cfgManager *config.ConfigManager, channelLogStore *me
 				j.SummaryReason = "resumed_cancelled"
 				j.IsResumed = true
 				j.HasReusedResults = len(previousResults) > 0
+				j.EffectiveRPM = effectiveRPM
 				j.FinishedAt = ""
 				for i := range j.Tests {
 					if j.Tests[i].Lifecycle == CapabilityLifecycleCancelled || j.Tests[i].Outcome == CapabilityOutcomeFailed {
@@ -612,8 +613,8 @@ func runRoundRobinTests(ctx context.Context, channel *config.UpstreamConfig, pro
 		capabilityJobs.update(jobID, func(job *CapabilityTestJob) {
 			for i := range job.Tests {
 				if job.Tests[i].Protocol == protocol {
-					job.Tests[i].Status = CapabilityProtocolStatusRunning
-					job.Tests[i].Lifecycle = CapabilityLifecycleActive
+					job.Tests[i].Status = CapabilityProtocolStatusQueued
+					job.Tests[i].Lifecycle = CapabilityLifecyclePending
 					job.Tests[i].Outcome = CapabilityOutcomeUnknown
 					job.Tests[i].Reason = nil
 					job.Tests[i].AttemptedModels = len(models)
@@ -1514,6 +1515,35 @@ func RetryCapabilityTestModel(cfgManager *config.ConfigManager, channelLogStore 
 			} else if len(channel.DisabledAPIKeys) > 0 {
 				apiKey = channel.DisabledAPIKeys[0].Key
 			}
+
+			baseURL := ""
+			if len(channel.GetAllBaseURLs()) > 0 {
+				baseURL = channel.GetAllBaseURLs()[0]
+			}
+			identityKey := metrics.GenerateMetricsIdentityKey(baseURL, apiKey, channel.ServiceType)
+			retryRPM := job.EffectiveRPM
+			if retryRPM <= 0 {
+				retryRPM = 10
+			}
+			if retryRPM > 60 {
+				retryRPM = 60
+			}
+			interval := time.Minute / time.Duration(retryRPM)
+
+			if err := GetCapabilityTestDispatcher(identityKey).AcquirePrioritySendSlot(retryCtx, interval); err != nil {
+				log.Printf("[CapabilityTest-Retry] 获取优先发送槽位失败: job=%s, protocol=%s, model=%s, err=%v",
+					jobID, req.Protocol, req.Model, err)
+				capabilityJobs.update(jobID, func(j *CapabilityTestJob) {
+					errMsg := fmt.Sprintf("retry_queue_cancelled: %v", err)
+					updateCapabilityJobModelResult(j, req.Protocol, req.Model, CapabilityModelStatusFailed, ModelTestResult{
+						Model:    req.Model,
+						Error:    &errMsg,
+						TestedAt: time.Now().Format(time.RFC3339Nano),
+					})
+				})
+				return
+			}
+
 			modelResult := executeModelTest(retryCtx, channel, req.Protocol, req.Model, timeout, jobID, cfgManager, id, channelKind, apiKey, channelLogStore)
 
 			// 更新协议测试时间戳；协议/任务整体状态由统一重算逻辑维护

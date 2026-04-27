@@ -144,6 +144,7 @@ type CapabilityTestJob struct {
 	CacheHit            bool                          `json:"cacheHit,omitempty"`
 	TargetProtocols     []string                      `json:"targetProtocols,omitempty"`
 	TimeoutMilliseconds int                           `json:"timeoutMilliseconds,omitempty"`
+	EffectiveRPM        int                           `json:"effectiveRPM,omitempty"`
 	CancelFunc          context.CancelFunc            `json:"-"`
 }
 
@@ -198,7 +199,7 @@ func newCapabilityJobID() string {
 	return "cap-" + hex.EncodeToString(b)
 }
 
-func newCapabilityTestJob(channelID int, channelName, channelKind, sourceType string, protocols []string, timeout time.Duration) *CapabilityTestJob {
+func newCapabilityTestJob(channelID int, channelName, channelKind, sourceType string, protocols []string, timeout time.Duration, effectiveRPM int) *CapabilityTestJob {
 	now := time.Now().Format(time.RFC3339Nano)
 	job := &CapabilityTestJob{
 		JobID:               newCapabilityJobID(),
@@ -217,6 +218,7 @@ func newCapabilityTestJob(channelID int, channelName, channelKind, sourceType st
 		UpdatedAt:           now,
 		TargetProtocols:     append([]string(nil), protocols...),
 		TimeoutMilliseconds: int(timeout / time.Millisecond),
+		EffectiveRPM:        effectiveRPM,
 	}
 
 	for _, protocol := range protocols {
@@ -618,7 +620,7 @@ func capabilityProtocolResultsFromResponse(resp CapabilityTestResponse) []Capabi
 	return results
 }
 
-func createCapabilityJobFromResponse(channelID int, channelName, channelKind, sourceType string, protocols []string, timeout time.Duration, resp CapabilityTestResponse, cacheHit bool) *CapabilityTestJob {
+func createCapabilityJobFromResponse(channelID int, channelName, channelKind, sourceType string, protocols []string, timeout time.Duration, effectiveRPM int, resp CapabilityTestResponse, cacheHit bool) *CapabilityTestJob {
 	now := time.Now().Format(time.RFC3339Nano)
 	job := &CapabilityTestJob{
 		JobID:               newCapabilityJobID(),
@@ -641,6 +643,7 @@ func createCapabilityJobFromResponse(channelID int, channelName, channelKind, so
 		RunMode:             CapabilityRunModeCacheHit,
 		TargetProtocols:     append([]string(nil), protocols...),
 		TimeoutMilliseconds: int(timeout / time.Millisecond),
+		EffectiveRPM:        effectiveRPM,
 	}
 	recomputeCapabilityJob(job)
 	return job

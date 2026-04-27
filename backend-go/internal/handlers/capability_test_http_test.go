@@ -29,7 +29,7 @@ func TestCancelCapabilityTestJob_HTTP(t *testing.T) {
 	resetCapabilityTestState()
 	gin.SetMode(gin.TestMode)
 
-	job := newCapabilityTestJob(0, "channel", "messages", "claude", []string{"messages"}, 10*time.Second)
+	job := newCapabilityTestJob(0, "channel", "messages", "claude", []string{"messages"}, 10*time.Second, 10)
 	job.Status = CapabilityJobStatusRunning
 	job.Lifecycle = CapabilityLifecycleActive
 	job.Tests[0].ModelResults = []CapabilityModelJobResult{
@@ -77,7 +77,7 @@ func TestGetCapabilityTestJobStatus_HTTP(t *testing.T) {
 	resetCapabilityTestState()
 	gin.SetMode(gin.TestMode)
 
-	job := newCapabilityTestJob(0, "channel", "messages", "claude", []string{"messages"}, 10*time.Second)
+	job := newCapabilityTestJob(0, "channel", "messages", "claude", []string{"messages"}, 10*time.Second, 10)
 	job.Lifecycle = CapabilityLifecycleDone
 	job.Outcome = CapabilityOutcomePartial
 	job.Status = CapabilityJobStatusCompleted
@@ -183,7 +183,7 @@ func TestCapabilityCacheHit_DoesNotBindExecutionLookupKey(t *testing.T) {
 func TestRetryCapabilityTestModel_HTTP_RejectsUnknownModel(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	job := newCapabilityTestJob(0, "channel", "messages", "claude", []string{"messages"}, 10*time.Second)
+	job := newCapabilityTestJob(0, "channel", "messages", "claude", []string{"messages"}, 10*time.Second, 10)
 	job.Status = CapabilityJobStatusCompleted
 	job.Lifecycle = CapabilityLifecycleDone
 	job.Outcome = CapabilityOutcomeFailed
@@ -218,7 +218,7 @@ func TestRetryCapabilityTestModel_HTTP_RejectsUnknownModel(t *testing.T) {
 func TestRetryCapabilityTestModel_HTTP_RejectsRunningJob(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	job := newCapabilityTestJob(0, "channel", "messages", "claude", []string{"messages"}, 10*time.Second)
+	job := newCapabilityTestJob(0, "channel", "messages", "claude", []string{"messages"}, 10*time.Second, 10)
 	job.Status = CapabilityJobStatusRunning
 	job.Lifecycle = CapabilityLifecycleActive
 	job.Tests[0].ModelResults = []CapabilityModelJobResult{
@@ -254,7 +254,7 @@ func TestRetryCapabilityTestModel_HTTP_RejectsRunningJob(t *testing.T) {
 func TestRetryCapabilityTestModel_HTTP_RejectsNonRetryableModel(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	job := newCapabilityTestJob(0, "channel", "messages", "claude", []string{"messages"}, 10*time.Second)
+	job := newCapabilityTestJob(0, "channel", "messages", "claude", []string{"messages"}, 10*time.Second, 10)
 	job.Status = CapabilityJobStatusCompleted
 	job.Lifecycle = CapabilityLifecycleDone
 	job.Outcome = CapabilityOutcomeSuccess
@@ -291,7 +291,7 @@ func TestRetryCapabilityTestModel_HTTP_RejectsNonRetryableModel(t *testing.T) {
 func TestExecuteModelTest_RecordsCapabilityLogOnSuccess(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	job := newCapabilityTestJob(0, "channel", "messages", "claude", []string{"messages"}, 10*time.Second)
+	job := newCapabilityTestJob(0, "channel", "messages", "claude", []string{"messages"}, 10*time.Second, 10)
 	job.Tests[0].ModelResults = []CapabilityModelJobResult{{Model: "claude-test", Status: CapabilityModelStatusQueued, Lifecycle: CapabilityLifecyclePending, Outcome: CapabilityOutcomeUnknown}}
 	capabilityJobs.create(job)
 
@@ -349,7 +349,7 @@ func TestExecuteModelTest_RecordsCapabilityLogOnSuccess(t *testing.T) {
 func TestExecuteModelTest_RecordsCapabilityLogOnFailure(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	job := newCapabilityTestJob(0, "channel", "messages", "claude", []string{"messages"}, 10*time.Second)
+	job := newCapabilityTestJob(0, "channel", "messages", "claude", []string{"messages"}, 10*time.Second, 10)
 	job.Tests[0].ModelResults = []CapabilityModelJobResult{{Model: "claude-test", Status: CapabilityModelStatusQueued, Lifecycle: CapabilityLifecyclePending, Outcome: CapabilityOutcomeUnknown}}
 	capabilityJobs.create(job)
 
@@ -410,7 +410,7 @@ func TestExecuteModelTest_RecordsCapabilityLogOnFailure(t *testing.T) {
 func TestExecuteModelTest_TruncatesLargeFailureBody(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	job := newCapabilityTestJob(0, "channel", "messages", "claude", []string{"messages"}, 10*time.Second)
+	job := newCapabilityTestJob(0, "channel", "messages", "claude", []string{"messages"}, 10*time.Second, 10)
 	job.Tests[0].ModelResults = []CapabilityModelJobResult{{Model: "claude-test", Status: CapabilityModelStatusQueued, Lifecycle: CapabilityLifecyclePending, Outcome: CapabilityOutcomeUnknown}}
 	capabilityJobs.create(job)
 
@@ -466,7 +466,7 @@ func TestExecuteModelTest_TruncatesLargeFailureBody(t *testing.T) {
 func TestExecuteModelTest_RespectsAutoBlacklistBalance(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	job := newCapabilityTestJob(0, "channel", "messages", "claude", []string{"messages"}, 10*time.Second)
+	job := newCapabilityTestJob(0, "channel", "messages", "claude", []string{"messages"}, 10*time.Second, 10)
 	capabilityJobs.create(job)
 
 	tmpDir := t.TempDir()
@@ -523,7 +523,7 @@ func TestResumedCancelledJob_ReturnsUpdatedState(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	// 创建一个已取消的 job
-	job := newCapabilityTestJob(0, "test-channel", "messages", "claude", []string{"messages"}, 10*time.Second)
+	job := newCapabilityTestJob(0, "test-channel", "messages", "claude", []string{"messages"}, 10*time.Second, 10)
 	job.ChannelKind = "messages"
 	job.Lifecycle = CapabilityLifecycleCancelled
 	job.Outcome = CapabilityOutcomeCancelled
@@ -631,7 +631,7 @@ func TestCapabilityPreviousJobReuse_ByIdentityAcrossChannels(t *testing.T) {
 	cfg := cfgManager.GetConfig()
 	sharedIdentity := resolveCapabilityIdentityKey(&cfg.Upstream[0])
 
-	prevJob := newCapabilityTestJob(0, "channel-a", "messages", "claude", []string{"messages"}, 10*time.Second)
+	prevJob := newCapabilityTestJob(0, "channel-a", "messages", "claude", []string{"messages"}, 10*time.Second, 10)
 	prevJob.IdentityKey = sharedIdentity
 	prevJob.ChannelKind = "messages"
 	prevJob.Lifecycle = CapabilityLifecycleDone
@@ -685,7 +685,7 @@ func TestCapabilityRunningJobReuse_ByIdentityAcrossChannels(t *testing.T) {
 	resetCapabilityTestState()
 	gin.SetMode(gin.TestMode)
 
-	runningJob := newCapabilityTestJob(0, "channel-a", "messages", "claude", []string{"messages"}, 10*time.Second)
+	runningJob := newCapabilityTestJob(0, "channel-a", "messages", "claude", []string{"messages"}, 10*time.Second, 10)
 	runningJob.IdentityKey = "shared-identity"
 	runningJob.ChannelKind = "messages"
 	runningJob.Status = CapabilityJobStatusRunning

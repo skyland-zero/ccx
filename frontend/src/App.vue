@@ -706,7 +706,7 @@ const capabilityTestChannelName = ref('')
 const capabilityTestChannelId = ref(0)
 const capabilityTestDialogRef = ref<InstanceType<typeof CapabilityTestDialog> | null>(null)
 const capabilityTestJobId = ref('')
-const capabilityTestPolling = ref<ReturnType<typeof setInterval> | null>(null)
+const capabilityPollers = ref<Record<string, ReturnType<typeof setInterval>>>({})
 const capabilityTestJob = ref<CapabilityTestJob | null>(null)
 const capabilityTestRpm = ref(10)
 const capabilityTestPreviousJobId = ref('') // 记录上一次的 jobId，用于复用成功结果
@@ -958,9 +958,10 @@ const mergeCapabilityJob = (baseJob: CapabilityTestJob, incomingJob: CapabilityT
 
   if (incomingJob.jobId) {
     for (const protocol of protocolsInIncoming) {
-      protocolJobIds[protocol] = incomingJob.jobId
-      protocolJobRefs[protocol] = {
-        jobId: incomingJob.jobId,
+      const incomingProtocolJobId = incomingJob.protocolJobRefs?.[protocol]?.jobId || incomingJob.protocolJobIds?.[protocol] || incomingJob.jobId
+      protocolJobIds[protocol] = incomingProtocolJobId
+      protocolJobRefs[protocol] = incomingJob.protocolJobRefs?.[protocol] ?? {
+        jobId: incomingProtocolJobId,
         channelKind: incomingJob.channelKind as CapabilityChannelKind,
         channelId: incomingJob.channelId
       }
@@ -1026,26 +1027,43 @@ const buildCapabilityJobFromSnapshot = (
 
 watch(showCapabilityTestDialog, (open) => {
   if (!open) {
-    stopCapabilityTestPolling()
+    stopAllCapabilityPolling()
     capabilityRetryPendingUntil.value = {}
   }
 })
 
-const stopCapabilityTestPolling = () => {
-  if (capabilityTestPolling.value) {
-    clearInterval(capabilityTestPolling.value)
-    capabilityTestPolling.value = null
+const collectActiveJobIds = (job: CapabilityTestJob | null): string[] => {
+  if (!job) return []
+  const seen = new Set<string>()
+  for (const test of job.tests) {
+    if (test.lifecycle === 'active' || test.lifecycle === 'pending') {
+      const jId = job.protocolJobRefs?.[test.protocol]?.jobId || job.protocolJobIds?.[test.protocol]
+      if (jId && !seen.has(jId)) seen.add(jId)
+    }
   }
+  return Array.from(seen)
 }
 
 const isCapabilityJobTerminal = (job: CapabilityTestJob | null | undefined) => {
   if (!job) return false
   return job.lifecycle === 'done' || job.lifecycle === 'cancelled'
 }
+const stopCapabilityPolling = (jobId: string) => {
+  if (!jobId || !capabilityPollers.value[jobId]) return
+  clearInterval(capabilityPollers.value[jobId])
+  delete capabilityPollers.value[jobId]
+}
+
+const stopAllCapabilityPolling = () => {
+  for (const jobId of Object.keys(capabilityPollers.value)) {
+    clearInterval(capabilityPollers.value[jobId])
+  }
+  capabilityPollers.value = {}
+}
 
 const startCapabilityPolling = (channelType: CapabilityChannelKind, channelId: number, jobId: string) => {
-  stopCapabilityTestPolling()
-  capabilityTestPolling.value = setInterval(async () => {
+  if (!jobId || capabilityPollers.value[jobId]) return
+  capabilityPollers.value[jobId] = setInterval(async () => {
     if (!jobId) return
     try {
       const latest = await api.getChannelCapabilityTestStatus(channelType, channelId, jobId)
@@ -1071,8 +1089,8 @@ const updateCapabilityJob = (job: CapabilityTestJob) => {
 
   capabilityTestJob.value = mergedJob
   capabilityTestJobId.value = job.jobId
-  if (isCapabilityJobTerminal(mergedJob) && !(mergedJob.activeOperations && mergedJob.activeOperations > 0)) {
-    stopCapabilityTestPolling()
+  if (isCapabilityJobTerminal(job)) {
+    stopCapabilityPolling(job.jobId)
   }
 }
 
@@ -1100,7 +1118,7 @@ const testChannelCapability = async (channelId: number) => {
   }
 
   showCapabilityTestDialog.value = true
-  stopCapabilityTestPolling()
+  stopAllCapabilityPolling()
   capabilityTestPreviousJobId.value = capabilityTestJobId.value
   capabilityTestJobId.value = ''
   capabilityTestJob.value = buildCapabilityIdleJob(channelId, capabilityTestChannelName.value, channelType)
@@ -1111,8 +1129,11 @@ const testChannelCapability = async (channelId: number) => {
     const snapshotJob = buildCapabilityJobFromSnapshot(snapshot, channelId, capabilityTestChannelName.value, channelType)
     capabilityTestJob.value = snapshotJob
     capabilityTestJobId.value = snapshotJob.jobId
-    if (!isCapabilityJobTerminal(snapshotJob) && snapshotJob.jobId) {
-      startCapabilityPolling(channelType, channelId, snapshotJob.jobId)
+    if (!isCapabilityJobTerminal(snapshotJob)) {
+      const activeIds = collectActiveJobIds(snapshotJob)
+      for (const jId of activeIds) {
+        startCapabilityPolling(channelType, channelId, jId)
+      }
     }
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) return
@@ -1141,8 +1162,6 @@ const handleTestCapabilityProtocol = async (protocol: string) => {
     targetProtocols: [protocol],
     updatedAt: new Date().toISOString()
   })
-  stopCapabilityTestPolling()
-
   try {
     const startResp: CapabilityTestJobStartResponse = await api.startChannelCapabilityTest(
       channelType,
@@ -1171,36 +1190,50 @@ const handleTestCapabilityProtocol = async (protocol: string) => {
 }
 
 const handleCancelCapabilityTest = async () => {
-  if (!capabilityTestJobId.value) return
+  if (!capabilityTestJob.value) return
   if (!isCapabilityChannelKind(channelStore.activeTab)) return
   try {
-    await api.cancelCapabilityTest(channelStore.activeTab, capabilityTestChannelId.value, capabilityTestJobId.value)
-    stopCapabilityTestPolling()
-    const latest = await api.getChannelCapabilityTestStatus(channelStore.activeTab, capabilityTestChannelId.value, capabilityTestJobId.value)
-    updateCapabilityJob(latest)
+    const activeIds = collectActiveJobIds(capabilityTestJob.value)
+    const channelType = channelStore.activeTab
+    const channelId = capabilityTestChannelId.value
+    for (const jId of activeIds) {
+      await api.cancelCapabilityTest(channelType, channelId, jId).catch(err =>
+        console.error('Failed to cancel capability test job:', jId, err)
+      )
+    }
+    stopAllCapabilityPolling()
+    const snapshot = await api.getChannelCapabilitySnapshot(channelType, channelId)
+    const snapshotJob = buildCapabilityJobFromSnapshot(snapshot, channelId, capabilityTestChannelName.value, channelType)
+    capabilityTestJob.value = snapshotJob
+    capabilityTestJobId.value = snapshotJob.jobId
+    if (!isCapabilityJobTerminal(snapshotJob)) {
+      const refreshedActiveIds = collectActiveJobIds(snapshotJob)
+      for (const jId of refreshedActiveIds) {
+        startCapabilityPolling(channelType, channelId, jId)
+      }
+    }
   } catch (error) {
     console.error('Failed to cancel capability test:', error)
   }
 }
 
 const handleRetryCapabilityModel = async (protocol: string, model: string) => {
-  if (!capabilityTestJobId.value || !capabilityTestJob.value) return
+  if (!capabilityTestJob.value) return
   if (!isCapabilityChannelKind(channelStore.activeTab)) return
-  if (
-    capabilityTestJob.value.lifecycle === 'pending' ||
-    capabilityTestJob.value.lifecycle === 'active' ||
-    (capabilityTestJob.value.activeOperations && capabilityTestJob.value.activeOperations > 0)
-  ) return
+  const job = capabilityTestJob.value
+  const protocolTest = job.tests.find(t => t.protocol === protocol)
+  if (!protocolTest) return
+  if (protocolTest.lifecycle === 'pending' || protocolTest.lifecycle === 'active') return
+  const retryJobId = job.protocolJobRefs?.[protocol]?.jobId || job.protocolJobIds?.[protocol]
+  if (!retryJobId) return
   try {
     const pendingKey = `${protocol}:${model}`
     capabilityRetryPendingUntil.value[pendingKey] = Date.now() + 1000
 
-    if (capabilityTestJob.value) {
-      capabilityTestJob.value = markCapabilityModelRetrying(capabilityTestJob.value, protocol, model)
-    }
+    capabilityTestJob.value = markCapabilityModelRetrying(capabilityTestJob.value, protocol, model)
 
-    await api.retryCapabilityTestModel(channelStore.activeTab, capabilityTestChannelId.value, capabilityTestJobId.value, protocol, model)
-    startCapabilityPolling(channelStore.activeTab, capabilityTestChannelId.value, capabilityTestJobId.value)
+    await api.retryCapabilityTestModel(channelStore.activeTab, capabilityTestChannelId.value, retryJobId, protocol, model)
+    startCapabilityPolling(channelStore.activeTab, capabilityTestChannelId.value, retryJobId)
   } catch (error) {
     console.error('Failed to retry capability test model:', error)
   }
@@ -1631,7 +1664,7 @@ watch(() => channelStore.lastRefreshSuccess, (success) => {
 // 在组件卸载时清除定时器
 onUnmounted(() => {
   channelStore.stopAutoRefresh()
-  stopCapabilityTestPolling()
+  stopAllCapabilityPolling()
 })
 </script>
 

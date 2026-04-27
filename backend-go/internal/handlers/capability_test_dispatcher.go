@@ -20,11 +20,13 @@ type capabilityDispatcherEntry struct {
 }
 
 type CapabilityTestDispatcher struct {
-	mu       sync.RWMutex
-	queue    chan capabilityDispatchRequest
-	closed   atomic.Bool
-	lastUsed atomic.Int64
-	idleTTL  time.Duration
+	mu            sync.RWMutex
+	normalQueue   chan capabilityDispatchRequest
+	priorityQueue chan capabilityDispatchRequest
+	pendingSlots  chan struct{}
+	closed        atomic.Bool
+	lastUsed      atomic.Int64
+	idleTTL       time.Duration
 }
 
 type CapabilityTestDispatcherPool struct {
@@ -34,13 +36,16 @@ type CapabilityTestDispatcherPool struct {
 }
 
 const capabilityDispatcherIdleTTL = 30 * time.Minute
+const capabilityDispatcherQueueLimit = 4096
 
 var capabilityTestDispatcherPool = newCapabilityTestDispatcherPool()
 
 func newCapabilityTestDispatcher() *CapabilityTestDispatcher {
 	d := &CapabilityTestDispatcher{
-		queue:   make(chan capabilityDispatchRequest, 4096),
-		idleTTL: capabilityDispatcherIdleTTL,
+		normalQueue:   make(chan capabilityDispatchRequest, capabilityDispatcherQueueLimit),
+		priorityQueue: make(chan capabilityDispatchRequest, capabilityDispatcherQueueLimit),
+		pendingSlots:  make(chan struct{}, capabilityDispatcherQueueLimit),
+		idleTTL:       capabilityDispatcherIdleTTL,
 	}
 	d.touch()
 	go d.run()
@@ -128,6 +133,14 @@ func (p *CapabilityTestDispatcherPool) gc() {
 }
 
 func (d *CapabilityTestDispatcher) AcquireSendSlot(ctx context.Context, interval time.Duration) error {
+	return d.acquireSendSlot(ctx, interval, false)
+}
+
+func (d *CapabilityTestDispatcher) AcquirePrioritySendSlot(ctx context.Context, interval time.Duration) error {
+	return d.acquireSendSlot(ctx, interval, true)
+}
+
+func (d *CapabilityTestDispatcher) acquireSendSlot(ctx context.Context, interval time.Duration, priority bool) error {
 	d.mu.RLock()
 	if d.closed.Load() {
 		d.mu.RUnlock()
@@ -136,12 +149,27 @@ func (d *CapabilityTestDispatcher) AcquireSendSlot(ctx context.Context, interval
 
 	readyCh := make(chan struct{}, 1)
 	request := capabilityDispatchRequest{ctx: ctx, interval: interval, ch: readyCh}
+	queue := d.normalQueue
+	if priority {
+		queue = d.priorityQueue
+	}
 
 	select {
 	case <-ctx.Done():
 		d.mu.RUnlock()
 		return ctx.Err()
-	case d.queue <- request:
+	case d.pendingSlots <- struct{}{}:
+	}
+
+	select {
+	case <-ctx.Done():
+		select {
+		case <-d.pendingSlots:
+		default:
+		}
+		d.mu.RUnlock()
+		return ctx.Err()
+	case queue <- request:
 		d.touch()
 		d.mu.RUnlock()
 	}
@@ -159,41 +187,29 @@ func (d *CapabilityTestDispatcher) run() {
 	nextAvailable := time.Now()
 	idleTimer := time.NewTimer(d.idleTTL)
 	defer idleTimer.Stop()
+	dispatchTimer := time.NewTimer(time.Hour)
+	if !dispatchTimer.Stop() {
+		select {
+		case <-dispatchTimer.C:
+		default:
+		}
+	}
+	defer dispatchTimer.Stop()
+
+	pendingPriority := make([]capabilityDispatchRequest, 0)
+	pendingNormal := make([]capabilityDispatchRequest, 0)
 
 	for {
-		select {
-		case <-idleTimer.C:
-			d.mu.Lock()
-			lastUsed := d.lastUsedTime()
-			idleFor := time.Since(lastUsed)
-			if idleFor >= d.idleTTL && len(d.queue) == 0 {
-				d.closed.Store(true)
-				d.mu.Unlock()
-				return
+		pendingPriority = drainCapabilityPriorityQueue(d, pendingPriority)
+		if len(pendingPriority)+len(pendingNormal) > 0 && !nextAvailable.After(time.Now()) {
+			pendingPriority = drainCapabilityPriorityQueue(d, pendingPriority)
+			request, isPriority := popCapabilityDispatchRequest(&pendingPriority, &pendingNormal)
+			select {
+			case <-d.pendingSlots:
+			default:
 			}
-			d.mu.Unlock()
-			resetCapabilityDispatcherTimer(idleTimer, d.idleTTL)
-		case request := <-d.queue:
-			d.touch()
-			resetCapabilityDispatcherTimer(idleTimer, d.idleTTL)
 			if request.ctx.Err() != nil {
 				continue
-			}
-
-			now := time.Now()
-			if wait := nextAvailable.Sub(now); wait > 0 {
-				timer := time.NewTimer(wait)
-				select {
-				case <-timer.C:
-				case <-request.ctx.Done():
-					if !timer.Stop() {
-						select {
-						case <-timer.C:
-						default:
-						}
-					}
-					continue
-				}
 			}
 
 			select {
@@ -206,8 +222,75 @@ func (d *CapabilityTestDispatcher) run() {
 			if interval <= 0 {
 				interval = time.Minute / 10
 			}
-			log.Printf("[CapabilityTest-Dispatch] 放行一个能力测试请求，间隔=%s", interval)
+			if isPriority {
+				log.Printf("[CapabilityTest-Dispatch] 优先放行一个能力测试请求，间隔=%s", interval)
+			} else {
+				log.Printf("[CapabilityTest-Dispatch] 放行一个能力测试请求，间隔=%s", interval)
+			}
 			nextAvailable = time.Now().Add(interval)
+			resetCapabilityDispatcherTimer(idleTimer, d.idleTTL)
+			continue
+		}
+
+		var dispatchCh <-chan time.Time
+		if len(pendingPriority)+len(pendingNormal) > 0 {
+			wait := time.Until(nextAvailable)
+			if wait <= 0 {
+				continue
+			}
+			resetCapabilityDispatcherTimer(dispatchTimer, wait)
+			dispatchCh = dispatchTimer.C
+		} else if !dispatchTimer.Stop() {
+			select {
+			case <-dispatchTimer.C:
+			default:
+			}
+		}
+
+		select {
+		case <-idleTimer.C:
+			d.mu.Lock()
+			lastUsed := d.lastUsedTime()
+			idleFor := time.Since(lastUsed)
+			if idleFor >= d.idleTTL && len(pendingPriority) == 0 && len(pendingNormal) == 0 && len(d.priorityQueue) == 0 && len(d.normalQueue) == 0 && len(d.pendingSlots) == 0 {
+				d.closed.Store(true)
+				d.mu.Unlock()
+				return
+			}
+			d.mu.Unlock()
+			resetCapabilityDispatcherTimer(idleTimer, d.idleTTL)
+		case request := <-d.priorityQueue:
+			d.touch()
+			pendingPriority = append(pendingPriority, request)
+			resetCapabilityDispatcherTimer(idleTimer, d.idleTTL)
+		case request := <-d.normalQueue:
+			d.touch()
+			pendingNormal = append(pendingNormal, request)
+			resetCapabilityDispatcherTimer(idleTimer, d.idleTTL)
+		case <-dispatchCh:
+		}
+	}
+}
+
+func popCapabilityDispatchRequest(priorityQueue, normalQueue *[]capabilityDispatchRequest) (capabilityDispatchRequest, bool) {
+	if len(*priorityQueue) > 0 {
+		request := (*priorityQueue)[0]
+		*priorityQueue = (*priorityQueue)[1:]
+		return request, true
+	}
+	request := (*normalQueue)[0]
+	*normalQueue = (*normalQueue)[1:]
+	return request, false
+}
+
+func drainCapabilityPriorityQueue(dispatcher *CapabilityTestDispatcher, pending []capabilityDispatchRequest) []capabilityDispatchRequest {
+	for {
+		select {
+		case request := <-dispatcher.priorityQueue:
+			dispatcher.touch()
+			pending = append(pending, request)
+		default:
+			return pending
 		}
 	}
 }
