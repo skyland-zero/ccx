@@ -1481,6 +1481,8 @@ const handleAuthSubmit = async () => {
 
     // 如果成功，加载数据
     await refreshChannels()
+    // 手动登录成功后同步系统状态，避免状态卡停留在 Connecting
+    systemStore.setSystemStatus(channelStore.lastRefreshSuccess ? 'running' : 'error')
 
     authStore.setAuthKeyInput('')
 
