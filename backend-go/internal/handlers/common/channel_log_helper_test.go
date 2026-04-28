@@ -97,13 +97,16 @@ func TestRecordChannelLogWithSource_UsesExplicitSource(t *testing.T) {
 
 func TestCompleteLog_MapsClientCanceledToCancelledStatus(t *testing.T) {
 	store := metrics.NewChannelLogStore()
-	requestID := CreatePendingLog(store, 0, "model-a", "", "sk-test-secret", "https://example.com", "Responses", metrics.RequestSourceProxy)
+	requestID := CreatePendingLog(store, 0, "model-a", "", "sk-test-secret", "https://example.com", "Responses", "edits", metrics.RequestSourceProxy)
 
 	CompleteLog(store, 0, requestID, 200, false, "client canceled", false)
 
 	logs := store.Get(0)
 	if len(logs) != 1 {
 		t.Fatalf("logs count = %d, want 1", len(logs))
+	}
+	if logs[0].Operation != "edits" {
+		t.Fatalf("operation = %q, want edits", logs[0].Operation)
 	}
 	if logs[0].Status != metrics.StatusCancelled {
 		t.Fatalf("status = %q, want %q", logs[0].Status, metrics.StatusCancelled)
@@ -115,7 +118,7 @@ func TestCompleteLog_MapsClientCanceledToCancelledStatus(t *testing.T) {
 
 func TestCompleteLog_LeavesRealFailuresAsFailed(t *testing.T) {
 	store := metrics.NewChannelLogStore()
-	requestID := CreatePendingLog(store, 0, "model-a", "", "sk-test-secret", "https://example.com", "Responses", metrics.RequestSourceProxy)
+	requestID := CreatePendingLog(store, 0, "model-a", "", "sk-test-secret", "https://example.com", "Responses", "", metrics.RequestSourceProxy)
 
 	CompleteLog(store, 0, requestID, 502, false, "upstream timeout", false)
 

@@ -422,6 +422,7 @@ export interface ChannelLogEntry {
   timestamp: string
   model: string
   originalModel?: string
+  operation?: string
   statusCode: number
   durationMs: number
   success: boolean

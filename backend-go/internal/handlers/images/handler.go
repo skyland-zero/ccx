@@ -81,12 +81,69 @@ func extractOperation(path string) string {
 	return ""
 }
 
+func sanitizeDiagnosticError(err error) string {
+	if err == nil {
+		return ""
+	}
+	msg := strings.TrimSpace(err.Error())
+	msg = strings.ReplaceAll(msg, "\n", " ")
+	msg = strings.ReplaceAll(msg, "\r", " ")
+	msg = strings.Join(strings.Fields(msg), " ")
+	if len(msg) > 200 {
+		msg = msg[:200]
+	}
+	return msg
+}
+
+func logImagesValidationFailure(c *gin.Context, operation string, contentType string, bodyBytes []byte, stage string, reason string, err error) {
+	log.Printf("[Images-Validation] operation=%s method=%s path=%s content_type=%q body_bytes=%d stage=%s reason=%s error=%q",
+		operation,
+		c.Request.Method,
+		c.Request.URL.Path,
+		contentType,
+		len(bodyBytes),
+		stage,
+		reason,
+		sanitizeDiagnosticError(err),
+	)
+}
+
+func logImagesMultipartFailure(c *gin.Context, operation string, contentType string, bodyBytes []byte, err error) {
+	stage, reason := describeMultipartDiagnostic(err)
+	log.Printf("[Images-Multipart] operation=%s method=%s path=%s content_type=%q body_bytes=%d stage=%s reason=%s multipart=true boundary_present=%t error=%q",
+		operation,
+		c.Request.Method,
+		c.Request.URL.Path,
+		contentType,
+		len(bodyBytes),
+		stage,
+		reason,
+		hasMultipartBoundary(contentType),
+		sanitizeDiagnosticError(err),
+	)
+}
+
+func logImagesBuildRequestFailure(operation string, baseURL string, apiKey string, model string, contentType string, bodyBytes []byte, stage string, reason string, err error) {
+	log.Printf("[Images-BuildRequest] operation=%s base_url=%q key_mask=%s model=%q content_type=%q body_bytes=%d stage=%s reason=%s error=%q",
+		operation,
+		baseURL,
+		utils.MaskAPIKey(apiKey),
+		model,
+		contentType,
+		len(bodyBytes),
+		stage,
+		reason,
+		sanitizeDiagnosticError(err),
+	)
+}
+
 func parseImagesRequest(c *gin.Context, bodyBytes []byte, contentType string, operation string) (string, bool, bool) {
 	if operation != operationGenerations {
 		if isJSONContentType(contentType) {
 			var reqMap map[string]interface{}
 			if len(bodyBytes) > 0 {
 				if err := json.Unmarshal(bodyBytes, &reqMap); err != nil {
+					logImagesValidationFailure(c, operation, contentType, bodyBytes, "parse_json", "invalid_json", err)
 					imagesErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %v", err), "invalid_request_error", "invalid_json")
 					return "", false, false
 				}
@@ -99,9 +156,12 @@ func parseImagesRequest(c *gin.Context, bodyBytes []byte, contentType string, op
 		}
 		if isMultipartContentType(contentType) {
 			if err := validateMultipartBody(bodyBytes, contentType); err != nil {
+				logImagesMultipartFailure(c, operation, contentType, bodyBytes, err)
 				imagesErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Invalid multipart body: %v", err), "invalid_request_error", "invalid_multipart")
 				return "", false, false
 			}
+		} else {
+			logImagesValidationFailure(c, operation, contentType, bodyBytes, "content_type", "invalid_content_type", fmt.Errorf("unsupported content type for images %s", operation))
 		}
 		model := extractImagesModel(bodyBytes, contentType)
 		if strings.TrimSpace(model) == "" {
@@ -113,6 +173,7 @@ func parseImagesRequest(c *gin.Context, bodyBytes []byte, contentType string, op
 	var reqMap map[string]interface{}
 	if len(bodyBytes) > 0 {
 		if err := json.Unmarshal(bodyBytes, &reqMap); err != nil {
+			logImagesValidationFailure(c, operation, contentType, bodyBytes, "parse_json", "invalid_json", err)
 			imagesErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Invalid request body: %v", err), "invalid_request_error", "invalid_json")
 			return "", false, false
 		}
@@ -120,11 +181,13 @@ func parseImagesRequest(c *gin.Context, bodyBytes []byte, contentType string, op
 
 	model, _ := reqMap["model"].(string)
 	if model == "" {
+		logImagesValidationFailure(c, operation, contentType, bodyBytes, "validate_required", "missing_model", fmt.Errorf("model is required"))
 		imagesErrorResponse(c, http.StatusBadRequest, "model is required", "invalid_request_error", "missing_parameter")
 		return "", false, false
 	}
 	prompt, _ := reqMap["prompt"].(string)
 	if prompt == "" {
+		logImagesValidationFailure(c, operation, contentType, bodyBytes, "validate_required", "missing_prompt", fmt.Errorf("prompt is required"))
 		imagesErrorResponse(c, http.StatusBadRequest, "prompt is required", "invalid_request_error", "missing_parameter")
 		return "", false, false
 	}
@@ -194,6 +257,7 @@ func handleMultiChannel(
 					return handleSuccess(c, resp, startTime, isStream)
 				},
 				model,
+				operation,
 				selection.ChannelIndex,
 				channelScheduler.GetChannelLogStore(scheduler.ChannelKindImages),
 			)
@@ -267,6 +331,7 @@ func handleSingleChannel(
 			return handleSuccess(c, resp, startTime, isStream)
 		},
 		model,
+		operation,
 		channelIndex,
 		channelScheduler.GetChannelLogStore(scheduler.ChannelKindImages),
 	)
@@ -301,6 +366,7 @@ func buildOperationRequest(
 ) (*http.Request, error) {
 	serviceType, err := config.NormalizeImagesServiceTypeForProxy(upstream.ServiceType)
 	if err != nil {
+		logImagesBuildRequestFailure(operation, baseURL, apiKey, model, contentType, bodyBytes, "normalize_service_type", "invalid_service_type", err)
 		return nil, err
 	}
 	upstream.ServiceType = serviceType
@@ -314,12 +380,21 @@ func buildOperationRequest(
 		if redirectedModel != "" && (!hasModelField || strings.TrimSpace(originalModel) == "" || redirectedModel != originalModel) {
 			requestBody, requestContentType, err = rewriteMultipartFormField(bodyBytes, contentType, "model", redirectedModel)
 			if err != nil {
+				stage, reason := describeMultipartDiagnostic(err)
+				if stage == "" {
+					stage = "rewrite_field"
+				}
+				if reason == "" {
+					reason = "part_read_failed"
+				}
+				logImagesBuildRequestFailure(operation, baseURL, apiKey, redirectedModel, contentType, bodyBytes, stage, reason, err)
 				return nil, err
 			}
 		}
 	} else if operation == operationGenerations || len(bodyBytes) > 0 {
 		requestBody, requestContentType, err = buildJSONRequestBody(bodyBytes, model, redirectedModel, operation)
 		if err != nil {
+			logImagesBuildRequestFailure(operation, baseURL, apiKey, redirectedModel, contentType, bodyBytes, "build_json", "invalid_json", err)
 			return nil, err
 		}
 	}
@@ -327,6 +402,7 @@ func buildOperationRequest(
 	url := buildOperationURL(baseURL, operation)
 	req, err := http.NewRequestWithContext(c.Request.Context(), http.MethodPost, url, bytes.NewReader(requestBody))
 	if err != nil {
+		logImagesBuildRequestFailure(operation, baseURL, apiKey, redirectedModel, requestContentType, requestBody, "new_request", "request_init_failed", err)
 		return nil, err
 	}
 	if c.Request.URL != nil {

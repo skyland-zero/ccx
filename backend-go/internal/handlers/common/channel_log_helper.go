@@ -23,7 +23,7 @@ func CreatePendingLog(
 	channelLogStore *metrics.ChannelLogStore,
 	channelIndex int,
 	model, originalModel string,
-	apiKey, baseURL, interfaceType string,
+	apiKey, baseURL, interfaceType, operation string,
 	requestSource string,
 ) string {
 	if channelLogStore == nil {
@@ -43,6 +43,7 @@ func CreatePendingLog(
 		StartTime:     now,
 		Model:         model,
 		OriginalModel: originalModel,
+		Operation:     operation,
 		StatusCode:    0,
 		DurationMs:    0,
 		Success:       false,

@@ -155,6 +155,7 @@ func handleMultiChannel(
 					return handleSuccess(c, resp, upstreamCopy.ServiceType, envCfg, startTime, model, isStream)
 				},
 				model,
+				"",
 				selection.ChannelIndex,
 				channelScheduler.GetChannelLogStore(scheduler.ChannelKindChat),
 			)
@@ -229,6 +230,7 @@ func handleSingleChannel(
 			return handleSuccess(c, resp, upstreamCopy.ServiceType, envCfg, startTime, model, isStream)
 		},
 		model,
+		"",
 		channelIndex,
 		channelScheduler.GetChannelLogStore(scheduler.ChannelKindChat),
 	)

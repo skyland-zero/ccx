@@ -1,6 +1,8 @@
 package images
 
 import (
+	"bytes"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -28,6 +30,17 @@ func newImagesTestEnvConfig() *config.EnvConfig {
 	envCfg := config.NewEnvConfig()
 	envCfg.ProxyAccessKey = "test-key"
 	return envCfg
+}
+
+func captureImagesLogs(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	oldWriter := log.Writer()
+	log.SetOutput(&buf)
+	t.Cleanup(func() {
+		log.SetOutput(oldWriter)
+	})
+	return &buf
 }
 
 func TestBuildProviderRequest_URLVariants(t *testing.T) {
@@ -64,6 +77,7 @@ func TestBuildProviderRequest_URLVariants(t *testing.T) {
 
 func TestBuildProviderRequest_RejectsUnsupportedServiceType(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+	logBuf := captureImagesLogs(t)
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", strings.NewReader(`{"model":"image-default","prompt":"hello"}`))
@@ -75,6 +89,16 @@ func TestBuildProviderRequest_RejectsUnsupportedServiceType(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "仅支持 openai serviceType") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	logs := logBuf.String()
+	if !strings.Contains(logs, "[Images-BuildRequest]") {
+		t.Fatalf("expected build request log, got: %s", logs)
+	}
+	if !strings.Contains(logs, "reason=invalid_service_type") {
+		t.Fatalf("expected invalid_service_type log, got: %s", logs)
+	}
+	if strings.Contains(logs, "sk-test") {
+		t.Fatalf("expected API key to be masked in logs, got: %s", logs)
 	}
 }
 
@@ -157,6 +181,7 @@ func TestHandler_InvalidMultipartEditsReturnsBadRequest(t *testing.T) {
 	defer cfgManager.Close()
 
 	envCfg := newImagesTestEnvConfig()
+	logBuf := captureImagesLogs(t)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -170,5 +195,18 @@ func TestHandler_InvalidMultipartEditsReturnsBadRequest(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), "invalid_multipart") {
 		t.Fatalf("unexpected body: %s", w.Body.String())
+	}
+	logs := logBuf.String()
+	if !strings.Contains(logs, "[Images-Multipart]") {
+		t.Fatalf("expected multipart diagnostic log, got: %s", logs)
+	}
+	if !strings.Contains(logs, "operation=edits") {
+		t.Fatalf("expected operation in logs, got: %s", logs)
+	}
+	if !strings.Contains(logs, "reason=missing_boundary") {
+		t.Fatalf("expected missing_boundary in logs, got: %s", logs)
+	}
+	if strings.Contains(logs, "broken") {
+		t.Fatalf("expected multipart body content to stay out of logs, got: %s", logs)
 	}
 }

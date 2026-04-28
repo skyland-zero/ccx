@@ -176,6 +176,7 @@ func handleMultiChannel(
 					return handleSuccess(c, resp, upstreamCopy.ServiceType, envCfg, startTime, geminiReq, model, isStream)
 				},
 				model,
+				"",
 				selection.ChannelIndex,
 				channelScheduler.GetChannelLogStore(scheduler.ChannelKindGemini),
 			)
@@ -263,6 +264,7 @@ func handleSingleChannel(
 			return handleSuccess(c, resp, upstreamCopy.ServiceType, envCfg, startTime, geminiReq, model, isStream)
 		},
 		model,
+		"",
 		channelIndex,
 		channelScheduler.GetChannelLogStore(scheduler.ChannelKindGemini),
 	)

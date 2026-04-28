@@ -12,6 +12,7 @@ type ChannelLog struct {
 	Timestamp     time.Time `json:"timestamp"`
 	Model         string    `json:"model"`                   // 实际使用的模型（重定向后）
 	OriginalModel string    `json:"originalModel,omitempty"` // 原始请求模型（仅当重定向时有值）
+	Operation     string    `json:"operation,omitempty"`     // Images 端点（generations/edits/variations）
 	StatusCode    int       `json:"statusCode"`
 	DurationMs    int64     `json:"durationMs"`
 	Success       bool      `json:"success"`

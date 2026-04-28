@@ -141,6 +141,7 @@ func handleMultiChannel(
 					return handleSuccess(c, resp, provider, upstream.ServiceType, envCfg, sessionManager, startTime, &responsesReq, actualRequestBody)
 				},
 				responsesReq.Model,
+				"",
 				selection.ChannelIndex,
 				channelScheduler.GetChannelLogStore(scheduler.ChannelKindResponses),
 			)
@@ -227,6 +228,7 @@ func handleSingleChannel(
 			return handleSuccess(c, resp, provider, upstream.ServiceType, envCfg, sessionManager, startTime, &responsesReq, actualRequestBody)
 		},
 		responsesReq.Model,
+		"",
 		channelIndex,
 		channelScheduler.GetChannelLogStore(scheduler.ChannelKindResponses),
 	)

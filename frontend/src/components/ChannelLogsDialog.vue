@@ -55,6 +55,9 @@
                 <v-chip v-if="log.interfaceType" size="small" :color="interfaceTypeColor(log.interfaceType)" variant="tonal" class="text-uppercase">
                   {{ log.interfaceType }}
                 </v-chip>
+                <v-chip v-if="log.operation" size="small" color="info" variant="tonal" class="text-uppercase">
+                  {{ log.operation }}
+                </v-chip>
                 <v-chip v-if="log.requestSource === 'capability_test'" size="small" color="warning" variant="tonal">
                   {{ t('channelLogs.sourceCapabilityTest') }}
                 </v-chip>

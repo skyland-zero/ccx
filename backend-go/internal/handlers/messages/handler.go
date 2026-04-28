@@ -151,6 +151,7 @@ func handleMultiChannel(
 					return handleNormalResponse(c, resp, provider, envCfg, startTime, actualRequestBody, upstreamCopy, apiKey)
 				},
 				claudeReq.Model,
+				"",
 				selection.ChannelIndex,
 				channelScheduler.GetChannelLogStore(scheduler.ChannelKindMessages),
 			)
@@ -243,6 +244,7 @@ func handleSingleChannel(
 			return handleNormalResponse(c, resp, provider, envCfg, startTime, actualRequestBody, upstreamCopy, apiKey)
 		},
 		claudeReq.Model,
+		"",
 		channelIndex,
 		channelScheduler.GetChannelLogStore(scheduler.ChannelKindMessages),
 	)

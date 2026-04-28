@@ -79,6 +79,7 @@ func TryUpstreamWithAllKeys(
 	markURLSuccess func(url string),
 	handleSuccess HandleSuccessFunc,
 	model string,
+	operation string,
 	channelIndex int,
 	channelLogStore *metrics.ChannelLogStore,
 ) (handled bool, successKey string, successBaseURLIdx int, failoverErr *FailoverError, usage *types.Usage, lastError error) {
@@ -175,7 +176,7 @@ func TryUpstreamWithAllKeys(
 			channelScheduler.RecordRequestStart(currentBaseURL, apiKey, metricsServiceType, kind)
 
 			// 创建 pending 状态日志
-			logRequestID := CreatePendingLog(channelLogStore, channelIndex, redirectedModel, originalModel, apiKey, currentBaseURL, apiType, metrics.RequestSourceProxy)
+			logRequestID := CreatePendingLog(channelLogStore, channelIndex, redirectedModel, originalModel, apiKey, currentBaseURL, apiType, operation, metrics.RequestSourceProxy)
 
 			// TCP 建连开始即计数：将活跃度统计提前到发起上游请求之前
 			requestID := metricsManager.RecordRequestConnected(currentBaseURL, apiKey, metricsServiceType, redirectedModel)

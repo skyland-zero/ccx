@@ -1,3 +1,13 @@
+## [Unreleased]
+
+### Changed
+
+- **为 Images 渠道日志补充具体端点标识** - 后端 `ChannelLog` 新增 `operation` 字段并透传到前端日志弹窗，Images 请求现在可直接区分 `generations`、`edits`、`variations`，便于排查不同图片端点的路由命中与重试情况
+
+### Fixed
+
+- **增强 Images 本地失败诊断日志并保护敏感信息** - 为 `multipart` 校验失败、JSON 参数校验失败和本地构建上游请求失败补充分阶段诊断日志，仅输出 `operation`、`content-type`、`body_bytes`、`stage/reason` 与脱敏 key 等上下文，不记录原始 `multipart` body、文件名、prompt 原文或未脱敏凭证
+
 ## [v2.6.68] - 2026-04-28
 
 ### Added
