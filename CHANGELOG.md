@@ -8,6 +8,7 @@
 
 ### Changed
 
+- **精简能力测试弹窗的冗余状态提示与来源文案** - 移除“共享结果 / 当前执行状态 / 测试范围”等低信息量提示、空态引导与 loading 副文案，删除前端未实际区分来源的 `snapshotSource` 字段，仅保留运行模式、兼容协议、进度与更新时间，降低 `CapabilityTestDialog` 与相关 i18n 文案的视觉噪音和误导性。
 - **扩展调度器、指标迁移与回归测试以支持第五类渠道** - `scheduler`、`channel_metrics_handler`、SQLite metrics key 迁移、模型查询 fallback 与相关 handler/scheduler 回归测试统一纳入 Images 渠道，保持与 messages / responses / chat / gemini 一致的隔离和恢复语义
 - **将能力测试 RPM 从渠道配置迁移到测试弹窗** - 在能力测试对话框新增默认值为 `10`、范围为 `1–60` 的 RPM 输入；前端请求与后端能力测试入口同步接收并钳制 `rpm`，同时从渠道级配置、payload 与管理视图中移除 `channel.rpm`，避免将测试速率持久化到渠道配置。
 - **扩展能力测试为多协议并发启动与独立轮询** - 能力测试弹窗允许分别启动多个协议测试，前端按协议维护 `jobId` 引用并恢复多个活跃任务的轮询，避免后续启动覆盖已有协议状态与进度显示。

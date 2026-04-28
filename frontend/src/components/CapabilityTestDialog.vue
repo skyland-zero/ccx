@@ -23,7 +23,6 @@
         <div v-if="state === 'initializing'" class="d-flex flex-column align-center py-8">
           <v-progress-circular indeterminate size="48" color="primary" />
           <p class="text-body-1 mt-4 text-medium-emphasis">{{ t('capability.loadingTitle') }}</p>
-          <p class="text-caption text-medium-emphasis">{{ t('capability.loadingBody') }}</p>
         </div>
 
         <div v-else-if="state === 'error'" class="py-4">
@@ -33,31 +32,16 @@
         </div>
 
         <div v-else-if="job">
-          <div v-if="state === 'idle'" class="mb-4">
-            <v-alert type="info" variant="tonal" rounded="lg">
-              <div class="d-flex flex-column ga-2">
-                <div class="text-subtitle-2">{{ t('capability.idleTitle') }}</div>
-                <div class="text-body-2">{{ t('capability.idleBody') }}</div>
-              </div>
-            </v-alert>
-          </div>
-
           <div class="capability-status-bar mb-4">
             <div class="d-flex align-center flex-wrap ga-2 capability-status-summary">
               <v-chip v-if="runMode !== 'fresh'" color="info" size="small" variant="tonal">
                 {{ getRunModeLabel(runMode) }}
-              </v-chip>
-              <v-chip v-if="snapshotSourceLabel" color="info" size="small" variant="outlined">
-                {{ snapshotSourceLabel }}
               </v-chip>
               <v-chip v-if="displayOutcome === 'partial'" color="warning" size="small" variant="tonal">
                 {{ t('capability.partial') }}
               </v-chip>
               <v-chip v-else-if="displayOutcome === 'cancelled'" color="grey" size="small" variant="tonal">
                 {{ t('capability.cancelled') }}
-              </v-chip>
-              <v-chip v-if="activeProtocolScopeLabel" color="secondary" size="small" variant="tonal">
-                {{ t('capability.scopeLabel', { protocols: activeProtocolScopeLabel }) }}
               </v-chip>
               <v-chip
                 v-for="proto in (job?.compatibleProtocols ?? [])"
@@ -111,21 +95,6 @@
               {{ cancelling ? t('capability.cancelling') : t('capability.cancel') }}
             </v-btn>
           </div>
-
-          <div class="capability-sections mb-4">
-            <v-alert v-if="snapshotSourceLabel" type="info" variant="tonal" rounded="lg">
-              <div class="text-body-2 font-weight-medium">{{ t('capability.sharedResultTitle') }}</div>
-              <div class="text-body-2">{{ snapshotSourceLabel }}<span v-if="snapshotUpdatedText"> · {{ snapshotUpdatedText }}</span></div>
-            </v-alert>
-            <v-alert v-if="state === 'pending' || state === 'running'" type="warning" variant="tonal" rounded="lg">
-              <div class="text-body-2 font-weight-medium">{{ t('capability.currentExecutionTitle') }}</div>
-              <div class="text-body-2">{{ t('capability.currentExecutionBody') }}</div>
-            </v-alert>
-          </div>
-
-          <v-alert v-if="isPartialScope" type="info" variant="tonal" rounded="lg" class="mb-4">
-            {{ t('capability.partialScopeNotice', { protocols: activeProtocolScopeLabel }) }}
-          </v-alert>
 
           <!-- 移动端卡片布局 -->
           <div class="mobile-layout">
@@ -553,30 +522,11 @@ const hasProtocolLatency = (test: CapabilityProtocolJobResult): boolean => {
   return getAverageLatency(test) >= 0
 }
 
-const snapshotSourceLabel = computed(() => {
-  const source = props.capabilityJob?.snapshotSource
-  if (source === 'local') return t('capability.snapshotLocal')
-  if (source === 'remote') return t('capability.snapshotRemote')
-  return ''
-})
-
 const snapshotUpdatedText = computed(() => {
   const updatedAt = props.capabilityJob?.snapshotUpdatedAt
   if (!updatedAt) return ''
   return t('capability.snapshotUpdated', { time: updatedAt })
 })
-
-const protocolScope = computed(() => {
-  const protocols = props.capabilityJob?.targetProtocols ?? []
-  return protocols.filter(isKnownProtocol)
-})
-
-const activeProtocolScopeLabel = computed(() => {
-  if (protocolScope.value.length === 0) return ''
-  return protocolScope.value.map(getProtocolDisplayName).join(' / ')
-})
-
-const isPartialScope = computed(() => protocolScope.value.length > 0 && protocolScope.value.length < knownProtocols.length)
 
 const shouldShowTestProtocolButton = (test: CapabilityProtocolJobResult): boolean => {
   const displayState = getProtocolDisplayState(test)

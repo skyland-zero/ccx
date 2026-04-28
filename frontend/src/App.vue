@@ -1015,12 +1015,10 @@ const buildCapabilityJobFromSnapshot = (
     outcome: snapshot.outcome,
     status: snapshot.lifecycle === 'active' ? 'running' : snapshot.lifecycle === 'cancelled' ? 'cancelled' : snapshot.lifecycle === 'done' ? 'completed' : 'queued',
     updatedAt: snapshot.updatedAt,
-    snapshotSource: 'local',
     snapshotUpdatedAt: snapshot.updatedAt
   }
   return {
     ...mergeCapabilityJob(baseJob, snapshotJob),
-    snapshotSource: 'local',
     snapshotUpdatedAt: snapshot.updatedAt
   }
 }

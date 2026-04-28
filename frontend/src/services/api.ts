@@ -271,7 +271,6 @@ export interface CapabilityTestJob {
   cacheHit?: boolean
   targetProtocols?: string[]
   timeoutMilliseconds?: number
-  snapshotSource?: 'local' | 'remote'
   snapshotUpdatedAt?: string
 }
 

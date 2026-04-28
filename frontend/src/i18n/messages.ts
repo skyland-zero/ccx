@@ -47,12 +47,7 @@ export type MessageKey =
   | 'capability.addModelLabel'
   | 'capability.addModelPlaceholder'
   | 'capability.startTest'
-  | 'capability.scopeLabel'
-  | 'capability.partialScopeNotice'
   | 'capability.loadingTitle'
-  | 'capability.loadingBody'
-  | 'capability.idleTitle'
-  | 'capability.idleBody'
   | 'capability.notStarted'
   | 'capability.rpmLabel'
   | 'capability.compatibleProtocols'
@@ -101,12 +96,7 @@ export type MessageKey =
   | 'capability.reasonCancelled'
   | 'capability.reasonTimeout'
   | 'capability.retryModel'
-  | 'capability.snapshotLocal'
-  | 'capability.snapshotRemote'
   | 'capability.snapshotUpdated'
-  | 'capability.sharedResultTitle'
-  | 'capability.currentExecutionTitle'
-  | 'capability.currentExecutionBody'
   | 'capability.noApiKeyError'
   | 'capability.genericJobError'
   | 'orchestration.title'
@@ -423,12 +413,7 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'capability.addModelLabel': 'Add model',
     'capability.addModelPlaceholder': 'e.g. claude-sonnet-4-6',
     'capability.startTest': 'Start test',
-    'capability.scopeLabel': 'Scope: {protocols}',
-    'capability.partialScopeNotice': 'The current result only covers the selected protocols ({protocols}), not the full channel compatibility.',
     'capability.loadingTitle': 'Testing protocol compatibility...',
-    'capability.loadingBody': 'This may take a few seconds',
-    'capability.idleTitle': 'Ready to test',
-    'capability.idleBody': 'Click the "Test" button next to a protocol below to start testing',
     'capability.notStarted': 'Not started',
     'capability.rpmLabel': 'Test RPM',
     'capability.compatibleProtocols': 'Compatible protocols',
@@ -477,12 +462,7 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'capability.reasonCancelled': 'Cancelled before completion',
     'capability.reasonTimeout': 'Timed out',
     'capability.retryModel': 'Retry this model',
-    'capability.snapshotLocal': 'Shared result (local)',
-    'capability.snapshotRemote': 'Shared result',
     'capability.snapshotUpdated': 'Updated: {time}',
-    'capability.sharedResultTitle': 'Shared result',
-    'capability.currentExecutionTitle': 'Current execution',
-    'capability.currentExecutionBody': 'The current run may still be updating protocol and model statuses.',
     'capability.noApiKeyError': 'This channel has no API key configured and cannot run capability tests.',
     'capability.genericJobError': 'Capability test failed: {message}',
     'orchestration.title': 'Channel orchestration',
@@ -798,12 +778,7 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'capability.addModelLabel': 'Tambah model',
     'capability.addModelPlaceholder': 'cth. claude-sonnet-4-6',
     'capability.startTest': 'Mulai tes',
-    'capability.scopeLabel': 'Cakupan: {protocols}',
-    'capability.partialScopeNotice': 'Hasil saat ini hanya mencakup protokol terpilih ({protocols}), bukan kompatibilitas penuh channel.',
     'capability.loadingTitle': 'Menguji kompatibilitas protokol...',
-    'capability.loadingBody': 'Ini mungkin butuh beberapa detik',
-    'capability.idleTitle': 'Siap untuk menguji',
-    'capability.idleBody': 'Klik tombol "Uji" di sebelah protokol di bawah untuk memulai pengujian',
     'capability.notStarted': 'Belum dimulai',
     'capability.rpmLabel': 'RPM tes',
     'capability.compatibleProtocols': 'Protokol kompatibel',
@@ -852,12 +827,7 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'capability.reasonCancelled': 'Dibatalkan sebelum selesai',
     'capability.reasonTimeout': 'Waktu habis',
     'capability.retryModel': 'Coba ulang model ini',
-    'capability.snapshotLocal': 'Hasil bersama (lokal)',
-    'capability.snapshotRemote': 'Hasil bersama',
     'capability.snapshotUpdated': 'Diperbarui: {time}',
-    'capability.sharedResultTitle': 'Hasil bersama',
-    'capability.currentExecutionTitle': 'Eksekusi saat ini',
-    'capability.currentExecutionBody': 'Eksekusi berjalan saat ini mungkin masih memperbarui status protokol dan model.',
     'capability.noApiKeyError': 'Channel ini tidak memiliki API key dan tidak dapat menjalankan tes kemampuan.',
     'capability.genericJobError': 'Tes kemampuan gagal: {message}',
     'orchestration.title': 'Orkestrasi channel',
@@ -1173,12 +1143,7 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'capability.addModelLabel': '添加模型',
     'capability.addModelPlaceholder': '例如 claude-sonnet-4-6',
     'capability.startTest': '开始测试',
-    'capability.scopeLabel': '测试范围：{protocols}',
-    'capability.partialScopeNotice': '当前结果仅覆盖所选协议（{protocols}），不代表整个渠道的完整兼容性。',
     'capability.loadingTitle': '正在测试协议兼容性...',
-    'capability.loadingBody': '这可能需要几秒钟',
-    'capability.idleTitle': '等待开始测试',
-    'capability.idleBody': '请点击下方协议旁的"测试"按钮开始测试',
     'capability.notStarted': '待测试',
     'capability.rpmLabel': '测试 RPM',
     'capability.compatibleProtocols': '兼容协议',
@@ -1227,12 +1192,7 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'capability.reasonCancelled': '完成前已取消',
     'capability.reasonTimeout': '请求超时',
     'capability.retryModel': '重测此模型',
-    'capability.snapshotLocal': '共享结果（本地）',
-    'capability.snapshotRemote': '共享结果',
     'capability.snapshotUpdated': '更新时间：{time}',
-    'capability.sharedResultTitle': '共享结果',
-    'capability.currentExecutionTitle': '当前执行状态',
-    'capability.currentExecutionBody': '当前执行中的任务可能仍在持续更新协议与模型状态。',
     'capability.noApiKeyError': '该渠道未配置 API Key，无法执行能力测试。',
     'capability.genericJobError': '能力测试失败：{message}',
     'orchestration.title': '渠道编排',
