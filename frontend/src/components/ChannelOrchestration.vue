@@ -1335,12 +1335,12 @@ const resumeChannelInternal = async (
 
 const isTrippedChannel = (channel: Channel): boolean => {
   const channelMetrics = getChannelMetrics(channel.index)
-  return channel.status === 'suspended' || channelMetrics?.circuitState === 'open' || channelMetrics?.circuitState === 'half_open'
+  return channel.status === 'suspended' || channelMetrics?.circuitState === 'open'
 }
 
 const isBreakerManagedChannel = (channel: Channel): boolean => {
   const channelMetrics = getChannelMetrics(channel.index)
-  return channel.status === 'suspended' || channelMetrics?.circuitState === 'open' || channelMetrics?.circuitState === 'half_open'
+  return channel.status === 'suspended' || channelMetrics?.circuitState === 'open'
 }
 
 const getChannelRowClass = (channel: Channel) => {
