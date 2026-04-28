@@ -22,6 +22,25 @@
 
 ## 发布流程
 
+### 推荐方式：优先使用项目内技能
+
+本仓库发布时，优先使用 `.claude/skills/` 下的两个技能：
+
+1. **`version-bump`**（`.claude/skills/version-bump/`）
+   - 用于升级根目录 `VERSION`
+   - 自动更新或生成根目录 `CHANGELOG.md`
+   - 可按约定创建 commit、tag，并推送到远程
+
+2. **`github-release`**（`.claude/skills/github-release/`）
+   - 用于根据 `CHANGELOG.md` 生成发布公告
+   - 更新或发布 GitHub Release / Draft Release
+
+推荐顺序：
+1. 先使用 `version-bump` 完成版本号、changelog、commit/tag/push
+2. 再使用 `github-release` 生成并发布 Release 公告
+
+下面的手工步骤作为兜底流程：
+
 ### 步骤 1：准备工作
 
 1. 确保本地 `main` 已同步最新代码。
