@@ -1,22 +1,22 @@
-# Claude / OpenAI Chat / Codex Responses / Gemini API Proxy - CCX
+# Claude / OpenAI Chat / OpenAI Images / Codex Responses / Gemini API Proxy - CCX
+
+English | [简体中文](README.zh-CN.md)
 
 [![GitHub release](https://img.shields.io/github/v/release/BenedictKing/ccx)](https://github.com/BenedictKing/ccx/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-CCX is a high-performance AI API proxy and protocol translation gateway for Claude, OpenAI Chat / Codex Responses, and Gemini. It provides a unified entrypoint, built-in web administration, failover, multi-key management, channel orchestration, and model routing.
+CCX is a high-performance AI API proxy and protocol translation gateway for Claude, OpenAI Chat, OpenAI Images, Codex Responses, and Gemini. It provides a unified entrypoint, built-in web administration, channel orchestration, failover, multi-key management, and model routing.
 
 ## Features
 
 - Integrated backend + frontend architecture with single-port deployment
 - Dual-key authentication with `PROXY_ACCESS_KEY` and optional `ADMIN_ACCESS_KEY`
-- Web admin console for channel management, testing, and monitoring
-- Support for Claude Messages, OpenAI Chat Completions, Codex Responses, and Gemini APIs
-- Protocol conversion across Claude Messages, OpenAI Chat, Gemini, and Responses
-- Smart scheduling with priorities, promotion windows, health checks, and circuit breaking
-- Per-channel API key rotation, proxy support, custom headers, and model allowlists
-- Model remapping, fast mode, and verbosity controls
-- Streaming and non-streaming support
+- Web admin console for channel management, testing, logs, and monitoring
+- Support for Claude Messages, OpenAI Chat Completions, OpenAI Images, Codex Responses, and Gemini APIs
+- Smart scheduling with priorities, promotion windows, health checks, failover, and circuit recovery
+- Per-channel API key rotation, proxy support, custom headers, model allowlists, and route prefixes
 - Responses session tracking for multi-turn workflows
+- Embedded frontend assets for simple binary deployment
 
 ## Screenshots
 
@@ -28,13 +28,13 @@ Visual channel management with drag-and-drop priority adjustment and real-time h
 
 ### Add Channel
 
-Supports multiple upstream service types (Claude/Codex/Gemini) with flexible API key, model mapping, and request parameter configuration.
+Supports multiple upstream service types and flexible API key, model mapping, and request parameter configuration.
 
 <img src="docs/screenshots/add-channel-modal.png" width="500" alt="Add Channel">
 
 ### Traffic Stats
 
-Real-time monitoring of request traffic, success rate, and response latency per channel.
+Real-time monitoring of per-channel request traffic, success rate, and latency.
 
 ![Traffic Stats](docs/screenshots/traffic-stats.png)
 
@@ -44,23 +44,22 @@ CCX exposes one backend entrypoint:
 
 ```text
 Client -> backend :3000 ->
-  |- /                    -> Web UI
-  |- /api/*               -> Admin API
-  |- /v1/messages         -> Claude Messages proxy
-  |- /v1/chat/completions -> OpenAI Chat proxy
-  |- /v1/responses        -> Codex Responses proxy
-  |- /v1/models           -> Models API
-  `- /v1beta/models/*     -> Gemini proxy
+  |- /                            -> Web UI
+  |- /api/*                       -> Admin API
+  |- /v1/messages                 -> Claude Messages proxy
+  |- /v1/chat/completions         -> OpenAI Chat proxy
+  |- /v1/responses                -> Codex Responses proxy
+  |- /v1/images/{...}             -> OpenAI Images proxy
+  |- /v1/models                   -> Models API
+  `- /v1beta/models/*             -> Gemini proxy
 ```
 
-Key properties:
+Images endpoints currently include:
+- `POST /v1/images/generations`
+- `POST /v1/images/edits`
+- `POST /v1/images/variations`
 
-- Single port
-- Embedded frontend assets
-- No separate reverse proxy required
-- Admin and proxy traffic can use different keys
-
-See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed design notes.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the detailed design.
 
 ## Quick Start
 
@@ -102,26 +101,11 @@ make run
 Useful commands:
 
 ```bash
-make run
 make dev
+make run
 make build
+make frontend-dev
 ```
-
-## UI Language
-
-Set the default admin UI language with:
-
-```bash
-APP_UI_LANGUAGE=en
-```
-
-Supported values:
-
-- `en`
-- `id`
-- `zh-CN`
-
-Invalid values fall back to `en`.
 
 ## Core Environment Variables
 
@@ -144,7 +128,9 @@ REQUEST_TIMEOUT=300000
 - Claude Messages: `POST /v1/messages`
 - OpenAI Chat: `POST /v1/chat/completions`
 - Codex Responses: `POST /v1/responses`
+- OpenAI Images: `POST /v1/images/generations`, `POST /v1/images/edits`, `POST /v1/images/variations`
 - Gemini: `POST /v1beta/models/{model}:generateContent`
+- Models API: `GET /v1/models`
 
 ## Development
 
@@ -157,20 +143,22 @@ make dev
 Frontend only:
 
 ```bash
-cd frontend
-npm install
-npm run dev
+cd "frontend"
+bun install
+bun run dev
 ```
 
 Backend only:
 
 ```bash
-cd backend-go
+cd "backend-go"
 make dev
 ```
 
 ## Additional Docs
 
+- [README.zh-CN.md](README.zh-CN.md)
+- [backend-go/README.md](backend-go/README.md)
 - [ARCHITECTURE.md](ARCHITECTURE.md)
 - [DEVELOPMENT.md](DEVELOPMENT.md)
 - [ENVIRONMENT.md](ENVIRONMENT.md)

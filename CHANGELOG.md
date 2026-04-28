@@ -7,6 +7,7 @@
 ### Fixed
 
 - **增强 Images 本地失败诊断日志并保护敏感信息** - 为 `multipart` 校验失败、JSON 参数校验失败和本地构建上游请求失败补充分阶段诊断日志，仅输出 `operation`、`content-type`、`body_bytes`、`stage/reason` 与脱敏 key 等上下文，不记录原始 `multipart` body、文件名、prompt 原文或未脱敏凭证
+- **修复手动登录成功后系统状态未及时同步** - 前端在手动输入 access key 并完成 `refreshChannels()` 后，会立即根据最新刷新结果同步 `systemStatus` 为 `running` 或 `error`，避免界面状态继续停留在 `Connecting`
 
 ## [v2.6.68] - 2026-04-28
 

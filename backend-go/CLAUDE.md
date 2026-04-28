@@ -4,56 +4,61 @@
 
 ## 模块职责
 
-Go 后端核心服务：HTTP API、多上游适配、协议转换、智能调度、会话管理、配置热重载。
+Go 后端核心服务：HTTP API、多上游适配、协议转换、多渠道调度、会话管理、指标与日志记录、配置热重载。
 
 ## 启动命令
 
 ```bash
-make dev          # 热重载开发
-make test         # 运行测试
-make test-cover   # 测试 + 覆盖率
-make build        # 构建二进制
+make dev
+make run
+make build
+make test
+make test-cover
+make fmt
+make lint
+make deps
 ```
 
-## API 端点
+说明：实际命令以 `backend-go/Makefile` 为准。
 
-| 端点 | 方法 | 功能 |
-|------|------|------|
-| `/health` | GET | 健康检查（无需认证） |
-| `/v1/messages` | POST | Claude Messages API |
-| `/v1/messages/count_tokens` | POST | Token 计数 |
-| `/v1/responses` | POST | Codex Responses API |
-| `/v1/responses/compact` | POST | 精简版 Responses API |
-| `/v1/chat/completions` | POST | OpenAI Chat Completions API |
-| `/v1/models` | GET | 模型列表查询 |
-| `/v1/models/:model` | GET | 模型详情 |
-| `/v1beta/models/{model}:generateContent` | POST | Gemini 原生协议 |
-| `/api/messages/channels` | CRUD | Messages 渠道管理 |
-| `/api/responses/channels` | CRUD | Responses 渠道管理 |
-| `/api/chat/channels` | CRUD | Chat 渠道管理 |
-| `/api/gemini/channels` | CRUD | Gemini 渠道管理 |
-| `/api/{type}/channels/:id/models` | POST | 单渠道模型列表查询 |
-| `/api/{type}/channels/:id/capability-test` | POST | 渠道能力测试 |
-| `/api/{type}/channels/:id/promotion` | POST | 渠道促销期管理 |
-| `/api/messages/channels/metrics` | GET | 渠道指标 |
-| `/api/messages/channels/scheduler/stats` | GET | 调度器统计 |
+## API 总览
 
-## 指标历史数据聚合粒度
+### 代理入口
+- `GET /health`
+- `POST /v1/messages`
+- `POST /v1/messages/count_tokens`
+- `POST /v1/chat/completions`
+- `POST /v1/responses`
+- `POST /v1/responses/compact`
+- `GET /v1/models`
+- `GET /v1/models/:model`
+- `POST /v1beta/models/{model}:generateContent`
+- `POST /v1/images/generations`
+- `POST /v1/images/edits`
+- `POST /v1/images/variations`
 
-`/api/messages/channels/:id/keys/metrics/history` 端点根据查询时间范围自动选择聚合间隔：
+### 管理入口
+- `/api/messages/channels/*`
+- `/api/chat/channels/*`
+- `/api/responses/channels/*`
+- `/api/gemini/channels/*`
+- `/api/images/channels/*`
 
-| 时间范围 | 聚合间隔 | 数据点数 |
-|----------|----------|----------|
-| 1h       | 1 分钟   | ~60 点   |
-| 6h       | 5 分钟   | ~72 点   |
-| 24h      | 15 分钟  | ~96 点   |
-| 7d       | 2 小时   | ~84 点   |
-| 30d      | 8 小时   | ~90 点   |
+### 能力测试
+能力测试接口仅适用于 `messages`、`chat`、`responses`、`gemini`。
+Images 当前没有 capability-test / snapshot 路由。
 
-可通过 `interval` 参数手动指定（最小 1 分钟）。最大查询范围为 30 天。
+## 关键实现点
 
-## Provider 接口
+### 渠道类型
+当前正式支持五类渠道：
+- `messages`
+- `chat`
+- `responses`
+- `gemini`
+- `images`
 
+### Provider 接口
 所有上游服务实现 `internal/providers/Provider` 接口：
 
 ```go
@@ -64,69 +69,57 @@ type Provider interface {
 }
 ```
 
-**实现**: `ClaudeProvider`, `OpenAIProvider`, `GeminiProvider`, `ResponsesProvider`
-
-## 核心模块
+### 核心模块
 
 | 模块 | 职责 |
-|------|------|
-| `handlers/` | HTTP 处理器（proxy.go, responses.go） |
-| `providers/` | 上游适配器 |
-| `converters/` | 协议转换器（工厂模式） |
-| `scheduler/` | 多渠道调度（优先级、熔断） |
-| `session/` | 会话管理（Trace 亲和性） |
-| `config/` | 配置管理（热重载） |
+| --- | --- |
+| `internal/handlers/` | 代理与管理接口处理器 |
+| `internal/providers/` | 上游适配 |
+| `internal/converters/` | Responses 协议转换 |
+| `internal/scheduler/` | 多渠道调度 |
+| `internal/session/` | 会话与 Trace 亲和性 |
+| `internal/config/` | 配置管理与热重载 |
+| `internal/metrics/` | 指标、日志、持久化 |
 
 ## 日志规范
 
-所有日志输出使用 `[Component-Action]` 标签格式，禁止使用 emoji 符号（确保跨平台兼容性）。
+所有日志输出使用 `[Component-Action]` 标签格式，禁止使用 emoji。
 
-**格式规范**:
 ```go
-// 标准格式
 log.Printf("[Component-Action] 消息内容: %v", value)
-
-// 警告信息
-log.Printf("[Component] 警告: 消息内容")
 ```
 
-**标签命名示例**:
+### Channels logs
 
-| 组件 | 标签 | 用途 |
-|------|------|------|
-| 调度器 | `[Scheduler-Channel]` | 渠道选择 |
-| 调度器 | `[Scheduler-Promotion]` | 促销渠道 |
-| 调度器 | `[Scheduler-Affinity]` | Trace 亲和性 |
-| 调度器 | `[Scheduler-Fallback]` | 降级选择 |
-| 认证 | `[Auth-Failed]` | 认证失败 |
-| 认证 | `[Auth-Success]` | 认证成功 |
-| 指标 | `[Metrics-Store]` | 指标存储 |
-| 会话 | `[Session-Manager]` | 会话管理 |
-| 配置 | `[Config-Watcher]` | 配置热重载 |
-| 压缩 | `[Gzip]` | Gzip 解压缩 |
-| Messages | `[Messages-Stream]` | Messages 流式处理 |
-| Messages | `[Messages-Stream-Token]` | Messages Token 统计 |
-| Messages | `[Messages-Models]` | Messages Models API 操作 |
-| Responses | `[Responses-Stream]` | Responses 流式处理 |
-| Responses | `[Responses-Stream-Token]` | Responses Token 统计 |
-| Responses | `[Responses-Models]` | Responses Models API 操作 |
-| Models | `[Models]` | 跨接口的模型列表合并操作 |
+渠道日志模型定义于 `internal/metrics/channel_log.go`。
+
+关键字段包括：
+- `status`
+- `statusCode`
+- `requestSource`
+- `interfaceType`
+- `baseUrl`
+- `keyMask`
+
+对于 Images 渠道，还会额外记录：
+- `operation`：`generations` / `edits` / `variations`
 
 ## 扩展指南
 
-**添加新上游服务**:
-1. 在 `internal/providers/` 创建新文件
-2. 实现 `Provider` 接口
-3. 在 `GetProvider()` 注册
+### 添加新上游能力
+1. 在 `internal/providers/` 中新增或扩展 provider
+2. 在需要时补充 `internal/converters/` 的协议转换
+3. 接入对应 handler、调度与前端配置
+4. 将指标、日志与模型过滤纳入统一链路
 
-**调度优先级规则**:
-1. 促销期渠道优先
-2. Priority 字段排序
-3. Trace 亲和性绑定
-4. 熔断状态过滤
+### 调整调度逻辑
+- 修改 `internal/scheduler/`
+- 如涉及熔断、恢复或日志，联动检查 `internal/metrics/`
 
-## 工具使用注意事项
+## 文档导航
 
-**Edit 工具与 Tab 缩进**:
-- Go 文件使用 tab 缩进，`Edit` 工具匹配时可能因空白字符差异失败
-- 失败时可用 `sed -i '' 's/old/new/g' file.go` 替代
+- [../README.md](../README.md) - 项目入口
+- [README.md](README.md) - 后端专项文档
+- [../ARCHITECTURE.md](../ARCHITECTURE.md) - 架构说明
+- [../DEVELOPMENT.md](../DEVELOPMENT.md) - 开发指南
+- [../RELEASE.md](../RELEASE.md) - 发布流程

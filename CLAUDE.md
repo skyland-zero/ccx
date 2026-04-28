@@ -1,161 +1,151 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with this repository.
 
 ## 项目概述
 
-Claude / OpenAI Chat / Codex Responses / Gemini API Proxy - 支持多上游 AI 服务的协议转换代理，提供 Web 管理界面和统一 API 入口。
+CCX 是一个支持 Claude、OpenAI Chat、OpenAI Images、Codex Responses 和 Gemini 的多上游 AI API 代理与协议转换网关，提供统一代理入口和 Web 管理界面。
 
-**技术栈**: Go 1.25 + Gin (后端) + Vue 3 + Vuetify 3 + TypeScript (前端) + Docker
-**版本管理**: 根目录 `VERSION` 文件为唯一版本源，构建时通过 `-ldflags` 注入
+**技术栈**: Go 1.25 + Gin（后端）+ Vue 3 + Vuetify 3 + TypeScript（前端）+ Docker  
+**版本管理**: 根目录 `VERSION` 是唯一版本源，构建时通过 `backend-go/Makefile` 的 `-ldflags` 注入运行时版本信息。
 
 ## 常用命令
 
 ```bash
 # 根目录（推荐）
-make dev              # 同时启动前后端开发模式（热重载）
+make dev              # 同时启动前端开发服务器和后端热重载
 make run              # 构建前端并运行 Go 后端
 make frontend-dev     # 前端开发服务器
 make build            # 构建前端并编译 Go 后端
 make clean            # 清理构建文件
-docker-compose up -d  # Docker 部署
 
 # Go 后端开发 (backend-go/)
 make dev              # 热重载开发模式
-make test             # 运行所有测试
-make test-cover       # 测试 + 覆盖率报告（生成 coverage.html）
+make run              # 复制前端产物后直接运行
 make build            # 构建生产版本
-make lint             # 代码检查（需要 golangci-lint）
+make test             # 运行所有测试
+make test-cover       # 测试 + 覆盖率报告
 make fmt              # 格式化代码
+make lint             # 代码检查
 make deps             # 更新依赖
 
-# 运行特定测试
-go test -v ./internal/converters/...       # 运行单个包测试
-go test -v -run TestName ./internal/...    # 运行单个测试
-
 # 前端开发 (frontend/)
-bun install && bun run dev    # 开发服务器
-bun run build                 # 生产构建
+bun install
+bun run dev
+bun run build
+bun run type-check
 ```
 
 ## 架构概览
 
+```text
+Client -> backend :3000 ->
+  |- /                            -> Web UI
+  |- /api/*                       -> Admin API
+  |- /v1/messages                 -> Claude Messages proxy
+  |- /v1/chat/completions         -> OpenAI Chat proxy
+  |- /v1/responses                -> Codex Responses proxy
+  |- /v1/images/{...}             -> OpenAI Images proxy
+  |- /v1/models                   -> Models API
+  `- /v1beta/models/*             -> Gemini proxy
 ```
-ccx/
-├── backend-go/                 # Go 后端（主程序）
-│   ├── main.go                # 入口、路由配置
-│   └── internal/
-│       ├── handlers/          # HTTP 处理器 (proxy.go, responses.go, config.go)
-│       ├── providers/         # 上游适配器 (openai.go, gemini.go, claude.go)
-│       ├── converters/        # 协议转换器（工厂模式）
-│       ├── scheduler/         # 多渠道调度器（优先级、熔断）
-│       ├── session/           # 会话管理 + Trace 亲和性
-│       ├── metrics/           # 渠道指标（滑动窗口算法）
-│       ├── config/            # 配置管理（fsnotify 热重载）
-│       └── middleware/        # 认证、CORS、日志过滤
-├── frontend/                   # Vue 3 + Vuetify 前端
-│   └── src/
-│       ├── components/        # Vue 组件
-│       └── services/          # API 服务封装
-└── .config/                    # 运行时配置（热重载）
-```
+
+五类正式渠道：
+- `messages`
+- `chat`
+- `responses`
+- `gemini`
+- `images`
 
 ## 核心设计模式
 
-1. **Provider Pattern** - `internal/providers/`: 所有上游实现统一 `Provider` 接口（`ConvertToProviderRequest` / `ConvertToClaudeResponse` / `HandleStreamResponse`）
-2. **Converter Pattern** - `internal/converters/`: Responses API 协议转换，工厂模式 `NewConverter(serviceType)` 创建转换器
-3. **Session Manager** - `internal/session/`: 基于 `previous_response_id` 的多轮对话跟踪
-4. **Scheduler Pattern** - `internal/scheduler/`: 优先级调度（促销期 > Priority > Trace 亲和性），自动熔断
+1. **Provider Pattern** - `backend-go/internal/providers/` 负责上游请求构造与响应处理。
+2. **Converter Pattern** - `backend-go/internal/converters/` 负责 Responses 场景的协议转换。
+3. **Session Manager** - `backend-go/internal/session/` 负责 Responses 多轮会话与 Trace 亲和性。
+4. **Scheduler Pattern** - `backend-go/internal/scheduler/` 负责优先级、促销期、熔断与故障转移。
 
-**请求流**: Client → AuthMiddleware → Handler → Scheduler（选渠道）→ Provider（协议转换）→ 上游 API → SSE 流式/非流式响应
+## API 总览
 
-## API 端点
+### 代理入口
+- `POST /v1/messages`
+- `POST /v1/messages/count_tokens`
+- `POST /v1/chat/completions`
+- `POST /v1/responses`
+- `POST /v1/responses/compact`
+- `GET /v1/models`
+- `GET /v1/models/:model`
+- `POST /v1beta/models/{model}:generateContent`
+- `POST /v1/images/generations`
+- `POST /v1/images/edits`
+- `POST /v1/images/variations`
+- `GET /health`
 
-**代理端点**:
-- `POST /v1/messages` - Claude Messages API（支持 Claude/OpenAI/Gemini/Responses 上游转换）
-- `POST /v1/messages/count_tokens` - Token 计数
-- `POST /v1/responses` - Codex Responses API（支持会话管理）
-- `POST /v1/responses/compact` - 精简版 Responses API
-- `POST /v1/chat/completions` - OpenAI Chat Completions API（支持 Claude/Gemini/Responses 上游转换）
-- `GET /v1/models` - 模型列表查询
-- `POST /v1beta/models/{model}:generateContent` - Gemini 原生协议
-- `GET /health` - 健康检查（无需认证）
+### 管理入口
+- `/api/messages/channels/*`
+- `/api/chat/channels/*`
+- `/api/responses/channels/*`
+- `/api/gemini/channels/*`
+- `/api/images/channels/*`
 
-**管理 API** (`/api/`):
-- `/api/messages/channels` - Messages 渠道 CRUD
-- `/api/responses/channels` - Responses 渠道 CRUD
-- `/api/chat/channels` - Chat 渠道 CRUD
-- `/api/gemini/channels` - Gemini 渠道 CRUD
-- `/api/{type}/channels/:id/models` - 单渠道模型列表查询
-- `/api/{type}/channels/:id/capability-test` - 渠道能力测试
-- `/api/{type}/channels/:id/promotion` - 渠道促销期管理
-- `/api/messages/channels/metrics` - 渠道指标
-- `/api/messages/channels/scheduler/stats` - 调度器统计
+说明：实际路由以 `backend-go/main.go` 为准，文档只保留概览层信息。
 
 ## 关键配置
 
 | 环境变量 | 默认值 | 说明 |
-|---------|--------|------|
+| --- | --- | --- |
 | `PORT` | 3000 | 服务器端口 |
 | `ENV` | production | 运行环境 |
-| `PROXY_ACCESS_KEY` | - | **必须设置** 代理访问密钥 |
-| `ADMIN_ACCESS_KEY` | - | 可选管理密钥；未设置时回退到 `PROXY_ACCESS_KEY` |
+| `PROXY_ACCESS_KEY` | - | 代理访问密钥 |
+| `ADMIN_ACCESS_KEY` | - | 可选管理密钥 |
 | `QUIET_POLLING_LOGS` | true | 静默轮询日志 |
 | `MAX_REQUEST_BODY_SIZE_MB` | 50 | 请求体最大大小 |
 
-完整配置参考 `backend-go/.env.example`
+完整配置参考 `ENVIRONMENT.md` 与 `backend-go/.env.example`。
 
 ## 常见任务
 
-1. **添加新的上游服务**: 在 `internal/providers/` 实现 `Provider` 接口，在 `GetProvider()` 注册
-2. **修改协议转换**: 编辑 `internal/converters/` 中的转换器
-3. **调整调度策略**: 修改 `internal/scheduler/channel_scheduler.go`
-4. **前端界面调整**: 编辑 `frontend/src/components/` 中的 Vue 组件
+1. 添加新的上游能力：修改 `backend-go/internal/providers/`
+2. 调整 Responses 协议转换：修改 `backend-go/internal/converters/`
+3. 调整调度策略：修改 `backend-go/internal/scheduler/`
+4. 修改管理界面：修改 `frontend/src/components/` 与 `frontend/src/services/api.ts`
 
 ## 编码约定
 
 ### 命名规范
-- **Go 文件名**: `snake_case`（如 `channel_scheduler.go`）
-- **Go 函数**: PascalCase 导出 / camelCase 私有
-- **Vue 组件**: PascalCase（如 `ChannelCard.vue`）
-- **TS 文件名**: `kebab-case`（如 `api-service.ts`）
+- Go 文件名：`snake_case`
+- Go 函数：PascalCase 导出 / camelCase 私有
+- Vue 组件：PascalCase
+- TS 文件名：`kebab-case`
 
 ### 日志格式
-所有后端日志使用 `[Component-Action]` 标签格式，**禁止 emoji**：
+所有后端日志使用 `[Component-Action]` 标签格式，禁止 emoji：
+
 ```go
 log.Printf("[Scheduler-Channel] 选择渠道: %s", channelName)
 ```
 
 ### 测试风格
-Go 测试优先使用**表驱动测试** + `httptest`：
-```bash
-go test -v ./internal/converters/...       # 单个包
-go test -v -run TestName ./internal/...    # 单个测试
-```
+Go 测试优先使用表驱动测试 + `httptest`。
 
-### 前端注意事项
-- Vuetify 组件使用**手动按需导入**（在 `src/plugins/vuetify.ts` 注册），未注册会报 `Unknown custom element`
-- 图标使用 `@mdi/js` SVG 按需导入，需在 `src/plugins/vuetify.ts` 的 `iconMap` 中注册
-- **重点：前端新增 `mdi-xxx` 图标时，必须同时完成 `@mdi/js` 导入 + `iconMap` 映射，不能只在模板里写 `mdi-xxx`**
-- 前端构建产物通过 `embed.FS` 嵌入 Go 二进制，无需独立部署
+## 前端注意事项
 
-## Git 命令注意事项
-
-- 执行 `git add`/`git commit` 前确保在项目根目录
-- `git diff` 查看特定文件时使用 `--` 分隔符避免歧义：`git diff -- path/to/file`
-- 错误示例：`git diff frontend/src/file.vue`（可能报 `unknown revision` 错误）
-- 正确示例：`git diff -- frontend/src/file.vue`
+- Vuetify 组件采用手动按需导入
+- 图标使用 `@mdi/js` SVG 按需导入
+- 新增 `mdi-xxx` 图标时，必须同时补 `@mdi/js` 导入和 `iconMap` 映射
+- 前端构建产物通过 `embed.FS` 嵌入 Go 二进制
 
 ## 模块文档
 
-- [backend-go/CLAUDE.md](backend-go/CLAUDE.md) - Go 后端详细文档
-- [frontend/CLAUDE.md](frontend/CLAUDE.md) - Vue 前端详细文档
-- [ARCHITECTURE.md](ARCHITECTURE.md) - 详细架构设计
-- [ENVIRONMENT.md](ENVIRONMENT.md) - 完整环境变量配置
+- [backend-go/CLAUDE.md](backend-go/CLAUDE.md) - 后端模块索引
+- [frontend/CLAUDE.md](frontend/CLAUDE.md) - 前端模块索引
+- [backend-go/README.md](backend-go/README.md) - 后端专项文档
+- [ARCHITECTURE.md](ARCHITECTURE.md) - 架构说明
+- [DEVELOPMENT.md](DEVELOPMENT.md) - 开发指南
+- [ENVIRONMENT.md](ENVIRONMENT.md) - 环境变量说明
+- [RELEASE.md](RELEASE.md) - 发布流程
 
 ## 重要提示
 
-- **环境变量变更**: 修改 `.env` 后需要重启服务
-- **认证**: 代理端默认使用 `PROXY_ACCESS_KEY`；管理界面和 `/api/*` 在配置 `ADMIN_ACCESS_KEY` 后改用管理密钥
-- **配置热重载**: `.config/config.json` 修改后自动生效
-- **开发服务**: 默认假设用户已通过 `make dev` 或 `make frontend-dev` 启动开发服务，禁止自动杀进程重启
+- 修改 `.env` 后需要重启服务
+- `.config/config.json` 修改后会自动热重载
+- 默认假设用户已通过 `make dev` 或 `make frontend-dev` 启动开发服务，不要自动杀进程重启

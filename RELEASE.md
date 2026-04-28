@@ -1,110 +1,104 @@
 # 发布指南
 
-本文档为项目维护者提供了一套标准的版本发布流程，以确保版本迭代的一致性和清晰度。
+本文档说明 CCX 的标准发布流程。
+
+## 版本来源
+
+项目使用根目录 `VERSION` 作为唯一版本源。
+
+- 根版本文件：`VERSION`
+- 构建注入位置：`backend-go/Makefile`
+- 运行时版本变量：`backend-go/version.go`
+
+后端构建时会读取根目录 `VERSION`，并通过 `-ldflags` 注入版本、构建时间和 Git 提交信息。
 
 ## 版本规范
 
-项目遵循**语义化版本 2.0.0 (Semantic Versioning)** 规范。版本格式为 `主版本号.次版本号.修订号` (MAJOR.MINOR.PATCH)，版本号递增规则如下：
+项目遵循语义化版本（Semantic Versioning）：`MAJOR.MINOR.PATCH`。
 
--   **主版本号 (MAJOR)**: 当你做了不兼容的 API 修改。
--   **次版本号 (MINOR)**: 当你做了向下兼容的功能性新增。
--   **修订号 (PATCH)**: 当你做了向下兼容的问题修正。
+- `MAJOR`：不兼容的 API 变更
+- `MINOR`：向下兼容的功能新增
+- `PATCH`：向下兼容的问题修复
 
 ## 发布流程
 
-### 步骤 1: 准备工作
+### 步骤 1：准备工作
 
-1.  确保本地的 `main` 分支是最新且稳定的。
-    ```bash
-    git checkout main
-    git pull origin main
-    ```
+1. 确保本地 `main` 已同步最新代码。
+2. 确认计划内功能和修复已经合并。
+3. 发布前执行基础验证：
 
-2.  确认所有计划内的功能和修复都已合并到 `main` 分支。
+```bash
+make build
+cd "backend-go" && make test
+cd "frontend" && bun run build
+```
 
-3.  验证代码质量和构建状态。
-    ```bash
-    # TypeScript 类型检查
-    bun run type-check
-    
-    # 构建验证
-    bun run build
-    ```
+## 步骤 2：更新 `CHANGELOG.md`
 
-### 步骤 2: 更新版本日志 (`CHANGELOG.md`)
+根目录 `CHANGELOG.md` 是唯一持续维护的发布历史。
 
-1.  打开 `CHANGELOG.md` 文件。
-2.  在文件顶部新增一个版本标题，格式为 `## vX.Y.Z - YYYY-MM-DD`。
-3.  在标题下，根据本次版本的变更内容，添加相应的分类，如：
-    -   `### ✨ 新功能`
-    -   `### 🐛 Bug 修复`
-    -   `### ♻️ 重构`
-    -   `### 📚 文档`
-    -   `### ⚙️ 其他`
+1. 在文件顶部新增版本标题，格式如下：
 
-4.  运行以下命令，查看自上一个版本以来的所有提交记录，以帮助你整理更新日志。
-    ```bash
-    # 将 v1.0.0 替换为上一个版本的标签
-    git log v1.0.0...HEAD --oneline
-    ```
+```md
+## [vX.Y.Z] - YYYY-MM-DD
+```
 
-### 步骤 3: 更新 `package.json` 中的版本号
+2. 沿用当前 changelog 的分类：
 
-1.  打开 `package.json` 文件。
-2.  将 `version` 字段的值更新为新的版本号。
+- `### Added`
+- `### Changed`
+- `### Fixed`
+- `### Removed`
+- `### Other`
 
-    例如，从 `1.0.0` 更新到 `1.0.1`:
-    ```diff
-    - "version": "1.0.0",
-    + "version": "1.0.1",
-    ```
+3. 如需整理变更，可查看上一个 tag 之后的提交：
 
-### 步骤 4: 提交版本更新
+```bash
+git log vX.Y.(Z-1)...HEAD --oneline
+```
 
-1.  将 `CHANGELOG.md` 和 `package.json` 的修改提交到暂存区。
-    ```bash
-    git add CHANGELOG.md package.json
-    ```
+## 步骤 3：更新版本号
 
-2.  使用标准化的提交信息进行提交。
-    ```bash
-    # 将 vX.Y.Z 替换为新版本号
-    git commit -m "chore(release): prepare for vX.Y.Z"
-    ```
+编辑根目录 `VERSION` 文件，将内容更新为新版本号：
 
-3.  将提交推送到远程 `main` 分支。
-    ```bash
-    git push origin main
-    ```
+```text
+vX.Y.Z
+```
 
-### 步骤 5: 创建并推送 Git 标签
+不要更新 `frontend/package.json` 的 `version` 作为发布版本来源；前端包版本不是项目发布的权威版本号。
 
-1.  为此次提交创建一个附注标签（annotated tag）。
-    ```bash
-    # 将 vX.Y.Z 替换为新版本号
-    git tag -a vX.Y.Z -m "Release vX.Y.Z"
-    ```
+## 步骤 4：提交发布准备
 
-2.  将新创建的标签推送到远程仓库。
-    ```bash
-    # 将 vX.Y.Z 替换为新版本号
-    git push origin vX.Y.Z
-    ```
+将发布相关文件加入暂存并提交：
 
-3.  推送 tag 后，GitHub Actions 会自动触发以下构建任务（**三平台并行执行**）：
-    -   `release-linux.yml` - 构建 Linux amd64/arm64 版本
-    -   `release-macos.yml` - 构建 macOS amd64/arm64 版本
-    -   `release-windows.yml` - 构建 Windows amd64/arm64 版本
-    -   `docker-build.yml` - 构建并推送 Docker 镜像
+```bash
+git add CHANGELOG.md VERSION
+git commit -m "chore(release): prepare for vX.Y.Z"
+```
 
-    > **注意**: 各平台使用独立的 concurrency group (`${{ github.workflow }}-${{ github.ref }}`)，确保并行构建互不阻塞。
+## 步骤 5：创建并推送标签
 
-### 步骤 6: 在 GitHub 上创建 Release (可选但推荐)
+```bash
+git tag -a vX.Y.Z -m "Release vX.Y.Z"
+git push origin main
+git push origin vX.Y.Z
+```
 
-1.  访问项目的 GitHub 页面，进入 "Releases" 部分。
-2.  点击 "Draft a new release"。
-3.  从 "Choose a tag" 下拉菜单中选择你刚刚推送的标签（如 `vX.Y.Z`）。
-4.  将 `CHANGELOG.md` 中对应版本的更新内容复制到发布说明中。
-5.  点击 "Publish release"。
+推送 tag 后，GitHub Actions 会自动触发多平台构建与 Docker 构建。
 
-至此，新版本的发布流程已全部完成。
+## 步骤 6：创建 GitHub Release
+
+1. 进入 GitHub 的 Releases 页面。
+2. 选择刚推送的 tag。
+3. 将 `CHANGELOG.md` 中对应版本的内容整理到发布说明。
+4. 发布 Release。
+
+## 发布检查清单
+
+- [ ] `VERSION` 已更新
+- [ ] `CHANGELOG.md` 已补齐
+- [ ] `make build` 通过
+- [ ] `cd "backend-go" && make test` 通过
+- [ ] `cd "frontend" && bun run build` 通过
+- [ ] 已创建并推送 `vX.Y.Z` tag

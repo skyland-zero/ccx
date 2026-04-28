@@ -1,22 +1,22 @@
-# Claude / OpenAI Chat / Codex Responses / Gemini API Proxy - CCX
+# Claude / OpenAI Chat / OpenAI Images / Codex Responses / Gemini API Proxy - CCX
+
+[English](README.md) | 简体中文
 
 [![GitHub release](https://img.shields.io/github/v/release/BenedictKing/ccx)](https://github.com/BenedictKing/ccx/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-CCX 是一个高性能的 AI API 代理与协议转换网关，支持 Claude、OpenAI Chat / Codex Responses、Gemini 等上游服务。它提供统一入口、内置 Web 管理界面、故障转移、多密钥管理、渠道编排和模型路由能力。
+CCX 是一个高性能的 AI API 代理与协议转换网关，支持 Claude、OpenAI Chat、OpenAI Images、Codex Responses 与 Gemini。它提供统一入口、内置 Web 管理界面、渠道编排、故障转移、多密钥管理和模型路由能力。
 
 ## 功能特性
 
 - 后端与前端一体化架构，单端口部署
 - 双密钥认证：`PROXY_ACCESS_KEY` 与可选 `ADMIN_ACCESS_KEY`
-- 内置 Web 管理面板，可视化管理渠道、测试和监控
-- 同时支持 Claude Messages、OpenAI Chat Completions、Codex Responses、Gemini
-- 支持 Claude Messages、OpenAI Chat、Gemini、Responses 四协议互转
-- 智能调度：优先级、促销期、健康检查、自动熔断
-- 每个渠道支持多 API Key 轮换、代理、自定义请求头、模型白名单
-- 支持模型重定向、Fast 模式和输出冗长度控制
-- 支持流式与非流式响应
+- 内置 Web 管理面板，支持渠道管理、测试、日志和监控
+- 同时支持 Claude Messages、OpenAI Chat Completions、OpenAI Images、Codex Responses、Gemini
+- 智能调度：优先级、促销期、健康检查、故障转移与熔断恢复
+- 每个渠道支持多 API Key 轮换、代理、自定义请求头、模型白名单和路由前缀
 - Responses API 支持多轮会话跟踪
+- 前端构建产物嵌入后端，便于单二进制部署
 
 ## 界面预览
 
@@ -28,13 +28,13 @@ CCX 是一个高性能的 AI API 代理与协议转换网关，支持 Claude、O
 
 ### 添加渠道
 
-支持多种上游服务类型（Claude/Codex/Gemini），灵活配置 API 密钥、模型映射和请求参数。
+支持多种上游服务类型，灵活配置 API 密钥、模型映射和请求参数。
 
 <img src="docs/screenshots/add-channel-modal.png" width="500" alt="添加渠道">
 
 ### 流量统计
 
-实时监控各渠道的请求流量、成功率和响应延迟，帮助优化调度策略。
+实时监控各渠道的请求流量、成功率和响应延迟。
 
 ![流量统计](docs/screenshots/traffic-stats.png)
 
@@ -44,21 +44,20 @@ CCX 对外提供一个统一后端入口：
 
 ```text
 客户端 -> backend :3000 ->
-  |- /                    -> Web 管理界面
-  |- /api/*               -> 管理 API
-  |- /v1/messages         -> Claude Messages 代理
-  |- /v1/chat/completions -> OpenAI Chat 代理
-  |- /v1/responses        -> Codex Responses 代理
-  |- /v1/models           -> Models API
-  `- /v1beta/models/*     -> Gemini 代理
+  |- /                            -> Web 管理界面
+  |- /api/*                       -> 管理 API
+  |- /v1/messages                 -> Claude Messages 代理
+  |- /v1/chat/completions         -> OpenAI Chat 代理
+  |- /v1/responses                -> Codex Responses 代理
+  |- /v1/images/{...}             -> OpenAI Images 代理
+  |- /v1/models                   -> Models API
+  `- /v1beta/models/*             -> Gemini 代理
 ```
 
-核心特点：
-
-- 单端口
-- 前端构建产物嵌入后端
-- 不依赖额外 Nginx
-- 管理流量和代理流量可使用不同密钥
+当前 Images 入口包括：
+- `POST /v1/images/generations`
+- `POST /v1/images/edits`
+- `POST /v1/images/variations`
 
 详细设计请参考 [ARCHITECTURE.md](ARCHITECTURE.md)。
 
@@ -102,26 +101,11 @@ make run
 常用命令：
 
 ```bash
-make run
 make dev
+make run
 make build
+make frontend-dev
 ```
-
-## UI 语言配置
-
-通过环境变量设置管理界面的默认语言：
-
-```bash
-APP_UI_LANGUAGE=zh-CN
-```
-
-支持的值：
-
-- `en`
-- `id`
-- `zh-CN`
-
-如果值无效，会自动回退到 `en`。
 
 ## 主要环境变量
 
@@ -144,7 +128,9 @@ REQUEST_TIMEOUT=300000
 - Claude Messages：`POST /v1/messages`
 - OpenAI Chat：`POST /v1/chat/completions`
 - Codex Responses：`POST /v1/responses`
+- OpenAI Images：`POST /v1/images/generations`、`POST /v1/images/edits`、`POST /v1/images/variations`
 - Gemini：`POST /v1beta/models/{model}:generateContent`
+- 模型列表：`GET /v1/models`
 
 ## 开发
 
@@ -157,20 +143,22 @@ make dev
 仅前端：
 
 ```bash
-cd frontend
-npm install
-npm run dev
+cd "frontend"
+bun install
+bun run dev
 ```
 
 仅后端：
 
 ```bash
-cd backend-go
+cd "backend-go"
 make dev
 ```
 
 ## 相关文档
 
+- [README.md](README.md)
+- [backend-go/README.md](backend-go/README.md)
 - [ARCHITECTURE.md](ARCHITECTURE.md)
 - [DEVELOPMENT.md](DEVELOPMENT.md)
 - [ENVIRONMENT.md](ENVIRONMENT.md)
