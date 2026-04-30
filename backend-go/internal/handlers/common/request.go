@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/http/httptrace"
 	"regexp"
 	"sort"
 	"strings"
@@ -19,6 +20,12 @@ import (
 	"github.com/BenedictKing/ccx/internal/utils"
 	"github.com/gin-gonic/gin"
 )
+
+// RequestLifecycleTrace 用于记录上游 HTTP 请求生命周期关键节点。
+type RequestLifecycleTrace struct {
+	OnConnected         func()
+	OnFirstResponseByte func()
+}
 
 // ReadRequestBody 读取并验证请求体大小
 // 返回: (bodyBytes, error)
@@ -83,6 +90,11 @@ func PassthroughJSONResponse(c *gin.Context, resp *http.Response, target interfa
 // isStream: 是否为流式请求（流式请求使用无超时客户端）
 // apiType: 接口类型（Messages/Responses/Gemini），用于日志标签前缀
 func SendRequest(req *http.Request, upstream *config.UpstreamConfig, envCfg *config.EnvConfig, isStream bool, apiType string) (*http.Response, error) {
+	return SendRequestWithLifecycleTrace(req, upstream, envCfg, isStream, apiType, nil)
+}
+
+// SendRequestWithLifecycleTrace 发送 HTTP 请求到上游，并可记录连接取得与首个响应字节时间。
+func SendRequestWithLifecycleTrace(req *http.Request, upstream *config.UpstreamConfig, envCfg *config.EnvConfig, isStream bool, apiType string, lifecycleTrace *RequestLifecycleTrace) (*http.Response, error) {
 	clientManager := httpclient.GetManager()
 
 	var client *http.Client
@@ -110,7 +122,28 @@ func SendRequest(req *http.Request, upstream *config.UpstreamConfig, envCfg *con
 		}
 	}
 
+	req = withLifecycleTrace(req, lifecycleTrace)
 	return client.Do(req)
+}
+
+func withLifecycleTrace(req *http.Request, lifecycleTrace *RequestLifecycleTrace) *http.Request {
+	if lifecycleTrace == nil || (lifecycleTrace.OnConnected == nil && lifecycleTrace.OnFirstResponseByte == nil) {
+		return req
+	}
+
+	trace := &httptrace.ClientTrace{
+		GotConn: func(_ httptrace.GotConnInfo) {
+			if lifecycleTrace.OnConnected != nil {
+				lifecycleTrace.OnConnected()
+			}
+		},
+		GotFirstResponseByte: func() {
+			if lifecycleTrace.OnFirstResponseByte != nil {
+				lifecycleTrace.OnFirstResponseByte()
+			}
+		},
+	}
+	return req.WithContext(httptrace.WithClientTrace(req.Context(), trace))
 }
 
 // logRequestDetails 记录请求详情（仅开发模式）

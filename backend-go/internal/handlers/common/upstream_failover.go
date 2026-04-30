@@ -181,7 +181,15 @@ func TryUpstreamWithAllKeys(
 			// TCP 建连开始即计数：将活跃度统计提前到发起上游请求之前
 			requestID := metricsManager.RecordRequestConnected(currentBaseURL, apiKey, metricsServiceType, redirectedModel)
 
-			resp, err := SendRequest(req, upstream, envCfg, isStream, apiType)
+			lifecycleTrace := &RequestLifecycleTrace{
+				OnConnected: func() {
+					UpdateLogStatus(channelLogStore, channelIndex, logRequestID, metrics.StatusConnecting)
+				},
+				OnFirstResponseByte: func() {
+					UpdateLogStatus(channelLogStore, channelIndex, logRequestID, metrics.StatusFirstByte)
+				},
+			}
+			resp, err := SendRequestWithLifecycleTrace(req, upstream, envCfg, isStream, apiType, lifecycleTrace)
 			if err != nil {
 				lastError = err
 				// 区分客户端取消和真实渠道故障（统一口径）
@@ -209,10 +217,6 @@ func TryUpstreamWithAllKeys(
 				continue
 			}
 
-			// 收到响应，更新日志状态为 connecting（连接已建立）
-			UpdateLogStatus(channelLogStore, channelIndex, logRequestID, metrics.StatusConnecting)
-			// 更新日志状态为 first_byte（首字节到达）
-			UpdateLogStatus(channelLogStore, channelIndex, logRequestID, metrics.StatusFirstByte)
 			if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 				respBodyBytes, _ := io.ReadAll(resp.Body)
 				resp.Body.Close()

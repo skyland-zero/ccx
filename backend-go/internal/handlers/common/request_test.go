@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httptrace"
+	"sync/atomic"
 	"testing"
 
 	"github.com/BenedictKing/ccx/internal/utils"
@@ -304,6 +306,42 @@ func TestPassthroughJSONResponse(t *testing.T) {
 			t.Fatalf("unexpected body: %q", w.Body.String())
 		}
 	})
+}
+
+func TestWithLifecycleTrace_AttachesClientTraceCallbacks(t *testing.T) {
+	req, err := http.NewRequest(http.MethodGet, "https://example.com", nil)
+	if err != nil {
+		t.Fatalf("NewRequest() err = %v", err)
+	}
+
+	var connected atomic.Int32
+	var firstByte atomic.Int32
+	tracedReq := withLifecycleTrace(
+		req,
+		&RequestLifecycleTrace{
+			OnConnected: func() {
+				connected.Add(1)
+			},
+			OnFirstResponseByte: func() {
+				firstByte.Add(1)
+			},
+		},
+	)
+
+	trace := httptrace.ContextClientTrace(tracedReq.Context())
+	if trace == nil {
+		t.Fatal("client trace was not attached")
+	}
+
+	trace.GotConn(httptrace.GotConnInfo{})
+	trace.GotFirstResponseByte()
+
+	if connected.Load() != 1 {
+		t.Fatalf("OnConnected calls = %d, want 1", connected.Load())
+	}
+	if firstByte.Load() != 1 {
+		t.Fatalf("OnFirstResponseByte calls = %d, want 1", firstByte.Load())
+	}
 }
 
 func TestSanitizeMalformedThinkingBlocks(t *testing.T) {
