@@ -1,3 +1,13 @@
+## [v2.6.70] - 2026-04-30
+
+### 新增
+
+- **引入 httptrace 生命周期追踪优化上游请求状态上报** - 新增 `RequestLifecycleTrace` 回调结构体，支持连接建立和首字节到达事件；封装 `SendRequestWithLifecycleTrace` 注入 `httptrace.ClientTrace`，upstream failover 使用生命周期回调替代事后状态更新，使日志状态更精确
+
+### 文档
+
+- **规范发布公告空分组输出** - 改进发布流程中空分组的输出格式
+
 ## [v2.6.69] - 2026-04-28
 
 ### Changed
