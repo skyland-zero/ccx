@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+### Fixed
+
+- **修复 Failover Fuzzy 模式下 5xx 误判为不可重试错误** - `ShouldRetryWithNextKey` 的参数校验类不可重试错误检查（`invalid_request` 等）现在仅对 4xx 客户端错误生效，5xx 服务端错误允许 failover 到下一个渠道；内容审核类错误仍在任何状态码下阻止 failover，避免重复发送相同违规请求
+
 ### Changed
 
 - **统一各协议上游响应日志输出** - 抽取公共响应头/响应体日志函数，统一 `messages`、`responses`、`gemini`、`chat`、`images` 非流式响应日志，并补齐流式响应头及 `chat`、`gemini`、`images` 上游流式原始内容日志

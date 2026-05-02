@@ -970,25 +970,63 @@ func TestShouldRetryWithNextKey_FuzzyMode_InvalidRequestShouldNotFailover(t *tes
 	}
 }
 
-// TestIsNonRetryableErrorCode 测试不可重试错误码判断
+func TestShouldRetryWithNextKey_InvalidRequest5xxShouldFailover(t *testing.T) {
+	tests := []struct {
+		name      string
+		body      []byte
+		fuzzyMode bool
+	}{
+		{
+			name:      "invalid_request code - normal mode",
+			body:      []byte(`{"error":{"code":"invalid_request","message":"invalid request from upstream"}}`),
+			fuzzyMode: false,
+		},
+		{
+			name:      "invalid_request code - fuzzy mode",
+			body:      []byte(`{"error":{"code":"invalid_request","message":"invalid request from upstream"}}`),
+			fuzzyMode: true,
+		},
+		{
+			name:      "schema validation message - normal mode",
+			body:      []byte(`{"error":{"type":"upstream_error","upstream_error":{"message":"Schema validation failed: unsupported content type input_text"}}}`),
+			fuzzyMode: false,
+		},
+		{
+			name:      "schema validation message - fuzzy mode",
+			body:      []byte(`{"error":{"type":"upstream_error","upstream_error":{"message":"Schema validation failed: unsupported content type input_text"}}}`),
+			fuzzyMode: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotFailover, gotQuota := ShouldRetryWithNextKey(500, tt.body, tt.fuzzyMode, "Messages")
+			if !gotFailover {
+				t.Errorf("ShouldRetryWithNextKey(500, invalid_request_body, %v) failover = %v, want true", tt.fuzzyMode, gotFailover)
+			}
+			if gotQuota {
+				t.Errorf("ShouldRetryWithNextKey(500, invalid_request_body, %v) quota = %v, want false", tt.fuzzyMode, gotQuota)
+			}
+		})
+	}
+}
+
+// TestIsNonRetryableErrorCode 测试参数校验类不可重试错误码判断
 func TestIsNonRetryableErrorCode(t *testing.T) {
 	tests := []struct {
 		code string
 		want bool
 	}{
-		// 内容审核相关 - 不应重试
-		{"sensitive_words_detected", true},
-		{"content_policy_violation", true},
-		{"content_filter", true},
-		{"content_blocked", true},
-		{"moderation_blocked", true},
 		// 请求内容无效 - 不应重试
 		{"invalid_request", true},
 		{"invalid_request_error", true},
 		{"bad_request", true},
-		// 大小写不敏感
-		{"SENSITIVE_WORDS_DETECTED", true},
-		{"Content_Policy_Violation", true},
+		// 内容审核相关 - 已拆分到 isContentModerationErrorCode，此处应返回 false
+		{"sensitive_words_detected", false},
+		{"content_policy_violation", false},
+		{"content_filter", false},
+		{"content_blocked", false},
+		{"moderation_blocked", false},
 		// 其他错误码 - 应该重试
 		{"server_error", false},
 		{"rate_limit", false},
@@ -1006,6 +1044,46 @@ func TestIsNonRetryableErrorCode(t *testing.T) {
 			got := isNonRetryableErrorCode(tt.code)
 			if got != tt.want {
 				t.Errorf("isNonRetryableErrorCode(%q) = %v, want %v", tt.code, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestIsContentModerationErrorCode 测试内容审核类错误码判断
+func TestIsContentModerationErrorCode(t *testing.T) {
+	tests := []struct {
+		code string
+		want bool
+	}{
+		// 内容审核相关 - 不应重试
+		{"sensitive_words_detected", true},
+		{"content_policy_violation", true},
+		{"content_filter", true},
+		{"content_blocked", true},
+		{"moderation_blocked", true},
+		// 大小写不敏感
+		{"SENSITIVE_WORDS_DETECTED", true},
+		{"Content_Policy_Violation", true},
+		// 参数校验类 - 不属于内容审核
+		{"invalid_request", false},
+		{"invalid_request_error", false},
+		{"bad_request", false},
+		// 其他错误码
+		{"server_error", false},
+		{"rate_limit", false},
+		{"authentication_error", false},
+		{"", false},
+	}
+
+	for _, tt := range tests {
+		name := tt.code
+		if name == "" {
+			name = "empty"
+		}
+		t.Run(name, func(t *testing.T) {
+			got := isContentModerationErrorCode(tt.code)
+			if got != tt.want {
+				t.Errorf("isContentModerationErrorCode(%q) = %v, want %v", tt.code, got, tt.want)
 			}
 		})
 	}

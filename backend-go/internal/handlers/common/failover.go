@@ -40,17 +40,25 @@ func ShouldRetryWithNextKey(statusCode int, bodyBytes []byte, fuzzyMode bool, ap
 
 // shouldRetryWithNextKeyFuzzy Fuzzy 模式：大多数非 2xx 错误都尝试 failover
 // 同时检查消息体中的配额相关关键词，确保 403 + "预扣费额度" 等情况能正确识别
-// 但对于内容审核、invalid_request、schema 校验失败等不可重试错误，即使在 Fuzzy 模式下也不应重试
+// 但对于内容审核错误，以及 4xx 下的 invalid_request、schema 校验失败等不可重试错误，即使在 Fuzzy 模式下也不应重试
 func shouldRetryWithNextKeyFuzzy(statusCode int, bodyBytes []byte, apiType string) (bool, bool) {
 	log.Printf("[%s-Failover-Fuzzy] 进入 Fuzzy 模式处理: statusCode=%d, bodyLen=%d", apiType, statusCode, len(bodyBytes))
 	if statusCode >= 200 && statusCode < 300 {
 		return false, false
 	}
 
-	// 检查是否为不可重试错误（内容审核等）
-	if len(bodyBytes) > 0 {
+	// 内容审核类错误（sensitive_words_detected 等）任何状态码都不应 failover
+	// 换渠道/换 Key 不会改变请求内容本身
+	if len(bodyBytes) > 0 && isContentModerationError(bodyBytes) {
+		log.Printf("[%s-Failover-Fuzzy] 检测到内容审核错误 (statusCode=%d)，不进行 failover", apiType, statusCode)
+		return false, false
+	}
+
+	// 检查是否为参数校验类不可重试错误（invalid_request 等）
+	// 仅对 4xx 客户端错误生效，5xx 服务端错误应始终允许 failover
+	if statusCode >= 400 && statusCode < 500 && len(bodyBytes) > 0 {
 		if isNonRetryableError(bodyBytes) {
-			log.Printf("[%s-Failover-Fuzzy] 检测到不可重试错误，不进行 failover", apiType)
+			log.Printf("[%s-Failover-Fuzzy] 检测到不可重试错误 (statusCode=%d)，不进行 failover", apiType, statusCode)
 			return false, false
 		}
 	}
@@ -77,9 +85,17 @@ func shouldRetryWithNextKeyFuzzy(statusCode int, bodyBytes []byte, apiType strin
 
 // shouldRetryWithNextKeyNormal 原有的精确错误分类逻辑
 func shouldRetryWithNextKeyNormal(statusCode int, bodyBytes []byte, apiType string) (bool, bool) {
-	// 先检查是否为不可重试错误（内容审核等），这类错误无论状态码如何都不应重试
-	if len(bodyBytes) > 0 && isNonRetryableError(bodyBytes) {
-		log.Printf("[%s-Failover-Debug] 检测到不可重试错误，不进行 failover", apiType)
+	// 内容审核类错误（sensitive_words_detected 等）任何状态码都不应 failover
+	// 换渠道/换 Key 不会改变请求内容本身
+	if len(bodyBytes) > 0 && isContentModerationError(bodyBytes) {
+		log.Printf("[%s-Failover-Debug] 检测到内容审核错误 (statusCode=%d)，不进行 failover", apiType, statusCode)
+		return false, false
+	}
+
+	// 检查是否为参数校验类不可重试错误（invalid_request 等）
+	// 仅对 4xx 客户端错误生效，5xx 服务端错误应始终允许 failover
+	if statusCode >= 400 && statusCode < 500 && len(bodyBytes) > 0 && isNonRetryableError(bodyBytes) {
+		log.Printf("[%s-Failover-Debug] 检测到不可重试错误 (statusCode=%d)，不进行 failover", apiType, statusCode)
 		return false, false
 	}
 
@@ -187,7 +203,7 @@ func classifyByErrorMessage(bodyBytes []byte, apiType string) (bool, bool) {
 		return false, false
 	}
 
-	// 检查 error.code 字段，某些错误码不应重试（内容审核、无效请求等）
+	// 检查 error.code 字段，参数校验类错误码不应重试
 	if errCode, ok := errObj["code"].(string); ok {
 		if isNonRetryableErrorCode(errCode) {
 			log.Printf("[%s-Failover-Debug] 检测到不可重试错误码: %s", apiType, errCode)
@@ -496,26 +512,55 @@ func getMapKeys(m map[string]interface{}) []string {
 	return keys
 }
 
-// isNonRetryableErrorCode 判断错误码是否不应重试
-// 这些错误与请求内容相关，换 Key 重试不会改变结果
-func isNonRetryableErrorCode(code string) bool {
-	nonRetryableCodes := []string{
-		// 内容审核相关
+// isContentModerationErrorCode 判断错误码是否为内容审核类错误
+// 内容审核错误与请求内容本身相关，换渠道/换 Key 重试不会改变结果，任何状态码都不应 failover
+func isContentModerationErrorCode(code string) bool {
+	codes := []string{
 		"sensitive_words_detected",
 		"content_policy_violation",
 		"content_filter",
 		"content_blocked",
 		"moderation_blocked",
-		// 请求内容无效
+	}
+	codeLower := strings.ToLower(code)
+	for _, c := range codes {
+		if codeLower == c {
+			return true
+		}
+	}
+	return false
+}
+
+// isNonRetryableErrorCode 判断错误码是否为参数校验类不可重试错误
+// 这类错误在 4xx 时不应 failover，但 5xx 时可能是上游误报，应允许 failover
+func isNonRetryableErrorCode(code string) bool {
+	codes := []string{
 		"invalid_request",
 		"invalid_request_error",
 		"bad_request",
 	}
 	codeLower := strings.ToLower(code)
-	for _, c := range nonRetryableCodes {
+	for _, c := range codes {
 		if codeLower == c {
 			return true
 		}
+	}
+	return false
+}
+
+// isContentModerationError 检查响应体是否包含内容审核类错误
+// 任何状态码下都应阻止 failover
+func isContentModerationError(bodyBytes []byte) bool {
+	var errResp map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &errResp); err != nil {
+		return false
+	}
+	errObj, ok := errResp["error"].(map[string]interface{})
+	if !ok {
+		return false
+	}
+	if errCode, ok := errObj["code"].(string); ok {
+		return isContentModerationErrorCode(errCode)
 	}
 	return false
 }
