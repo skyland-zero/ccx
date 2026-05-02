@@ -11,6 +11,7 @@ import (
 
 	"github.com/BenedictKing/ccx/internal/config"
 	"github.com/BenedictKing/ccx/internal/converters"
+	"github.com/BenedictKing/ccx/internal/handlers/common"
 	"github.com/BenedictKing/ccx/internal/types"
 	"github.com/gin-gonic/gin"
 )
@@ -36,24 +37,31 @@ func handleStreamSuccess(
 	}
 
 	var totalUsage *types.Usage
+	logBuffer := common.NewLimitedLogBuffer(common.MaxUpstreamResponseLogBytes)
+	streamLoggingEnabled := envCfg.EnableResponseLogs && envCfg.IsDevelopment()
+
+	common.LogUpstreamResponseHeaders(resp, envCfg, "Gemini")
 
 	switch upstreamType {
 	case "gemini":
-		totalUsage = streamGeminiToGemini(c, resp, flusher, envCfg)
+		totalUsage = streamGeminiToGemini(c, resp, flusher, envCfg, logBuffer, streamLoggingEnabled)
 	case "claude":
-		totalUsage = streamClaudeToGemini(c, resp, flusher, envCfg, model)
+		totalUsage = streamClaudeToGemini(c, resp, flusher, envCfg, model, logBuffer, streamLoggingEnabled)
 	case "openai":
-		totalUsage = streamOpenAIToGemini(c, resp, flusher, envCfg, model)
+		totalUsage = streamOpenAIToGemini(c, resp, flusher, envCfg, model, logBuffer, streamLoggingEnabled)
 	case "responses":
-		totalUsage = streamResponsesToGemini(c, resp, flusher, envCfg, model)
+		totalUsage = streamResponsesToGemini(c, resp, flusher, envCfg, model, logBuffer, streamLoggingEnabled)
 	default:
 		// 默认透传
-		totalUsage = streamGeminiToGemini(c, resp, flusher, envCfg)
+		totalUsage = streamGeminiToGemini(c, resp, flusher, envCfg, logBuffer, streamLoggingEnabled)
 	}
 
 	if envCfg.EnableResponseLogs {
 		responseTime := time.Since(startTime).Milliseconds()
 		log.Printf("[Gemini-Stream-Timing] 流式响应完成: %dms", responseTime)
+		if logBuffer.Len() > 0 {
+			log.Printf("[Gemini-Stream] 上游流式响应原始内容:\n%s", logBuffer.String())
+		}
 	}
 
 	return totalUsage
@@ -65,6 +73,8 @@ func streamGeminiToGemini(
 	resp *http.Response,
 	flusher http.Flusher,
 	envCfg *config.EnvConfig,
+	logBuffer *common.LimitedLogBuffer,
+	loggingEnabled bool,
 ) *types.Usage {
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 1024*1024), 1024*1024) // 1MB buffer
@@ -73,6 +83,9 @@ func streamGeminiToGemini(
 
 	for scanner.Scan() {
 		line := scanner.Text()
+		if loggingEnabled {
+			logBuffer.WriteString(line + "\n")
+		}
 
 		// 直接转发 SSE 数据
 		if strings.HasPrefix(line, "data: ") {
@@ -111,6 +124,8 @@ func streamClaudeToGemini(
 	flusher http.Flusher,
 	envCfg *config.EnvConfig,
 	model string,
+	logBuffer *common.LimitedLogBuffer,
+	loggingEnabled bool,
 ) *types.Usage {
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
@@ -120,6 +135,9 @@ func streamClaudeToGemini(
 
 	for scanner.Scan() {
 		line := scanner.Text()
+		if loggingEnabled {
+			logBuffer.WriteString(line + "\n")
+		}
 
 		if !strings.HasPrefix(line, "data: ") {
 			continue
@@ -218,6 +236,8 @@ func streamOpenAIToGemini(
 	flusher http.Flusher,
 	envCfg *config.EnvConfig,
 	model string,
+	logBuffer *common.LimitedLogBuffer,
+	loggingEnabled bool,
 ) *types.Usage {
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
@@ -227,6 +247,9 @@ func streamOpenAIToGemini(
 
 	for scanner.Scan() {
 		line := scanner.Text()
+		if loggingEnabled {
+			logBuffer.WriteString(line + "\n")
+		}
 
 		if !strings.HasPrefix(line, "data: ") {
 			continue
@@ -375,6 +398,8 @@ func streamResponsesToGemini(
 	flusher http.Flusher,
 	envCfg *config.EnvConfig,
 	model string,
+	logBuffer *common.LimitedLogBuffer,
+	loggingEnabled bool,
 ) *types.Usage {
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
@@ -384,6 +409,9 @@ func streamResponsesToGemini(
 
 	for scanner.Scan() {
 		line := scanner.Text()
+		if loggingEnabled {
+			logBuffer.WriteString(line + "\n")
+		}
 		if line == "" {
 			continue
 		}

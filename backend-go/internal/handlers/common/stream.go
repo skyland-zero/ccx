@@ -344,7 +344,7 @@ func drainChannels(eventChan <-chan string, errChan <-chan error) {
 
 // StreamContext 流处理上下文
 type StreamContext struct {
-	LogBuffer            bytes.Buffer
+	LogBuffer            *LimitedLogBuffer
 	OutputTextBuffer     bytes.Buffer
 	Synthesizer          *utils.StreamSynthesizer
 	LoggingEnabled       bool
@@ -384,6 +384,7 @@ func NewStreamContext(envCfg *config.EnvConfig) *StreamContext {
 	ctx := &StreamContext{
 		LoggingEnabled:    envCfg.IsDevelopment() && envCfg.EnableResponseLogs,
 		ContentBlockTypes: make(map[int]string),
+		LogBuffer:         NewLimitedLogBuffer(MaxUpstreamResponseLogBytes),
 	}
 	if ctx.LoggingEnabled {
 		ctx.Synthesizer = utils.NewStreamSynthesizer("claude")
@@ -435,7 +436,8 @@ func seedSynthesizerFromRequest(ctx *StreamContext, requestBody []byte) {
 }
 
 // SetupStreamHeaders 设置流式响应头
-func SetupStreamHeaders(c *gin.Context, resp *http.Response) {
+func SetupStreamHeaders(c *gin.Context, resp *http.Response, envCfg *config.EnvConfig, apiType string) {
+	LogUpstreamResponseHeaders(resp, envCfg, apiType)
 	utils.ForwardResponseHeaders(resp.Header, c.Writer)
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
@@ -936,7 +938,7 @@ func HandleStreamResponse(
 	}
 
 	// 非空响应：正常流程
-	SetupStreamHeaders(c, resp)
+	SetupStreamHeaders(c, resp, envCfg, "Messages")
 
 	w := c.Writer
 	flusher, ok := w.(http.Flusher)

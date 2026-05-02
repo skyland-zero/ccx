@@ -270,29 +270,7 @@ func handleSuccess(
 	if envCfg.EnableResponseLogs {
 		responseTime := time.Since(startTime).Milliseconds()
 		log.Printf("[Responses-Timing] Responses 响应完成: %dms, 状态: %d", responseTime, resp.StatusCode)
-		if envCfg.IsDevelopment() {
-			respHeaders := make(map[string]string)
-			for key, values := range resp.Header {
-				if len(values) > 0 {
-					respHeaders[key] = values[0]
-				}
-			}
-			var respHeadersJSON []byte
-			if envCfg.RawLogOutput {
-				respHeadersJSON, _ = json.Marshal(respHeaders)
-			} else {
-				respHeadersJSON, _ = json.MarshalIndent(respHeaders, "", "  ")
-			}
-			log.Printf("[Responses-Response] 响应头:\n%s", string(respHeadersJSON))
-
-			var formattedBody string
-			if envCfg.RawLogOutput {
-				formattedBody = utils.FormatJSONBytesRaw(bodyBytes)
-			} else {
-				formattedBody = utils.FormatJSONBytesForLog(bodyBytes, 500)
-			}
-			log.Printf("[Responses-Response] 响应体:\n%s", formattedBody)
-		}
+		common.LogUpstreamResponse(resp, bodyBytes, envCfg, "Responses")
 	}
 
 	providerResp := &types.ProviderResponse{
@@ -537,10 +515,11 @@ func handleStreamSuccess(
 	if envCfg.EnableResponseLogs {
 		responseTime := time.Since(startTime).Milliseconds()
 		log.Printf("[Responses-Stream] Responses 流式响应开始: %dms, 状态: %d", responseTime, resp.StatusCode)
+		common.LogUpstreamResponseHeaders(resp, envCfg, "Responses")
 	}
 
 	var synthesizer *utils.StreamSynthesizer
-	var logBuffer bytes.Buffer
+	logBuffer := common.NewLimitedLogBuffer(common.MaxUpstreamResponseLogBytes)
 	streamLoggingEnabled := envCfg.IsDevelopment() && envCfg.EnableResponseLogs
 
 	if streamLoggingEnabled {

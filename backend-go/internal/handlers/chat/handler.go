@@ -565,6 +565,7 @@ func handleSuccess(
 	if envCfg.EnableResponseLogs {
 		responseTime := time.Since(startTime).Milliseconds()
 		log.Printf("[Chat-Timing] 响应完成: %dms, 状态: %d", responseTime, resp.StatusCode)
+		common.LogUpstreamResponse(resp, bodyBytes, envCfg, "Chat")
 	}
 
 	switch upstreamType {
@@ -732,18 +733,25 @@ func handleStreamSuccess(
 	}
 
 	var totalUsage *types.Usage
+	logBuffer := common.NewLimitedLogBuffer(common.MaxUpstreamResponseLogBytes)
+	streamLoggingEnabled := envCfg.EnableResponseLogs && envCfg.IsDevelopment()
+
+	common.LogUpstreamResponseHeaders(resp, envCfg, "Chat")
 
 	switch upstreamType {
 	case "claude":
-		totalUsage = streamClaudeToChat(c, resp, flusher, model)
+		totalUsage = streamClaudeToChat(c, resp, flusher, model, logBuffer, streamLoggingEnabled)
 	default:
 		// OpenAI / Gemini / Responses 等：直接透传 SSE 流
-		totalUsage = streamPassthrough(c, resp, flusher)
+		totalUsage = streamPassthrough(c, resp, flusher, logBuffer, streamLoggingEnabled)
 	}
 
 	if envCfg.EnableResponseLogs {
 		responseTime := time.Since(startTime).Milliseconds()
 		log.Printf("[Chat-Stream-Timing] 流式响应完成: %dms", responseTime)
+		if logBuffer.Len() > 0 {
+			log.Printf("[Chat-Stream] 上游流式响应原始内容:\n%s", logBuffer.String())
+		}
 	}
 
 	return totalUsage
@@ -754,6 +762,8 @@ func streamPassthrough(
 	c *gin.Context,
 	resp *http.Response,
 	flusher http.Flusher,
+	logBuffer *common.LimitedLogBuffer,
+	loggingEnabled bool,
 ) *types.Usage {
 	var totalUsage *types.Usage
 	buf := make([]byte, 32*1024)
@@ -762,6 +772,9 @@ func streamPassthrough(
 	for {
 		n, err := resp.Body.Read(buf)
 		if n > 0 {
+			if loggingEnabled {
+				logBuffer.Write(buf[:n])
+			}
 			// 使用行缓冲机制避免跨 chunk 截断
 			data := remainder + string(buf[:n])
 			lines := strings.Split(data, "\n")
@@ -809,6 +822,8 @@ func streamClaudeToChat(
 	resp *http.Response,
 	flusher http.Flusher,
 	model string,
+	logBuffer *common.LimitedLogBuffer,
+	loggingEnabled bool,
 ) *types.Usage {
 	var totalUsage *types.Usage
 	var doneSent bool
@@ -818,6 +833,9 @@ func streamClaudeToChat(
 	for {
 		n, readErr := resp.Body.Read(buf)
 		if n > 0 {
+			if loggingEnabled {
+				logBuffer.Write(buf[:n])
+			}
 			data := remainder + string(buf[:n])
 			lines := strings.Split(data, "\n")
 			// 最后一行可能不完整，保留到下次

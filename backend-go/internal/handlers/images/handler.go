@@ -254,7 +254,7 @@ func handleMultiChannel(
 					channelScheduler.MarkURLSuccess(scheduler.ChannelKindImages, channelIndex, url)
 				},
 				func(c *gin.Context, resp *http.Response, upstreamCopy *config.UpstreamConfig, apiKey string, actualRequestBody []byte) (*types.Usage, error) {
-					return handleSuccess(c, resp, startTime, isStream)
+					return handleSuccess(c, resp, envCfg, startTime, isStream)
 				},
 				model,
 				operation,
@@ -328,7 +328,7 @@ func handleSingleChannel(
 		nil,
 		nil,
 		func(c *gin.Context, resp *http.Response, upstreamCopy *config.UpstreamConfig, apiKey string, actualRequestBody []byte) (*types.Usage, error) {
-			return handleSuccess(c, resp, startTime, isStream)
+			return handleSuccess(c, resp, envCfg, startTime, isStream)
 		},
 		model,
 		operation,
@@ -464,16 +464,21 @@ func prepareImagesUpstreamHeaders(c *gin.Context, targetHost string, contentType
 	return headers
 }
 
-func handleSuccess(c *gin.Context, resp *http.Response, startTime time.Time, isStream bool) (*types.Usage, error) {
+func handleSuccess(c *gin.Context, resp *http.Response, envCfg *config.EnvConfig, startTime time.Time, isStream bool) (*types.Usage, error) {
 	defer resp.Body.Close()
 	if isStream {
-		return nil, passthroughStreamingResponse(c, resp)
+		return nil, passthroughStreamingResponseWithLog(c, resp, envCfg, startTime)
 	}
 
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		imagesErrorResponse(c, http.StatusInternalServerError, "Failed to read response", "server_error", "server_error")
 		return nil, err
+	}
+	if envCfg.EnableResponseLogs {
+		responseTime := time.Since(startTime).Milliseconds()
+		log.Printf("[Images-Timing] 响应完成: %dms, 状态: %d", responseTime, resp.StatusCode)
+		common.LogUpstreamResponse(resp, bodyBytes, envCfg, "Images")
 	}
 	resp.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 	var respMap map[string]interface{}
@@ -485,24 +490,48 @@ func handleSuccess(c *gin.Context, resp *http.Response, startTime time.Time, isS
 		outputTokens, _ := u["output_tokens"].(float64)
 		return &types.Usage{InputTokens: int(inputTokens), OutputTokens: int(outputTokens)}, nil
 	}
-	_ = startTime
 	return nil, nil
 }
 
 func passthroughStreamingResponse(c *gin.Context, resp *http.Response) error {
+	return passthroughStreamingResponseWithLog(c, resp, config.NewEnvConfig(), time.Now())
+}
+
+func passthroughStreamingResponseWithLog(c *gin.Context, resp *http.Response, envCfg *config.EnvConfig, startTime time.Time) error {
+	if envCfg.EnableResponseLogs {
+		responseTime := time.Since(startTime).Milliseconds()
+		log.Printf("[Images-Stream] 流式响应开始: %dms, 状态: %d", responseTime, resp.StatusCode)
+		common.LogUpstreamResponseHeaders(resp, envCfg, "Images")
+	}
+
 	utils.ForwardResponseHeaders(resp.Header, c.Writer)
 	c.Status(resp.StatusCode)
 
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
-		_, err := io.Copy(c.Writer, resp.Body)
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if len(bodyBytes) > 0 {
+			common.LogUpstreamResponseBody(bodyBytes, envCfg, "Images")
+			if _, writeErr := c.Writer.Write(bodyBytes); writeErr != nil {
+				err = writeErr
+			}
+		}
+		if envCfg.EnableResponseLogs {
+			responseTime := time.Since(startTime).Milliseconds()
+			log.Printf("[Images-Stream] 流式响应完成: %dms", responseTime)
+		}
 		return err
 	}
 
 	buffer := make([]byte, 4*1024)
+	logBuffer := common.NewLimitedLogBuffer(common.MaxUpstreamResponseLogBytes)
+	streamLoggingEnabled := envCfg.EnableResponseLogs && envCfg.IsDevelopment()
 	for {
 		n, err := resp.Body.Read(buffer)
 		if n > 0 {
+			if streamLoggingEnabled {
+				logBuffer.Write(buffer[:n])
+			}
 			if _, writeErr := c.Writer.Write(buffer[:n]); writeErr != nil {
 				if common.IsClientDisconnectError(writeErr) || writeErr == io.ErrClosedPipe || strings.Contains(strings.ToLower(writeErr.Error()), "closed pipe") {
 					return context.Canceled
@@ -512,6 +541,13 @@ func passthroughStreamingResponse(c *gin.Context, resp *http.Response) error {
 			flusher.Flush()
 		}
 		if err == io.EOF {
+			if logBuffer.Len() > 0 {
+				common.LogUpstreamResponseBody(logBuffer.Bytes(), envCfg, "Images")
+			}
+			if envCfg.EnableResponseLogs {
+				responseTime := time.Since(startTime).Milliseconds()
+				log.Printf("[Images-Stream] 流式响应完成: %dms", responseTime)
+			}
 			return nil
 		}
 		if err != nil {

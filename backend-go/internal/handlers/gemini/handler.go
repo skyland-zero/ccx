@@ -506,6 +506,7 @@ func handleSuccess(
 	if envCfg.EnableResponseLogs {
 		responseTime := time.Since(startTime).Milliseconds()
 		log.Printf("[Gemini-Timing] 响应完成: %dms, 状态: %d", responseTime, resp.StatusCode)
+		common.LogUpstreamResponse(resp, bodyBytes, envCfg, "Gemini")
 	}
 
 	// 根据上游类型转换响应

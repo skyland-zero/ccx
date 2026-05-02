@@ -21,6 +21,70 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const MaxUpstreamResponseLogBytes = 1024 * 1024
+
+type LimitedLogBuffer struct {
+	buf       bytes.Buffer
+	limit     int
+	truncated bool
+	total     int
+}
+
+func NewLimitedLogBuffer(limit int) *LimitedLogBuffer {
+	if limit <= 0 {
+		limit = MaxUpstreamResponseLogBytes
+	}
+	return &LimitedLogBuffer{limit: limit}
+}
+
+func (b *LimitedLogBuffer) Write(p []byte) (int, error) {
+	if b == nil {
+		return len(p), nil
+	}
+	b.total += len(p)
+	remaining := b.limit - b.buf.Len()
+	if remaining <= 0 {
+		b.truncated = true
+		return len(p), nil
+	}
+	if len(p) > remaining {
+		b.buf.Write(p[:remaining])
+		b.truncated = true
+		return len(p), nil
+	}
+	b.buf.Write(p)
+	return len(p), nil
+}
+
+func (b *LimitedLogBuffer) WriteString(s string) (int, error) {
+	return b.Write([]byte(s))
+}
+
+func (b *LimitedLogBuffer) Len() int {
+	if b == nil {
+		return 0
+	}
+	return b.buf.Len()
+}
+
+func (b *LimitedLogBuffer) Bytes() []byte {
+	if b == nil {
+		return nil
+	}
+	return b.buf.Bytes()
+}
+
+func (b *LimitedLogBuffer) String() string {
+	if b == nil {
+		return ""
+	}
+	result := b.buf.String()
+	if b.truncated {
+		result += fmt.Sprintf("\n...[truncated upstream stream log at %d/%d bytes]", b.limit, b.total)
+	}
+	return result
+}
+
 // RequestLifecycleTrace 用于记录上游 HTTP 请求生命周期关键节点。
 type RequestLifecycleTrace struct {
 	OnConnected         func()
@@ -84,6 +148,45 @@ func PassthroughJSONResponse(c *gin.Context, resp *http.Response, target interfa
 
 	_, err := io.Copy(c.Writer, resp.Body)
 	return err
+}
+
+func LogUpstreamResponseHeaders(resp *http.Response, envCfg *config.EnvConfig, apiType string) {
+	if !envCfg.EnableResponseLogs || !envCfg.IsDevelopment() || resp == nil {
+		return
+	}
+
+	respHeaders := make(map[string]string)
+	for key, values := range resp.Header {
+		if len(values) > 0 {
+			respHeaders[key] = values[0]
+		}
+	}
+	var respHeadersJSON []byte
+	if envCfg.RawLogOutput {
+		respHeadersJSON, _ = json.Marshal(respHeaders)
+	} else {
+		respHeadersJSON, _ = json.MarshalIndent(respHeaders, "", "  ")
+	}
+	log.Printf("[%s-Response] 响应头:\n%s", apiType, string(respHeadersJSON))
+}
+
+func LogUpstreamResponseBody(bodyBytes []byte, envCfg *config.EnvConfig, apiType string) {
+	if !envCfg.EnableResponseLogs || !envCfg.IsDevelopment() {
+		return
+	}
+
+	var formattedBody string
+	if envCfg.RawLogOutput {
+		formattedBody = utils.FormatJSONBytesRaw(bodyBytes)
+	} else {
+		formattedBody = utils.FormatJSONBytesForLog(bodyBytes, 500)
+	}
+	log.Printf("[%s-Response] 响应体:\n%s", apiType, formattedBody)
+}
+
+func LogUpstreamResponse(resp *http.Response, bodyBytes []byte, envCfg *config.EnvConfig, apiType string) {
+	LogUpstreamResponseHeaders(resp, envCfg, apiType)
+	LogUpstreamResponseBody(bodyBytes, envCfg, apiType)
 }
 
 // SendRequest 发送 HTTP 请求到上游

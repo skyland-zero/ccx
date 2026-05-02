@@ -560,6 +560,7 @@ func TestProcessStreamEvent_MessageStopInjectsUsageWhenMessageDeltaMissing(t *te
 	ctx := &StreamContext{
 		ContentBlockTypes: make(map[int]string),
 		HasUsage:          true, // message_start 已经有 usage
+		LogBuffer:         NewLimitedLogBuffer(MaxUpstreamResponseLogBytes),
 	}
 	envCfg := &config.EnvConfig{LogLevel: "info"}
 

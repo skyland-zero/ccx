@@ -1,3 +1,9 @@
+## [Unreleased]
+
+### Changed
+
+- **统一各协议上游响应日志输出** - 抽取公共响应头/响应体日志函数，统一 `messages`、`responses`、`gemini`、`chat`、`images` 非流式响应日志，并补齐流式响应头及 `chat`、`gemini`、`images` 上游流式原始内容日志
+
 ## [v2.6.71] - 2026-05-02
 
 ### 修复
