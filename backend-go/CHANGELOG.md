@@ -10,3 +10,4 @@
 - 修复 capability-test 在取消后恢复旧任务时返回过期的 `cancelled` job 快照，避免前端误判任务已结束而停止轮询。
 - 为 capability-test 增加取消后恢复场景的 HTTP 回归测试，覆盖恢复响应状态正确性。
 - 将 capability-test 的限速、共享结果与运行复用收敛到 upstream identity 维度，并新增 shared snapshot API 与单协议测试交互提示。
+- 修复 capability-test 的 `chat` 与 `responses(codex)` 协议默认探测模型顺序不一致问题，统一将 `gpt-5.5` 提升为首位，并同步前端占位模型列表与后端探测配置。
