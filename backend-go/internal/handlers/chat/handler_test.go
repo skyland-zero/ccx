@@ -136,6 +136,37 @@ func TestBuildProviderRequest_NormalizeNonstandardChatRoles(t *testing.T) {
 	}
 }
 
+func TestBuildProviderRequest_FunctionWithToolCallIDMapsToTool(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil).WithContext(context.Background())
+
+	bodyBytes := []byte(`{"model":"gpt-5","messages":[{"role":"assistant","content":"ok","tool_calls":[{"id":"call_1","type":"function","function":{"name":"f","arguments":"{}"}}]},{"role":"function","name":"f","content":"result","tool_call_id":"call_1"}]}`)
+	upstream := &config.UpstreamConfig{
+		ServiceType:                   "openai",
+		NormalizeNonstandardChatRoles: true,
+	}
+	req, err := buildProviderRequest(c, upstream, "https://api.example.com", "sk-test", bodyBytes, "gpt-5", false)
+	if err != nil {
+		t.Fatalf("buildProviderRequest() err = %v", err)
+	}
+
+	var got map[string]interface{}
+	if err := json.NewDecoder(req.Body).Decode(&got); err != nil {
+		t.Fatalf("decode request body: %v", err)
+	}
+
+	messages := got["messages"].([]interface{})
+	if len(messages) != 2 {
+		t.Fatalf("messages length = %d, want 2", len(messages))
+	}
+	second := messages[1].(map[string]interface{})
+	if second["role"] != "tool" {
+		t.Fatalf("function message with tool_call_id role = %v, want tool", second["role"])
+	}
+}
+
 func TestBuildProviderRequest_PreservesMultimodalContentArray(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

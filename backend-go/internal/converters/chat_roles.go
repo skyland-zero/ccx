@@ -21,9 +21,19 @@ func NormalizeNonstandardChatRolesInRequest(reqMap map[string]interface{}) {
 
 func normalizeChatMessageRole(msg map[string]interface{}) {
 	role, ok := msg["role"].(string)
-	if !ok || !isStandardChatRole(role) {
+	if !ok {
 		msg["role"] = "user"
+		return
 	}
+	if isStandardChatRole(role) {
+		return
+	}
+	// 非标准 role 若携带 tool_call_id，视为 tool 响应（保留 OpenAI tool_calls 响应链完整性）
+	if _, hasID := msg["tool_call_id"]; hasID {
+		msg["role"] = "tool"
+		return
+	}
+	msg["role"] = "user"
 }
 
 func isStandardChatRole(role string) bool {

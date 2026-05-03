@@ -155,21 +155,16 @@ func TestResponsesToOpenAIChatMessages_MultipleToolCalls(t *testing.T) {
 	messages, err := ResponsesToOpenAIChatMessages(sess, newInput, "")
 	assert.NoError(t, err)
 
-	// 应该合并为一条 assistant 消息
-	assert.Len(t, messages, 2)
+	// 连续 function_call 应合并为一条 assistant 消息
+	assert.Len(t, messages, 1)
 	assert.Equal(t, "assistant", messages[0]["role"])
-	assert.Equal(t, "assistant", messages[1]["role"])
 
-	// 每条消息应该有一个 tool_call
-	toolCalls0, ok := messages[0]["tool_calls"].([]map[string]interface{})
+	// 该消息应包含两个 tool_call
+	toolCalls, ok := messages[0]["tool_calls"].([]map[string]interface{})
 	assert.True(t, ok)
-	assert.Len(t, toolCalls0, 1)
-	assert.Equal(t, "get_weather", toolCalls0[0]["function"].(map[string]interface{})["name"])
-
-	toolCalls1, ok := messages[1]["tool_calls"].([]map[string]interface{})
-	assert.True(t, ok)
-	assert.Len(t, toolCalls1, 1)
-	assert.Equal(t, "get_time", toolCalls1[0]["function"].(map[string]interface{})["name"])
+	assert.Len(t, toolCalls, 2)
+	assert.Equal(t, "get_weather", toolCalls[0]["function"].(map[string]interface{})["name"])
+	assert.Equal(t, "get_time", toolCalls[1]["function"].(map[string]interface{})["name"])
 }
 
 // TestResponsesToOpenAIChatMessages_ToolCallRoundtrip 测试完整的工具调用流程
@@ -304,7 +299,7 @@ func TestResponsesToOpenAIChatMessages_MergesReasoningIntoFollowingAssistantMess
 	assert.Equal(t, "previous text", messages[0]["content"])
 }
 
-func TestResponsesToOpenAIChatMessages_MultipleFunctionCallsRemainSeparateMessages(t *testing.T) {
+func TestResponsesToOpenAIChatMessages_MultipleFunctionCallsMergeIntoOneMessage(t *testing.T) {
 	sess := &session.Session{Messages: []types.ResponsesItem{}}
 
 	messages, err := ResponsesToOpenAIChatMessages(sess, []interface{}{
@@ -322,17 +317,14 @@ func TestResponsesToOpenAIChatMessages_MultipleFunctionCallsRemainSeparateMessag
 		},
 	}, "")
 	assert.NoError(t, err)
-	assert.Len(t, messages, 2)
+	// 连续 function_call 合并为单条 assistant 消息
+	assert.Len(t, messages, 1)
 	assert.Equal(t, "assistant", messages[0]["role"])
-	assert.Equal(t, "assistant", messages[1]["role"])
-	toolCalls0, ok := messages[0]["tool_calls"].([]map[string]interface{})
+	toolCalls, ok := messages[0]["tool_calls"].([]map[string]interface{})
 	assert.True(t, ok)
-	assert.Len(t, toolCalls0, 1)
-	assert.Equal(t, "call_1", toolCalls0[0]["id"])
-	toolCalls1, ok := messages[1]["tool_calls"].([]map[string]interface{})
-	assert.True(t, ok)
-	assert.Len(t, toolCalls1, 1)
-	assert.Equal(t, "call_2", toolCalls1[0]["id"])
+	assert.Len(t, toolCalls, 2)
+	assert.Equal(t, "call_1", toolCalls[0]["id"])
+	assert.Equal(t, "call_2", toolCalls[1]["id"])
 }
 
 func TestResponsesToOpenAIChatMessages_NormalizesLegacySessionMessages(t *testing.T) {
@@ -391,4 +383,103 @@ func TestResponsesToOpenAIChatMessages_FunctionCallDefaultsCallIDToName(t *testi
 	assert.True(t, ok)
 	assert.Len(t, toolCalls, 1)
 	assert.Equal(t, "get_weather", toolCalls[0]["id"])
+}
+
+// TestResponsesToOpenAIChatMessages_DeepSeekMultiTurnToolCalls 模拟 DeepSeek 多轮 tool_calls 场景
+// 验证 Responses→Chat 转换符合 DeepSeek 文档要求：
+// 1. 有 tool_calls 的 assistant 消息必须包含 reasoning_content
+// 2. 不产生连续 assistant 消息
+// 3. function_call 不重复（session 和 new input 都有时只保留一份）
+func TestResponsesToOpenAIChatMessages_DeepSeekMultiTurnToolCalls(t *testing.T) {
+	// 模拟 session：第一轮 DeepSeek 响应被 OpenAIChatResponseToResponses 转换后的三个 ResponsesItem
+	sess := &session.Session{
+		Messages: []types.ResponsesItem{
+			// 1. reasoning（来自 reasoning_content）
+			{
+				Type:   "reasoning",
+				Status: "completed",
+				Summary: []interface{}{map[string]interface{}{
+					"type": "summary_text",
+					"text": "I need to run go vet to check the code.",
+				}},
+			},
+			// 2. assistant message（来自 content）
+			{
+				Type: "message",
+				Role: "assistant",
+				Content: []types.ContentBlock{{
+					Type: "output_text",
+					Text: "Let me run go vet.",
+				}},
+			},
+			// 3. function_call（来自 tool_calls）
+			{
+				Type:      "function_call",
+				Status:    "completed",
+				CallID:    "call_001",
+				Name:      "exec_command",
+				Arguments: `{"cmd":"go vet ./..."}`,
+			},
+		},
+	}
+
+	// 模拟第二轮 new input：客户端回传 function_call + function_call_output + 新 user 消息
+	newInput := []interface{}{
+		map[string]interface{}{
+			"type":      "function_call",
+			"call_id":   "call_001",
+			"name":      "exec_command",
+			"arguments": `{"cmd":"go vet ./..."}`,
+		},
+		map[string]interface{}{
+			"type":    "function_call_output",
+			"call_id": "call_001",
+			"output":  "no issues found",
+		},
+		map[string]interface{}{
+			"type": "message",
+			"role": "user",
+			"content": []interface{}{
+				map[string]interface{}{
+					"type": "input_text",
+					"text": "run tests now",
+				},
+			},
+		},
+	}
+
+	messages, err := ResponsesToOpenAIChatMessages(sess, newInput, "You are a coding agent.")
+	assert.NoError(t, err)
+
+	// 期望消息序列：
+	// [0] system
+	// [1] assistant (content + reasoning_content + tool_calls，合并为一条)
+	// [2] tool (tool_call_id=call_001)
+	// [3] user (run tests now)
+	assert.Len(t, messages, 4, "should have system, assistant, tool, user messages")
+
+	// [0] system
+	assert.Equal(t, "system", messages[0]["role"])
+
+	// [1] assistant - 必须同时包含 content、reasoning_content、tool_calls
+	assert.Equal(t, "assistant", messages[1]["role"])
+	assert.Equal(t, "Let me run go vet.", messages[1]["content"], "assistant should have content")
+	assert.Equal(t, "I need to run go vet to check the code.", messages[1]["reasoning_content"],
+		"assistant must have reasoning_content for DeepSeek thinking mode with tool_calls")
+
+	tc, ok := messages[1]["tool_calls"].([]map[string]interface{})
+	assert.True(t, ok, "assistant should have tool_calls")
+	// tool_calls 不应重复（session 和 new input 各有一份，只保留一份）
+	assert.Len(t, tc, 1, "tool_calls should not be duplicated")
+	assert.Equal(t, "call_001", tc[0]["id"])
+	assert.Equal(t, "exec_command", tc[0]["function"].(map[string]interface{})["name"])
+
+	// [2] tool
+	assert.Equal(t, "tool", messages[2]["role"])
+	assert.Equal(t, "call_001", messages[2]["tool_call_id"])
+	assert.Equal(t, "no issues found", messages[2]["content"])
+
+	// [3] user
+	assert.Equal(t, "user", messages[3]["role"])
+	assert.Equal(t, "run tests now", messages[3]["content"])
 }

@@ -320,6 +320,7 @@ func ResponsesToOpenAIChatMessages(sess *session.Session, newInput interface{}, 
 
 func appendResponsesItemsToOpenAIMessages(messages []map[string]interface{}, items []types.ResponsesItem) []map[string]interface{} {
 	var pendingReasoning []string
+	var pendingToolCalls []map[string]interface{}
 
 	flushReasoning := func() {
 		if len(pendingReasoning) == 0 {
@@ -331,6 +332,38 @@ func appendResponsesItemsToOpenAIMessages(messages []map[string]interface{}, ite
 			"reasoning_content": strings.Join(pendingReasoning, "\n"),
 		})
 		pendingReasoning = nil
+	}
+
+	flushToolCalls := func() {
+		if len(pendingToolCalls) == 0 {
+			return
+		}
+		// 若最后一条消息是 assistant，将 tool_calls 合并进去（去重）
+		// 避免产生连续 assistant 消息（DeepSeek 等上游不允许）
+		if len(messages) > 0 {
+			last := messages[len(messages)-1]
+			if role, _ := last["role"].(string); role == "assistant" {
+				if existing, hasTC := last["tool_calls"].([]map[string]interface{}); hasTC {
+					// 已有 tool_calls，合并新 tool_calls（按 id 去重）
+					last["tool_calls"] = mergeToolCalls(existing, pendingToolCalls)
+				} else {
+					last["tool_calls"] = pendingToolCalls
+				}
+				pendingToolCalls = nil
+				return
+			}
+		}
+		msg := map[string]interface{}{
+			"role":       "assistant",
+			"tool_calls": pendingToolCalls,
+		}
+		if len(pendingReasoning) > 0 {
+			msg["reasoning_content"] = strings.Join(pendingReasoning, "\n")
+			msg["content"] = nil
+			pendingReasoning = nil
+		}
+		messages = append(messages, msg)
+		pendingToolCalls = nil
 	}
 
 	for _, item := range items {
@@ -348,24 +381,56 @@ func appendResponsesItemsToOpenAIMessages(messages []map[string]interface{}, ite
 			continue
 		}
 
+		// function_call 产生的 assistant+tool_calls 消息需要合并
+		if role, _ := msg["role"].(string); role == "assistant" {
+			if tc, ok := msg["tool_calls"].([]map[string]interface{}); ok && len(tc) > 0 {
+				pendingToolCalls = append(pendingToolCalls, tc...)
+				continue
+			}
+		}
+
+		// 非 function_call 消息：先刷出待处理的 reasoning 和 tool_calls
 		if len(pendingReasoning) > 0 {
 			role, _ := msg["role"].(string)
-			if role == "assistant" {
+			if role == "assistant" && len(pendingToolCalls) == 0 {
 				msg["reasoning_content"] = strings.Join(pendingReasoning, "\n")
 				if _, ok := msg["content"]; !ok {
 					msg["content"] = nil
 				}
 				pendingReasoning = nil
 			} else {
+				flushToolCalls()
 				flushReasoning()
 			}
+		} else {
+			flushToolCalls()
 		}
 
 		messages = append(messages, msg)
 	}
 
+	flushToolCalls()
 	flushReasoning()
 	return messages
+}
+
+// mergeToolCalls 合并两组 tool_calls，按 id 去重（保留 existing 优先）
+func mergeToolCalls(existing, incoming []map[string]interface{}) []map[string]interface{} {
+	seen := make(map[string]bool, len(existing))
+	for _, tc := range existing {
+		if id, _ := tc["id"].(string); id != "" {
+			seen[id] = true
+		}
+	}
+	for _, tc := range incoming {
+		id, _ := tc["id"].(string)
+		if id == "" || seen[id] {
+			continue
+		}
+		existing = append(existing, tc)
+		seen[id] = true
+	}
+	return existing
 }
 
 // responsesItemToOpenAIMessage 单个 ResponsesItem 转换为 OpenAI Message
