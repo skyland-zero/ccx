@@ -1,9 +1,13 @@
-## [Unreleased]
+## [v2.6.73] - 2026-05-04
 
 ### Added
 
 - **OpenAI Chat 渠道新增非标准 role 规范化选项** - 新增 `normalizeNonstandardChatRoles` 配置项，启用后将非标准 Chat role（如 `developer`、`function` 等）自动改写为 `user`，提高与不支持扩展 role 的上游兼容性；前端渠道编辑弹窗增加对应开关
 - 新增 `backend-go/internal/converters/chat_roles.go` 实现 role 规范化逻辑
+
+### Fixed
+
+- **修复 Chat 协议转换中工具调用链丢失问题** - 修复 responses 协议转换时 tool call chain 被截断的问题，确保多轮工具调用链完整保留
 
 ### Changed
 
