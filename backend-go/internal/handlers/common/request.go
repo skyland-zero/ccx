@@ -420,8 +420,9 @@ func removeEmptySignaturesInMessages(data map[string]interface{}) (bool, int) {
 
 // SanitizeMalformedThinkingBlocks 清理 messages[*].content[*] 中的 thinking 相关字段
 // 策略：
-// 1) 一律移除 type=thinking 的内容块（避免上游严格校验导致 400）
-// 2) 移除非 thinking 块里的残留 thinking 字段
+// 1) 仅移除畸形的 type=thinking 内容块（避免上游严格校验导致 400）
+// 2) 保留合法的 thinking 内容块（兼容 Claude extended thinking 回传）
+// 3) 移除非 thinking 块里的残留 thinking 字段
 // 返回 (新字节, 是否修改)
 func SanitizeMalformedThinkingBlocks(bodyBytes []byte, enableLog bool, apiType string) ([]byte, bool) {
 	decoder := json.NewDecoder(bytes.NewReader(bodyBytes))
@@ -537,9 +538,20 @@ func sanitizeMalformedThinkingBlocksInMessages(data map[string]interface{}) (boo
 func sanitizeThinkingInContentBlock(block map[string]interface{}) (modified bool, removeBlock bool) {
 	blockType, _ := block["type"].(string)
 	if blockType == "thinking" {
-		// 无论完整与否，一律移除 thinking block。
-		// 原因：历史 thinking 内容对续写价值很低，但容易触发上游严格校验（如 thinking.thinking 必填）。
-		return true, true
+		// 仅移除畸形 thinking block：
+		// - 缺少 thinking 字段
+		// - thinking 不是非空字符串
+		thinking, hasThinking := block["thinking"]
+		if !hasThinking {
+			return true, true
+		}
+		thinkingText, ok := thinking.(string)
+		if !ok || strings.TrimSpace(thinkingText) == "" {
+			return true, true
+		}
+
+		// 保留合法 thinking block（含 signature 与否都透传）
+		return false, false
 	}
 
 	if _, hasThinking := block["thinking"]; hasThinking {

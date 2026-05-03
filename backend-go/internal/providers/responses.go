@@ -173,6 +173,18 @@ func (p *ResponsesProvider) buildResponsesRequestFromClaude(c *gin.Context, body
 					continue
 				}
 				switch block["type"] {
+				case "thinking":
+					if thinking, ok := block["thinking"].(string); ok && thinking != "" {
+						flushMessage()
+						input = append(input, map[string]interface{}{
+							"type":   "reasoning",
+							"status": "completed",
+							"summary": []map[string]interface{}{{
+								"type": "summary_text",
+								"text": thinking,
+							}},
+						})
+					}
 				case "text":
 					if text, ok := block["text"].(string); ok && text != "" {
 						contentBlocks = append(contentBlocks, map[string]interface{}{
@@ -377,6 +389,10 @@ func (p *ResponsesProvider) ConvertToClaudeResponse(providerResp *types.Provider
 				continue
 			}
 			switch item["type"] {
+			case "reasoning":
+				if thinking := responsesReasoningText(item); thinking != "" {
+					claudeResp.Content = append(claudeResp.Content, types.ClaudeContent{Type: "thinking", Thinking: thinking})
+				}
 			case "message":
 				if content, ok := item["content"].([]interface{}); ok {
 					for _, rawBlock := range content {
@@ -685,6 +701,38 @@ func extractResponsesCacheReadTokens(usage map[string]interface{}) int {
 		return int(cachedTokens)
 	}
 	return 0
+}
+
+func responsesReasoningText(item map[string]interface{}) string {
+	return reasoningTextFromRaw(firstNonNil(item["summary"], item["content"]))
+}
+
+func firstNonNil(values ...interface{}) interface{} {
+	for _, value := range values {
+		if value != nil {
+			return value
+		}
+	}
+	return nil
+}
+
+func reasoningTextFromRaw(raw interface{}) string {
+	switch v := raw.(type) {
+	case string:
+		return v
+	case []interface{}:
+		parts := make([]string, 0, len(v))
+		for _, rawPart := range v {
+			if part, ok := rawPart.(map[string]interface{}); ok {
+				if text, ok := part["text"].(string); ok && text != "" {
+					parts = append(parts, text)
+				}
+			}
+		}
+		return strings.Join(parts, "\n")
+	default:
+		return ""
+	}
 }
 
 func toString(v interface{}) string {

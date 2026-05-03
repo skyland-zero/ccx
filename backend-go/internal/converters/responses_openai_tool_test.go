@@ -277,6 +277,33 @@ func TestResponsesToOpenAIChatMessages_FunctionCallOutputObjectContentSerializes
 	assert.Contains(t, content, "sunny")
 }
 
+func TestResponsesToOpenAIChatMessages_MergesReasoningIntoFollowingAssistantMessage(t *testing.T) {
+	sess := &session.Session{Messages: []types.ResponsesItem{}}
+
+	messages, err := ResponsesToOpenAIChatMessages(sess, []interface{}{
+		map[string]interface{}{
+			"type":   "reasoning",
+			"status": "completed",
+			"summary": []interface{}{
+				map[string]interface{}{"type": "summary_text", "text": "previous reasoning"},
+			},
+		},
+		map[string]interface{}{
+			"type": "message",
+			"role": "assistant",
+			"content": []interface{}{
+				map[string]interface{}{"type": "output_text", "text": "previous text"},
+			},
+		},
+	}, "")
+
+	assert.NoError(t, err)
+	assert.Len(t, messages, 1)
+	assert.Equal(t, "assistant", messages[0]["role"])
+	assert.Equal(t, "previous reasoning", messages[0]["reasoning_content"])
+	assert.Equal(t, "previous text", messages[0]["content"])
+}
+
 func TestResponsesToOpenAIChatMessages_MultipleFunctionCallsRemainSeparateMessages(t *testing.T) {
 	sess := &session.Session{Messages: []types.ResponsesItem{}}
 

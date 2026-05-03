@@ -600,6 +600,15 @@ func handleStreamSuccess(
 			var eventsToCheck []string
 			if needConvert {
 				switch upstreamType {
+				case "claude":
+					eventsToCheck = converters.ConvertClaudeMessagesToResponses(
+						c.Request.Context(),
+						originalReq.Model,
+						originalRequestJSON,
+						nil,
+						[]byte(line),
+						&converterState,
+					)
 				case "gemini":
 					eventsToCheck = converters.ConvertGeminiStreamToResponses(
 						c.Request.Context(),
@@ -723,6 +732,15 @@ func handleStreamSuccess(
 		if needConvert {
 			var events []string
 			switch upstreamType {
+			case "claude":
+				events = converters.ConvertClaudeMessagesToResponses(
+					c.Request.Context(),
+					originalReq.Model,
+					originalRequestJSON,
+					nil,
+					[]byte(line),
+					&converterState,
+				)
 			case "gemini":
 				events = converters.ConvertGeminiStreamToResponses(
 					c.Request.Context(),

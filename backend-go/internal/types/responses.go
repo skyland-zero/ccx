@@ -35,6 +35,7 @@ type ResponsesItem struct {
 	Role      string      `json:"role,omitempty"` // user, assistant (用于 type=message)
 	Status    string      `json:"status,omitempty"`
 	Content   interface{} `json:"content,omitempty"` // string 或 []ContentBlock
+	Summary   interface{} `json:"summary,omitempty"`
 	ToolUse   *ToolUse    `json:"tool_use,omitempty"`
 	CallID    string      `json:"call_id,omitempty"`
 	Name      string      `json:"name,omitempty"`

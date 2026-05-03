@@ -3,6 +3,7 @@ package messages
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -254,5 +255,87 @@ func TestMessagesHandler_NonStreamMatrix_ToolUse(t *testing.T) {
 				t.Fatalf("expected tool_use name=%q in response, got %#v", tt.expectTool, resp.Content)
 			}
 		})
+	}
+}
+
+func TestMessagesHandler_PreservesValidThinkingBlocksForClaudeUpstream(t *testing.T) {
+	var capturedBody []byte
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read upstream request body: %v", err)
+		}
+		capturedBody = body
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"msg_1","type":"message","role":"assistant","content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}`))
+	}))
+	defer upstream.Close()
+
+	router := newMessagesTestRouter(t, config.UpstreamConfig{
+		Name:        "thinking-preserve",
+		BaseURL:     upstream.URL,
+		APIKeys:     []string{"sk-test"},
+		ServiceType: "claude",
+		Status:      "active",
+	})
+
+	reqBody := `{
+		"model":"claude-sonnet-4-6",
+		"messages":[
+			{"role":"user","content":[{"type":"text","text":"hello"}]},
+			{"role":"assistant","content":[
+				{"type":"thinking","thinking":"internal","signature":"sig_123"},
+				{"type":"text","text":"Let me check"}
+			]}
+		]
+	}`
+
+	w := performMessagesHandlerRequest(t, router, reqBody)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body=%s", w.Code, http.StatusOK, w.Body.String())
+	}
+	if len(capturedBody) == 0 {
+		t.Fatal("upstream request body is empty")
+	}
+
+	var upstreamReq map[string]interface{}
+	if err := json.Unmarshal(capturedBody, &upstreamReq); err != nil {
+		t.Fatalf("unmarshal upstream request: %v, body=%s", err, string(capturedBody))
+	}
+
+	messages, ok := upstreamReq["messages"].([]interface{})
+	if !ok || len(messages) < 2 {
+		t.Fatalf("unexpected messages in upstream request: %#v", upstreamReq["messages"])
+	}
+	assistantMsg, ok := messages[1].(map[string]interface{})
+	if !ok {
+		t.Fatalf("assistant message type = %T", messages[1])
+	}
+	content, ok := assistantMsg["content"].([]interface{})
+	if !ok {
+		t.Fatalf("assistant content type = %T", assistantMsg["content"])
+	}
+
+	var foundThinking bool
+	for _, raw := range content {
+		block, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if blockType, _ := block["type"].(string); blockType == "thinking" {
+			foundThinking = true
+			if thinking, _ := block["thinking"].(string); thinking != "internal" {
+				t.Fatalf("thinking = %q, want %q", thinking, "internal")
+			}
+			if signature, _ := block["signature"].(string); signature != "sig_123" {
+				t.Fatalf("signature = %q, want %q", signature, "sig_123")
+			}
+		}
+	}
+	if !foundThinking {
+		t.Fatalf("thinking block not found in upstream request: %s", string(capturedBody))
 	}
 }

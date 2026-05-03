@@ -434,6 +434,12 @@ func convertChatToClaudeRequest(bodyBytes []byte, model string, isStream bool) (
 				// 检查是否包含 tool_calls（OpenAI → Claude tool_use）
 				if toolCalls, ok := m["tool_calls"].([]interface{}); ok && len(toolCalls) > 0 {
 					var contentBlocks []map[string]interface{}
+					if reasoning, ok := m["reasoning_content"].(string); ok && reasoning != "" {
+						contentBlocks = append(contentBlocks, map[string]interface{}{
+							"type":     "thinking",
+							"thinking": reasoning,
+						})
+					}
 					// 先添加文本内容（如有）
 					if text, ok := content.(string); ok && text != "" {
 						contentBlocks = append(contentBlocks, map[string]interface{}{
@@ -467,6 +473,24 @@ func convertChatToClaudeRequest(bodyBytes []byte, model string, isStream bool) (
 						"content": contentBlocks,
 					})
 				} else {
+					if reasoning, ok := m["reasoning_content"].(string); ok && reasoning != "" {
+						var contentBlocks []map[string]interface{}
+						contentBlocks = append(contentBlocks, map[string]interface{}{
+							"type":     "thinking",
+							"thinking": reasoning,
+						})
+						if text, ok := content.(string); ok && text != "" {
+							contentBlocks = append(contentBlocks, map[string]interface{}{
+								"type": "text",
+								"text": text,
+							})
+						}
+						claudeMessages = append(claudeMessages, map[string]interface{}{
+							"role":    "assistant",
+							"content": contentBlocks,
+						})
+						continue
+					}
 					claudeMessages = append(claudeMessages, map[string]interface{}{
 						"role":    "assistant",
 						"content": content,
@@ -618,6 +642,7 @@ func handleSuccess(
 func convertClaudeResponseToChat(claudeResp map[string]interface{}, model string) map[string]interface{} {
 	// 提取文本内容和 tool_use blocks
 	var text string
+	var reasoningParts []string
 	var toolCalls []map[string]interface{}
 	toolCallIndex := 0
 
@@ -629,6 +654,10 @@ func convertClaudeResponseToChat(claudeResp map[string]interface{}, model string
 			}
 			blockType, _ := b["type"].(string)
 			switch blockType {
+			case "thinking":
+				if thinking, ok := b["thinking"].(string); ok && thinking != "" {
+					reasoningParts = append(reasoningParts, thinking)
+				}
 			case "text":
 				if t, ok := b["text"].(string); ok {
 					text += t
@@ -681,6 +710,9 @@ func convertClaudeResponseToChat(claudeResp map[string]interface{}, model string
 	}
 	if len(toolCalls) > 0 {
 		message["tool_calls"] = toolCalls
+	}
+	if len(reasoningParts) > 0 {
+		message["reasoning_content"] = strings.Join(reasoningParts, "\n")
 	}
 
 	// 构建 OpenAI Chat 格式响应
@@ -870,7 +902,33 @@ func streamClaudeToChat(
 						continue
 					}
 					deltaType, _ := delta["type"].(string)
-					if deltaType == "text_delta" {
+					switch deltaType {
+					case "thinking_delta":
+						thinking, _ := delta["thinking"].(string)
+						if thinking == "" {
+							continue
+						}
+						chatChunk := map[string]interface{}{
+							"id":      "chatcmpl-claude",
+							"object":  "chat.completion.chunk",
+							"created": time.Now().Unix(),
+							"model":   model,
+							"choices": []map[string]interface{}{
+								{
+									"index": 0,
+									"delta": map[string]interface{}{
+										"reasoning_content": thinking,
+									},
+									"finish_reason": nil,
+								},
+							},
+						}
+						chunkBytes, _ := json.Marshal(chatChunk)
+						fmt.Fprintf(c.Writer, "data: %s\n\n", string(chunkBytes))
+						if flusher != nil {
+							flusher.Flush()
+						}
+					case "text_delta":
 						text, _ := delta["text"].(string)
 						chatChunk := map[string]interface{}{
 							"id":      "chatcmpl-claude",

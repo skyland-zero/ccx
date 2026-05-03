@@ -187,6 +187,46 @@ func TestResponsesToClaudeMessages_FunctionCall(t *testing.T) {
 	}
 }
 
+func TestResponsesToClaudeMessages_MergesReasoningIntoFollowingAssistantMessage(t *testing.T) {
+	sess := &session.Session{Messages: []types.ResponsesItem{}}
+
+	messages, _, err := ResponsesToClaudeMessages(sess, []interface{}{
+		map[string]interface{}{
+			"type":   "reasoning",
+			"status": "completed",
+			"summary": []interface{}{
+				map[string]interface{}{"type": "summary_text", "text": "previous reasoning"},
+			},
+		},
+		map[string]interface{}{
+			"type": "message",
+			"role": "assistant",
+			"content": []interface{}{
+				map[string]interface{}{"type": "output_text", "text": "previous text"},
+			},
+		},
+	}, "")
+	if err != nil {
+		t.Fatalf("转换失败: %v", err)
+	}
+	if len(messages) != 1 {
+		t.Fatalf("期望 1 条消息，实际 %d", len(messages))
+	}
+	content, ok := messages[0].Content.([]types.ClaudeContent)
+	if !ok {
+		t.Fatal("Content 类型错误")
+	}
+	if len(content) != 2 {
+		t.Fatalf("期望 2 个内容块，实际 %d", len(content))
+	}
+	if content[0].Type != "thinking" || content[0].Thinking != "previous reasoning" {
+		t.Fatalf("thinking block 不匹配: %#v", content[0])
+	}
+	if content[1].Type != "text" || content[1].Text != "previous text" {
+		t.Fatalf("text block 不匹配: %#v", content[1])
+	}
+}
+
 // TestResponsesToClaudeMessages_ToolResult 测试 Responses tool_result 转 Claude
 func TestResponsesToClaudeMessages_ToolResult(t *testing.T) {
 	sess := &session.Session{

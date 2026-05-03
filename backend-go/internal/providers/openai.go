@@ -162,6 +162,7 @@ func (p *OpenAIProvider) convertMessage(msg types.ClaudeMessage) []types.OpenAIM
 	}
 
 	textContents := []string{}
+	reasoningContents := []string{}
 	toolCalls := []types.OpenAIToolCall{}
 	toolResults := []types.OpenAIMessage{}
 
@@ -174,6 +175,11 @@ func (p *OpenAIProvider) convertMessage(msg types.ClaudeMessage) []types.OpenAIM
 		contentType, _ := content["type"].(string)
 
 		switch contentType {
+		case "thinking":
+			if thinking, ok := content["thinking"].(string); ok && thinking != "" {
+				reasoningContents = append(reasoningContents, thinking)
+			}
+
 		case "text":
 			if text, ok := content["text"].(string); ok {
 				textContents = append(textContents, text)
@@ -218,7 +224,7 @@ func (p *OpenAIProvider) convertMessage(msg types.ClaudeMessage) []types.OpenAIM
 	messages = append(messages, toolResults...)
 
 	// 添加文本和工具调用
-	if len(textContents) > 0 || len(toolCalls) > 0 {
+	if len(textContents) > 0 || len(reasoningContents) > 0 || len(toolCalls) > 0 {
 		role := normalizeRole(msg.Role)
 		if role != "tool" {
 			openaiMsg := types.OpenAIMessage{
@@ -229,6 +235,9 @@ func (p *OpenAIProvider) convertMessage(msg types.ClaudeMessage) []types.OpenAIM
 				openaiMsg.Content = strings.Join(textContents, "\n")
 			} else {
 				openaiMsg.Content = nil
+			}
+			if len(reasoningContents) > 0 {
+				openaiMsg.ReasoningContent = strings.Join(reasoningContents, "\n")
 			}
 
 			if len(toolCalls) > 0 {
@@ -332,6 +341,13 @@ func (p *OpenAIProvider) ConvertToClaudeResponse(providerResp *types.ProviderRes
 		msg := choice.Message
 
 		// 添加文本内容
+		if msg.ReasoningContent != "" {
+			claudeResp.Content = append(claudeResp.Content, types.ClaudeContent{
+				Type:     "thinking",
+				Thinking: msg.ReasoningContent,
+			})
+		}
+
 		if str, ok := msg.Content.(string); ok && str != "" {
 			claudeResp.Content = append(claudeResp.Content, types.ClaudeContent{
 				Type: "text",
@@ -389,15 +405,26 @@ func (p *OpenAIProvider) HandleStreamResponse(body io.ReadCloser) (<-chan string
 		const maxScannerBufferSize = 1024 * 1024 // 1MB
 		scanner.Buffer(make([]byte, 0, 64*1024), maxScannerBufferSize)
 
-		toolUseBlockIndex := 0
+		nextBlockIndex := 0
 		toolCallAccumulator := make(map[int]*ToolCallAccumulator)
 		toolUseStopEmitted := false
 		messageStartSent := false
 		stopReason := ""
 
-		// 文本块状态跟踪
+		emitContentBlockStop := func(index int) {
+			stopEvent := map[string]interface{}{
+				"type":  "content_block_stop",
+				"index": index,
+			}
+			stopJSON, _ := json.Marshal(stopEvent)
+			eventChan <- fmt.Sprintf("event: content_block_stop\ndata: %s\n\n", stopJSON)
+		}
+
+		// thinking / 文本块状态跟踪
+		thinkingBlockStarted := false
+		thinkingBlockIndex := -1
 		textBlockStarted := false
-		textBlockIndex := 0
+		textBlockIndex := -1
 
 		for scanner.Scan() {
 			line := normalizeSSEFieldLine(scanner.Text())
@@ -445,6 +472,44 @@ func (p *OpenAIProvider) HandleStreamResponse(body io.ReadCloser) (<-chan string
 				model = m
 			}
 
+			// 处理 reasoning_content（DeepSeek Chat / OpenAI 兼容推理内容）
+			if reasoning, ok := delta["reasoning_content"].(string); ok && reasoning != "" {
+				if !messageStartSent {
+					eventChan <- buildMessageStartEvent(model)
+					messageStartSent = true
+				}
+				if textBlockStarted {
+					emitContentBlockStop(textBlockIndex)
+					textBlockStarted = false
+				}
+				if !thinkingBlockStarted {
+					thinkingBlockIndex = nextBlockIndex
+					nextBlockIndex++
+					startEvent := map[string]interface{}{
+						"type":  "content_block_start",
+						"index": thinkingBlockIndex,
+						"content_block": map[string]string{
+							"type":     "thinking",
+							"thinking": "",
+						},
+					}
+					startJSON, _ := json.Marshal(startEvent)
+					eventChan <- fmt.Sprintf("event: content_block_start\ndata: %s\n\n", startJSON)
+					thinkingBlockStarted = true
+				}
+
+				deltaEvent := map[string]interface{}{
+					"type":  "content_block_delta",
+					"index": thinkingBlockIndex,
+					"delta": map[string]string{
+						"type":     "thinking_delta",
+						"thinking": reasoning,
+					},
+				}
+				deltaJSON, _ := json.Marshal(deltaEvent)
+				eventChan <- fmt.Sprintf("event: content_block_delta\ndata: %s\n\n", deltaJSON)
+			}
+
 			// 处理文本内容
 			if content, ok := delta["content"].(string); ok && content != "" {
 				// 在第一个 content_block 之前发送 message_start
@@ -452,8 +517,14 @@ func (p *OpenAIProvider) HandleStreamResponse(body io.ReadCloser) (<-chan string
 					eventChan <- buildMessageStartEvent(model)
 					messageStartSent = true
 				}
+				if thinkingBlockStarted {
+					emitContentBlockStop(thinkingBlockIndex)
+					thinkingBlockStarted = false
+				}
 				// 如果是第一个文本块,发送 content_block_start
 				if !textBlockStarted {
+					textBlockIndex = nextBlockIndex
+					nextBlockIndex++
 					startEvent := map[string]interface{}{
 						"type":  "content_block_start",
 						"index": textBlockIndex,
@@ -487,16 +558,14 @@ func (p *OpenAIProvider) HandleStreamResponse(body io.ReadCloser) (<-chan string
 					eventChan <- buildMessageStartEvent(model)
 					messageStartSent = true
 				}
-				// 如果有文本块正在进行,先关闭它
+				// 如果有 thinking / 文本块正在进行,先关闭它
+				if thinkingBlockStarted {
+					emitContentBlockStop(thinkingBlockIndex)
+					thinkingBlockStarted = false
+				}
 				if textBlockStarted {
-					stopEvent := map[string]interface{}{
-						"type":  "content_block_stop",
-						"index": textBlockIndex,
-					}
-					stopJSON, _ := json.Marshal(stopEvent)
-					eventChan <- fmt.Sprintf("event: content_block_stop\ndata: %s\n\n", stopJSON)
+					emitContentBlockStop(textBlockIndex)
 					textBlockStarted = false
-					textBlockIndex++
 				}
 
 				for _, tc := range toolCalls {
@@ -535,11 +604,12 @@ func (p *OpenAIProvider) HandleStreamResponse(body io.ReadCloser) (<-chan string
 						var args interface{}
 						if err := json.Unmarshal([]byte(acc.Arguments), &args); err == nil {
 							args = sanitizeClaudeToolInput(acc.Name, args)
+							toolUseBlockIndex := nextBlockIndex
+							nextBlockIndex++
 							events := processToolUsePart(acc.ID, acc.Name, args, toolUseBlockIndex)
 							for _, event := range events {
 								eventChan <- event
 							}
-							toolUseBlockIndex++
 							delete(toolCallAccumulator, index)
 						}
 					}
@@ -548,14 +618,13 @@ func (p *OpenAIProvider) HandleStreamResponse(body io.ReadCloser) (<-chan string
 
 			// 处理结束原因
 			if finishReason, ok := choice["finish_reason"].(string); ok {
-				// 如果有未关闭的文本块,先关闭它
+				// 如果有未关闭的 thinking / 文本块,先关闭它
+				if thinkingBlockStarted {
+					emitContentBlockStop(thinkingBlockIndex)
+					thinkingBlockStarted = false
+				}
 				if textBlockStarted {
-					stopEvent := map[string]interface{}{
-						"type":  "content_block_stop",
-						"index": textBlockIndex,
-					}
-					stopJSON, _ := json.Marshal(stopEvent)
-					eventChan <- fmt.Sprintf("event: content_block_stop\ndata: %s\n\n", stopJSON)
+					emitContentBlockStop(textBlockIndex)
 					textBlockStarted = false
 				}
 
@@ -570,14 +639,12 @@ func (p *OpenAIProvider) HandleStreamResponse(body io.ReadCloser) (<-chan string
 			}
 		}
 
-		// 确保流结束时关闭任何未关闭的文本块
+		// 确保流结束时关闭任何未关闭的 thinking / 文本块
+		if thinkingBlockStarted {
+			emitContentBlockStop(thinkingBlockIndex)
+		}
 		if textBlockStarted {
-			stopEvent := map[string]interface{}{
-				"type":  "content_block_stop",
-				"index": textBlockIndex,
-			}
-			stopJSON, _ := json.Marshal(stopEvent)
-			eventChan <- fmt.Sprintf("event: content_block_stop\ndata: %s\n\n", stopJSON)
+			emitContentBlockStop(textBlockIndex)
 		}
 
 		// 发送 message_delta（含 stop_reason）和 message_stop

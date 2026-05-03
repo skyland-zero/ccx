@@ -367,6 +367,12 @@ func TestSanitizeMalformedThinkingBlocks(t *testing.T) {
 				]
 			},
 			{
+				"role": "assistant",
+				"content": [
+					{"type": "thinking", "thinking": "signed", "signature": "sig_123"}
+				]
+			},
+			{
 				"role": "user",
 				"content": [
 					{"type": "text", "text": "hello"}
@@ -390,9 +396,9 @@ func TestSanitizeMalformedThinkingBlocks(t *testing.T) {
 		t.Fatalf("messages type = %T, want []interface{}", got["messages"])
 	}
 
-	// 仅含 thinking 的 assistant 消息保留骨架（content 清空），不删除整条消息，共 4 条
-	if len(messages) != 4 {
-		t.Fatalf("messages len = %d, want 4", len(messages))
+	// 仅畸形 thinking 的 assistant 消息保留骨架（content 清空），不删除整条消息，共 5 条
+	if len(messages) != 5 {
+		t.Fatalf("messages len = %d, want 5", len(messages))
 	}
 
 	firstMsg, _ := messages[0].(map[string]interface{})
@@ -412,15 +418,39 @@ func TestSanitizeMalformedThinkingBlocks(t *testing.T) {
 		t.Fatalf("second message content len = %d, want 0 (thinking-only, kept as empty)", len(secondContent))
 	}
 
-	// 第三条：同上
+	// 第三条：合法 thinking 保留
 	thirdMsg, _ := messages[2].(map[string]interface{})
 	thirdContent, _ := thirdMsg["content"].([]interface{})
-	if len(thirdContent) != 0 {
-		t.Fatalf("third message content len = %d, want 0", len(thirdContent))
+	if len(thirdContent) != 1 {
+		t.Fatalf("third message content len = %d, want 1", len(thirdContent))
+	}
+	thirdBlock, _ := thirdContent[0].(map[string]interface{})
+	if thirdBlock["type"] != "thinking" {
+		t.Fatalf("third message content[0].type = %v, want thinking", thirdBlock["type"])
+	}
+	if thirdBlock["thinking"] != "keep me" {
+		t.Fatalf("third message content[0].thinking = %v, want keep me", thirdBlock["thinking"])
+	}
+
+	// 第四条：带 signature 的合法 thinking 也保留
+	fourthMsg, _ := messages[3].(map[string]interface{})
+	fourthContent, _ := fourthMsg["content"].([]interface{})
+	if len(fourthContent) != 1 {
+		t.Fatalf("fourth message content len = %d, want 1", len(fourthContent))
+	}
+	fourthBlock, _ := fourthContent[0].(map[string]interface{})
+	if fourthBlock["type"] != "thinking" {
+		t.Fatalf("fourth message content[0].type = %v, want thinking", fourthBlock["type"])
+	}
+	if fourthBlock["thinking"] != "signed" {
+		t.Fatalf("fourth message content[0].thinking = %v, want signed", fourthBlock["thinking"])
+	}
+	if fourthBlock["signature"] != "sig_123" {
+		t.Fatalf("fourth message content[0].signature = %v, want sig_123", fourthBlock["signature"])
 	}
 
 	// 最后一条：user 文本消息
-	lastMsg, _ := messages[3].(map[string]interface{})
+	lastMsg, _ := messages[4].(map[string]interface{})
 	if lastMsg["role"] != "user" {
 		t.Fatalf("last message role = %v, want user", lastMsg["role"])
 	}

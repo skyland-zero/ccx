@@ -74,6 +74,18 @@ func responsesItemToGeminiContents(item types.ResponsesItem) []types.GeminiConte
 	contents := []types.GeminiContent{}
 
 	switch item.Type {
+	case "reasoning":
+		thinking := extractResponsesReasoningText(item)
+		if thinking == "" {
+			return nil
+		}
+		contents = append(contents, types.GeminiContent{
+			Role: "model",
+			Parts: []types.GeminiPart{
+				{Text: thinking, Thought: true},
+			},
+		})
+
 	case "message":
 		// 消息类型
 		role, contentText := resolveResponsesTextItem(item)
@@ -174,6 +186,17 @@ func GeminiResponseToResponses(geminiResp map[string]interface{}, sessionID stri
 		}
 
 		if text, ok := part["text"].(string); ok && text != "" {
+			if thought, _ := part["thought"].(bool); thought {
+				output = append(output, types.ResponsesItem{
+					Type:   "reasoning",
+					Status: "completed",
+					Summary: []interface{}{map[string]interface{}{
+						"type": "summary_text",
+						"text": text,
+					}},
+				})
+				continue
+			}
 			textParts = append(textParts, text)
 		}
 	}
@@ -252,13 +275,19 @@ func geminiFinishReasonToResponsesStatus(finishReason string) string {
 
 // geminiToResponsesStreamState 流式转换状态
 type geminiToResponsesStreamState struct {
-	Seq          int
-	ResponseID   string
-	CreatedAt    int64
-	CurrentMsgID string
-	TextBuf      strings.Builder
-	FirstChunk   bool
-	InTextBlock  bool
+	Seq                int
+	ResponseID         string
+	CreatedAt          int64
+	NextOutputIndex    int
+	CurrentMsgID       string
+	CurrentReasoningID string
+	TextIndex          int
+	ReasoningIndex     int
+	TextBuf            strings.Builder
+	ReasoningBuf       strings.Builder
+	FirstChunk         bool
+	InTextBlock        bool
+	InReasoningBlock   bool
 	// usage
 	InputTokens  int64
 	OutputTokens int64
@@ -296,8 +325,14 @@ func ConvertGeminiStreamToResponses(ctx context.Context, modelName string, origi
 		st.ResponseID = fmt.Sprintf("resp_%d", time.Now().UnixNano())
 		st.CreatedAt = time.Now().Unix()
 		st.TextBuf.Reset()
+		st.ReasoningBuf.Reset()
 		st.InTextBlock = false
+		st.InReasoningBlock = false
 		st.CurrentMsgID = ""
+		st.CurrentReasoningID = ""
+		st.TextIndex = -1
+		st.ReasoningIndex = -1
+		st.NextOutputIndex = 0
 		st.InputTokens = 0
 		st.OutputTokens = 0
 		st.CachedTokens = 0
@@ -339,15 +374,55 @@ func ConvertGeminiStreamToResponses(ctx context.Context, modelName string, origi
 			// 处理文本内容
 			if text := part.Get("text"); text.Exists() && text.String() != "" {
 				textContent := text.String()
+				if part.Get("thought").Bool() {
+					if !st.InReasoningBlock {
+						st.InReasoningBlock = true
+						if st.ReasoningIndex < 0 {
+							st.ReasoningIndex = st.NextOutputIndex
+							st.NextOutputIndex++
+							st.CurrentReasoningID = fmt.Sprintf("rs_%s_%d", st.ResponseID, st.ReasoningIndex)
+						}
+
+						item := `{"type":"response.output_item.added","sequence_number":0,"output_index":0,"item":{"id":"","type":"reasoning","status":"in_progress","summary":[]}}`
+						item, _ = sjson.Set(item, "sequence_number", nextSeq())
+						item, _ = sjson.Set(item, "output_index", st.ReasoningIndex)
+						item, _ = sjson.Set(item, "item.id", st.CurrentReasoningID)
+						out = append(out, emitResponsesEvent("response.output_item.added", item))
+
+						partEvent := `{"type":"response.reasoning_summary_part.added","sequence_number":0,"item_id":"","output_index":0,"summary_index":0,"part":{"type":"summary_text","text":""}}`
+						partEvent, _ = sjson.Set(partEvent, "sequence_number", nextSeq())
+						partEvent, _ = sjson.Set(partEvent, "item_id", st.CurrentReasoningID)
+						partEvent, _ = sjson.Set(partEvent, "output_index", st.ReasoningIndex)
+						out = append(out, emitResponsesEvent("response.reasoning_summary_part.added", partEvent))
+					}
+
+					st.ReasoningBuf.WriteString(textContent)
+					msg := `{"type":"response.reasoning_summary_text.delta","sequence_number":0,"item_id":"","output_index":0,"summary_index":0,"text":""}`
+					msg, _ = sjson.Set(msg, "sequence_number", nextSeq())
+					msg, _ = sjson.Set(msg, "item_id", st.CurrentReasoningID)
+					msg, _ = sjson.Set(msg, "output_index", st.ReasoningIndex)
+					msg, _ = sjson.Set(msg, "text", textContent)
+					out = append(out, emitResponsesEvent("response.reasoning_summary_text.delta", msg))
+					continue
+				}
+
+				if st.InReasoningBlock {
+					out = append(out, st.closeGeminiReasoningBlock(nextSeq)...)
+				}
 
 				// 开始 text block
 				if !st.InTextBlock {
 					st.InTextBlock = true
-					st.CurrentMsgID = fmt.Sprintf("msg_%s_0", st.ResponseID)
+					if st.TextIndex < 0 {
+						st.TextIndex = st.NextOutputIndex
+						st.NextOutputIndex++
+						st.CurrentMsgID = fmt.Sprintf("msg_%s_%d", st.ResponseID, st.TextIndex)
+					}
 
 					// response.output_item.added
 					item := `{"type":"response.output_item.added","sequence_number":0,"output_index":0,"item":{"id":"","type":"message","status":"in_progress","content":[],"role":"assistant"}}`
 					item, _ = sjson.Set(item, "sequence_number", nextSeq())
+					item, _ = sjson.Set(item, "output_index", st.TextIndex)
 					item, _ = sjson.Set(item, "item.id", st.CurrentMsgID)
 					out = append(out, emitResponsesEvent("response.output_item.added", item))
 
@@ -355,6 +430,7 @@ func ConvertGeminiStreamToResponses(ctx context.Context, modelName string, origi
 					partEvent := `{"type":"response.content_part.added","sequence_number":0,"item_id":"","output_index":0,"content_index":0,"part":{"type":"output_text","annotations":[],"logprobs":[],"text":""}}`
 					partEvent, _ = sjson.Set(partEvent, "sequence_number", nextSeq())
 					partEvent, _ = sjson.Set(partEvent, "item_id", st.CurrentMsgID)
+					partEvent, _ = sjson.Set(partEvent, "output_index", st.TextIndex)
 					out = append(out, emitResponsesEvent("response.content_part.added", partEvent))
 				}
 
@@ -363,6 +439,7 @@ func ConvertGeminiStreamToResponses(ctx context.Context, modelName string, origi
 				msg := `{"type":"response.output_text.delta","sequence_number":0,"item_id":"","output_index":0,"content_index":0,"delta":"","logprobs":[]}`
 				msg, _ = sjson.Set(msg, "sequence_number", nextSeq())
 				msg, _ = sjson.Set(msg, "item_id", st.CurrentMsgID)
+				msg, _ = sjson.Set(msg, "output_index", st.TextIndex)
 				msg, _ = sjson.Set(msg, "delta", textContent)
 				out = append(out, emitResponsesEvent("response.output_text.delta", msg))
 			}
@@ -400,12 +477,17 @@ func ConvertGeminiStreamToResponses(ctx context.Context, modelName string, origi
 				}
 			}
 
+			if st.InReasoningBlock {
+				out = append(out, st.closeGeminiReasoningBlock(nextSeq)...)
+			}
+
 			// 关闭 text block
 			if st.InTextBlock {
 				// response.output_text.done
 				done := `{"type":"response.output_text.done","sequence_number":0,"item_id":"","output_index":0,"content_index":0,"text":"","logprobs":[]}`
 				done, _ = sjson.Set(done, "sequence_number", nextSeq())
 				done, _ = sjson.Set(done, "item_id", st.CurrentMsgID)
+				done, _ = sjson.Set(done, "output_index", st.TextIndex)
 				done, _ = sjson.Set(done, "text", st.TextBuf.String())
 				out = append(out, emitResponsesEvent("response.output_text.done", done))
 
@@ -413,12 +495,14 @@ func ConvertGeminiStreamToResponses(ctx context.Context, modelName string, origi
 				partDone := `{"type":"response.content_part.done","sequence_number":0,"item_id":"","output_index":0,"content_index":0,"part":{"type":"output_text","annotations":[],"logprobs":[],"text":""}}`
 				partDone, _ = sjson.Set(partDone, "sequence_number", nextSeq())
 				partDone, _ = sjson.Set(partDone, "item_id", st.CurrentMsgID)
+				partDone, _ = sjson.Set(partDone, "output_index", st.TextIndex)
 				partDone, _ = sjson.Set(partDone, "part.text", st.TextBuf.String())
 				out = append(out, emitResponsesEvent("response.content_part.done", partDone))
 
 				// response.output_item.done
 				final := `{"type":"response.output_item.done","sequence_number":0,"output_index":0,"item":{"id":"","type":"message","status":"completed","content":[{"type":"output_text","annotations":[],"logprobs":[],"text":""}],"role":"assistant"}}`
 				final, _ = sjson.Set(final, "sequence_number", nextSeq())
+				final, _ = sjson.Set(final, "output_index", st.TextIndex)
 				final, _ = sjson.Set(final, "item.id", st.CurrentMsgID)
 				final, _ = sjson.Set(final, "item.content.0.text", st.TextBuf.String())
 				out = append(out, emitResponsesEvent("response.output_item.done", final))
@@ -446,6 +530,35 @@ func ConvertGeminiStreamToResponses(ctx context.Context, modelName string, origi
 	}
 
 	return out
+}
+
+func (st *geminiToResponsesStreamState) closeGeminiReasoningBlock(nextSeq func() int) []string {
+	full := st.ReasoningBuf.String()
+
+	textDone := `{"type":"response.reasoning_summary_text.done","sequence_number":0,"item_id":"","output_index":0,"summary_index":0,"text":""}`
+	textDone, _ = sjson.Set(textDone, "sequence_number", nextSeq())
+	textDone, _ = sjson.Set(textDone, "item_id", st.CurrentReasoningID)
+	textDone, _ = sjson.Set(textDone, "output_index", st.ReasoningIndex)
+	textDone, _ = sjson.Set(textDone, "text", full)
+
+	partDone := `{"type":"response.reasoning_summary_part.done","sequence_number":0,"item_id":"","output_index":0,"summary_index":0,"part":{"type":"summary_text","text":""}}`
+	partDone, _ = sjson.Set(partDone, "sequence_number", nextSeq())
+	partDone, _ = sjson.Set(partDone, "item_id", st.CurrentReasoningID)
+	partDone, _ = sjson.Set(partDone, "output_index", st.ReasoningIndex)
+	partDone, _ = sjson.Set(partDone, "part.text", full)
+
+	itemDone := `{"type":"response.output_item.done","sequence_number":0,"output_index":0,"item":{"id":"","type":"reasoning","status":"completed","summary":[]}}`
+	itemDone, _ = sjson.Set(itemDone, "sequence_number", nextSeq())
+	itemDone, _ = sjson.Set(itemDone, "output_index", st.ReasoningIndex)
+	itemDone, _ = sjson.Set(itemDone, "item.id", st.CurrentReasoningID)
+	itemDone, _ = sjson.Set(itemDone, "item.summary", []interface{}{map[string]interface{}{"type": "summary_text", "text": full}})
+
+	st.InReasoningBlock = false
+	return []string{
+		emitResponsesEvent("response.reasoning_summary_text.done", textDone),
+		emitResponsesEvent("response.reasoning_summary_part.done", partDone),
+		emitResponsesEvent("response.output_item.done", itemDone),
+	}
 }
 
 // generateCompletedEvent 生成完成事件
@@ -479,6 +592,18 @@ func (st *geminiToResponsesStreamState) generateCompletedEvent(originalRequestRa
 
 	// 构建 output
 	var outputs []interface{}
+
+	if st.ReasoningBuf.Len() > 0 {
+		outputs = append(outputs, map[string]interface{}{
+			"id":     st.CurrentReasoningID,
+			"type":   "reasoning",
+			"status": "completed",
+			"summary": []interface{}{map[string]interface{}{
+				"type": "summary_text",
+				"text": st.ReasoningBuf.String(),
+			}},
+		})
+	}
 
 	// 添加文本消息（如果有）
 	if st.TextBuf.Len() > 0 || st.CurrentMsgID != "" {

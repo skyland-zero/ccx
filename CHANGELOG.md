@@ -1,5 +1,13 @@
 ## [Unreleased]
 
+### Added
+
+- **全面支持 DeepSeek thinking 内容跨协议透传** - 在 `chat`、`messages`、`responses`、`gemini` 四条链路中完整支持 `reasoning_content` / `thinking` 字段的双向透传：
+  - Chat API：Claude → OpenAI 转换时 `thinking_delta` 输出为 `delta.reasoning_content`；OpenAI 上游的 `reasoning_content` 回传时注入为 Claude `thinking` block
+  - Messages API：OpenAI 上游 `reasoning_content` 转换为 Claude `thinking` content block
+  - Responses API：新增 `claude_to_responses` 转换器，支持 Claude thinking → Responses reasoning 转换
+  - 新增全链路 DeepSeek thinking 矩阵测试覆盖
+
 ### Fixed
 
 - **修复 Failover Fuzzy 模式下 5xx 误判为不可重试错误** - `ShouldRetryWithNextKey` 的参数校验类不可重试错误检查（`invalid_request` 等）现在仅对 4xx 客户端错误生效，5xx 服务端错误允许 failover 到下一个渠道；内容审核类错误仍在任何状态码下阻止 failover，避免重复发送相同违规请求

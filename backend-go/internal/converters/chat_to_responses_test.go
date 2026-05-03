@@ -243,6 +243,34 @@ func TestConvertOpenAIChatToResponses_Stream(t *testing.T) {
 	}
 }
 
+func TestConvertOpenAIChatToResponses_StreamReasoningContent(t *testing.T) {
+	ctx := context.Background()
+	sseLines := []string{
+		`data: {"id":"chatcmpl-ds","object":"chat.completion.chunk","created":1234567890,"model":"deepseek-v4-pro","choices":[{"index":0,"delta":{"reasoning_content":"chat reasoning"},"finish_reason":null}]}`,
+		`data: {"id":"chatcmpl-ds","object":"chat.completion.chunk","created":1234567890,"model":"deepseek-v4-pro","choices":[{"index":0,"delta":{"content":"chat text"},"finish_reason":null}]}`,
+		`data: {"id":"chatcmpl-ds","object":"chat.completion.chunk","created":1234567890,"model":"deepseek-v4-pro","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`,
+		`data: [DONE]`,
+	}
+
+	var state any
+	var allEvents []string
+	for _, line := range sseLines {
+		events := ConvertOpenAIChatToResponses(ctx, "deepseek-v4-pro", []byte(`{"model":"deepseek-v4-pro","input":"hello"}`), nil, []byte(line), &state)
+		allEvents = append(allEvents, events...)
+	}
+
+	joined := strings.Join(allEvents, "\n")
+	if !strings.Contains(joined, `"type":"reasoning"`) {
+		t.Fatalf("expected reasoning item, got %v", allEvents)
+	}
+	if !strings.Contains(joined, `"text":"chat reasoning"`) {
+		t.Fatalf("expected reasoning summary text, got %v", allEvents)
+	}
+	if !strings.Contains(joined, `"delta":"chat text"`) {
+		t.Fatalf("expected text delta after reasoning, got %v", allEvents)
+	}
+}
+
 func TestConvertOpenAIChatToResponses_ToolCall(t *testing.T) {
 	ctx := context.Background()
 

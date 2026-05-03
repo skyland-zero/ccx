@@ -56,6 +56,7 @@ func responsesItemFromMap(itemMap map[string]interface{}) ResponsesItem {
 		Role:      stringFromMap(itemMap, "role"),
 		Status:    stringFromMap(itemMap, "status"),
 		Content:   itemMap["content"],
+		Summary:   itemMap["summary"],
 		CallID:    stringFromMap(itemMap, "call_id"),
 		Name:      stringFromMap(itemMap, "name"),
 		Arguments: stringFromMap(itemMap, "arguments"),

@@ -210,6 +210,31 @@ func TestConvertGeminiStreamToResponses_MapsFinishReasonToStatus(t *testing.T) {
 	}
 }
 
+func TestConvertGeminiStreamToResponses_ThoughtToReasoning(t *testing.T) {
+	ctx := context.Background()
+	var state any
+	originalReq := []byte(`{"model":"deepseek-v4-pro"}`)
+
+	first := `data: {"candidates":[{"content":{"role":"model","parts":[{"text":"gemini thinking","thought":true},{"text":"answer"}]}}]}`
+	second := `data: {"candidates":[{"content":{"parts":[]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":5}}`
+
+	events := ConvertGeminiStreamToResponses(ctx, "deepseek-v4-pro", originalReq, nil, []byte(first), &state)
+	events = append(events, ConvertGeminiStreamToResponses(ctx, "deepseek-v4-pro", originalReq, nil, []byte(second), &state)...)
+	joined := strings.Join(events, "\n")
+
+	for _, want := range []string{
+		`response.reasoning_summary_text.delta`,
+		`"text":"gemini thinking"`,
+		`"type":"reasoning"`,
+		`"delta":"answer"`,
+		`"type":"response.completed"`,
+	} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("expected %q in converted events, got %v", want, events)
+		}
+	}
+}
+
 func TestConvertGeminiStreamToResponses_PreservesFunctionCallCallID(t *testing.T) {
 	ctx := context.Background()
 	var state any

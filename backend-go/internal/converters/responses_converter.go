@@ -18,14 +18,10 @@ func ResponsesToClaudeMessages(sess *session.Session, newInput interface{}, inst
 	messages := []types.ClaudeMessage{}
 
 	// 1. 处理历史消息
-	for _, item := range sess.Messages {
-		msg, err := responsesItemToClaudeMessage(item)
-		if err != nil {
-			return nil, "", fmt.Errorf("转换历史消息失败: %w", err)
-		}
-		if msg != nil {
-			messages = append(messages, *msg)
-		}
+	var err error
+	messages, err = appendResponsesItemsToClaudeMessages(messages, sess.Messages)
+	if err != nil {
+		return nil, "", fmt.Errorf("转换历史消息失败: %w", err)
 	}
 
 	// 2. 处理新输入（统一在解析阶段完成 legacy tool_* → function_* 归一化）
@@ -49,21 +45,80 @@ func ResponsesToClaudeMessages(sess *session.Session, newInput interface{}, inst
 	}
 
 	// 4. 转换新输入，跳过与被跳过 tool_call 对应的结果项。
+	filteredNewItems := make([]types.ResponsesItem, 0, len(newItems))
 	for _, item := range newItems {
 		if item.Type == "function_call_output" && item.CallID != "" && skippedCallIDs[item.CallID] {
+			continue
+		}
+		filteredNewItems = append(filteredNewItems, item)
+	}
+
+	messages, err = appendResponsesItemsToClaudeMessages(messages, filteredNewItems)
+	if err != nil {
+		return nil, "", fmt.Errorf("转换新消息失败: %w", err)
+	}
+
+	return messages, instructions, nil
+}
+
+func appendResponsesItemsToClaudeMessages(messages []types.ClaudeMessage, items []types.ResponsesItem) ([]types.ClaudeMessage, error) {
+	pendingThinking := []types.ClaudeContent{}
+
+	flushThinking := func() {
+		if len(pendingThinking) == 0 {
+			return
+		}
+		content := append([]types.ClaudeContent(nil), pendingThinking...)
+		messages = append(messages, types.ClaudeMessage{Role: "assistant", Content: content})
+		pendingThinking = nil
+	}
+
+	for _, item := range items {
+		item = types.NormalizeResponsesItem(item)
+		if item.Type == "reasoning" {
+			thinking := extractResponsesReasoningText(item)
+			if thinking != "" {
+				pendingThinking = append(pendingThinking, types.ClaudeContent{Type: "thinking", Thinking: thinking})
+			}
 			continue
 		}
 
 		msg, err := responsesItemToClaudeMessage(item)
 		if err != nil {
-			return nil, "", fmt.Errorf("转换新消息失败: %w", err)
+			return nil, err
 		}
-		if msg != nil {
-			messages = append(messages, *msg)
+		if msg == nil {
+			continue
 		}
+
+		if len(pendingThinking) > 0 {
+			if msg.Role == "assistant" {
+				switch content := msg.Content.(type) {
+				case []types.ClaudeContent:
+					merged := append([]types.ClaudeContent(nil), pendingThinking...)
+					merged = append(merged, content...)
+					msg.Content = merged
+					pendingThinking = nil
+				case string:
+					merged := append([]types.ClaudeContent(nil), pendingThinking...)
+					if content != "" {
+						merged = append(merged, types.ClaudeContent{Type: "text", Text: content})
+					}
+					msg.Content = merged
+					pendingThinking = nil
+				default:
+					flushThinking()
+				}
+			} else {
+				flushThinking()
+			}
+		}
+
+		messages = append(messages, *msg)
 	}
 
-	return messages, instructions, nil
+	flushThinking()
+	return messages, nil
 }
 
 // responsesItemToClaudeMessage 单个 ResponsesItem 转换为 Claude Message
@@ -78,6 +133,19 @@ func responsesItemToClaudeMessage(item types.ResponsesItem) (*types.ClaudeMessag
 	}
 
 	switch item.Type {
+	case "reasoning":
+		thinking := extractResponsesReasoningText(item)
+		if thinking == "" {
+			return nil, nil
+		}
+		return &types.ClaudeMessage{
+			Role: "assistant",
+			Content: []types.ClaudeContent{{
+				Type:     "thinking",
+				Thinking: thinking,
+			}},
+		}, nil
+
 	case "message":
 		// 新格式：嵌套结构（type=message, role=user/assistant, content=[]ContentBlock）
 		role, contentText := resolveResponsesTextItem(item)
@@ -166,6 +234,15 @@ func ClaudeResponseToResponses(claudeResp map[string]interface{}, sessionID stri
 
 		blockType, _ := contentBlock["type"].(string)
 		switch blockType {
+		case "thinking":
+			thinking, _ := contentBlock["thinking"].(string)
+			if thinking != "" {
+				output = append(output, types.ResponsesItem{
+					Type:    "reasoning",
+					Status:  "completed",
+					Summary: []interface{}{map[string]interface{}{"type": "summary_text", "text": thinking}},
+				})
+			}
 		case "text":
 			text, _ := contentBlock["text"].(string)
 			output = append(output, types.ResponsesItem{
@@ -228,12 +305,7 @@ func ResponsesToOpenAIChatMessages(sess *session.Session, newInput interface{}, 
 	}
 
 	// 2. 处理历史消息
-	for _, item := range sess.Messages {
-		msg := responsesItemToOpenAIMessage(item)
-		if msg != nil {
-			messages = append(messages, msg)
-		}
-	}
+	messages = appendResponsesItemsToOpenAIMessages(messages, sess.Messages)
 
 	// 3. 处理新输入
 	newItems, err := parseResponsesInput(newInput)
@@ -241,14 +313,59 @@ func ResponsesToOpenAIChatMessages(sess *session.Session, newInput interface{}, 
 		return nil, err
 	}
 
-	for _, item := range newItems {
-		msg := responsesItemToOpenAIMessage(item)
-		if msg != nil {
-			messages = append(messages, msg)
-		}
-	}
+	messages = appendResponsesItemsToOpenAIMessages(messages, newItems)
 
 	return messages, nil
+}
+
+func appendResponsesItemsToOpenAIMessages(messages []map[string]interface{}, items []types.ResponsesItem) []map[string]interface{} {
+	var pendingReasoning []string
+
+	flushReasoning := func() {
+		if len(pendingReasoning) == 0 {
+			return
+		}
+		messages = append(messages, map[string]interface{}{
+			"role":              "assistant",
+			"content":           nil,
+			"reasoning_content": strings.Join(pendingReasoning, "\n"),
+		})
+		pendingReasoning = nil
+	}
+
+	for _, item := range items {
+		item = types.NormalizeResponsesItem(item)
+		if item.Type == "reasoning" {
+			reasoning := extractResponsesReasoningText(item)
+			if reasoning != "" {
+				pendingReasoning = append(pendingReasoning, reasoning)
+			}
+			continue
+		}
+
+		msg := responsesItemToOpenAIMessage(item)
+		if msg == nil {
+			continue
+		}
+
+		if len(pendingReasoning) > 0 {
+			role, _ := msg["role"].(string)
+			if role == "assistant" {
+				msg["reasoning_content"] = strings.Join(pendingReasoning, "\n")
+				if _, ok := msg["content"]; !ok {
+					msg["content"] = nil
+				}
+				pendingReasoning = nil
+			} else {
+				flushReasoning()
+			}
+		}
+
+		messages = append(messages, msg)
+	}
+
+	flushReasoning()
+	return messages
 }
 
 // responsesItemToOpenAIMessage 单个 ResponsesItem 转换为 OpenAI Message
@@ -260,6 +377,17 @@ func responsesItemToOpenAIMessage(item types.ResponsesItem) map[string]interface
 	}
 
 	switch item.Type {
+	case "reasoning":
+		reasoning := extractResponsesReasoningText(item)
+		if reasoning == "" {
+			return nil
+		}
+		return map[string]interface{}{
+			"role":              "assistant",
+			"content":           nil,
+			"reasoning_content": reasoning,
+		}
+
 	case "message":
 		// 新格式：嵌套结构
 		role, contentText := resolveResponsesTextItem(item)
@@ -345,6 +473,16 @@ func OpenAIChatResponseToResponses(openaiResp map[string]interface{}, sessionID 
 		choice, ok := choices[0].(map[string]interface{})
 		if ok {
 			message, _ := choice["message"].(map[string]interface{})
+			if reasoning, _ := message["reasoning_content"].(string); reasoning != "" {
+				output = append(output, types.ResponsesItem{
+					Type:   "reasoning",
+					Status: "completed",
+					Summary: []interface{}{map[string]interface{}{
+						"type": "summary_text",
+						"text": reasoning,
+					}},
+				})
+			}
 			content, _ := message["content"].(string)
 			if content != "" {
 				output = append(output, types.ResponsesItem{

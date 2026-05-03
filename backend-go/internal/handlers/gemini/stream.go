@@ -163,7 +163,30 @@ func streamClaudeToGemini(
 				continue
 			}
 			deltaType, _ := delta["type"].(string)
-			if deltaType == "text_delta" {
+			switch deltaType {
+			case "thinking_delta":
+				thinking, _ := delta["thinking"].(string)
+				if thinking == "" {
+					continue
+				}
+				geminiChunk := types.GeminiStreamChunk{
+					Candidates: []types.GeminiCandidate{
+						{
+							Content: &types.GeminiContent{
+								Parts: []types.GeminiPart{
+									{Text: thinking, Thought: true},
+								},
+								Role: "model",
+							},
+						},
+					},
+				}
+				chunkBytes, _ := json.Marshal(geminiChunk)
+				fmt.Fprintf(c.Writer, "data: %s\n\n", string(chunkBytes))
+				if flusher != nil {
+					flusher.Flush()
+				}
+			case "text_delta":
 				text, _ := delta["text"].(string)
 				currentText.WriteString(text)
 
@@ -330,6 +353,27 @@ func streamOpenAIToGemini(
 		}
 
 		// 提取文本内容
+		if reasoning, _ := delta["reasoning_content"].(string); reasoning != "" {
+			geminiChunk := types.GeminiStreamChunk{
+				Candidates: []types.GeminiCandidate{
+					{
+						Content: &types.GeminiContent{
+							Parts: []types.GeminiPart{
+								{Text: reasoning, Thought: true},
+							},
+							Role: "model",
+						},
+					},
+				},
+			}
+
+			chunkBytes, _ := json.Marshal(geminiChunk)
+			fmt.Fprintf(c.Writer, "data: %s\n\n", string(chunkBytes))
+			if flusher != nil {
+				flusher.Flush()
+			}
+		}
+
 		content, _ := delta["content"].(string)
 		if content != "" {
 			currentText.WriteString(content)

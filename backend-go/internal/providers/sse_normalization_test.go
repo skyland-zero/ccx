@@ -100,6 +100,42 @@ func TestOpenAIProvider_HandleStreamResponse_AcceptsNoSpaceDataLines(t *testing.
 	}
 }
 
+func TestOpenAIProvider_HandleStreamResponse_MapsReasoningContentToThinkingDelta(t *testing.T) {
+	body := strings.Join([]string{
+		`data: {"id":"chatcmpl-1","model":"deepseek-v4-pro","choices":[{"delta":{"reasoning_content":"think"},"finish_reason":null}]}`,
+		`data: {"id":"chatcmpl-1","model":"deepseek-v4-pro","choices":[{"delta":{"content":"answer"},"finish_reason":null}]}`,
+		`data: {"id":"chatcmpl-1","model":"deepseek-v4-pro","choices":[{"delta":{},"finish_reason":"stop"}]}`,
+		`data: [DONE]`,
+		"",
+	}, "\n")
+
+	provider := &OpenAIProvider{}
+	eventChan, errChan, err := provider.HandleStreamResponse(io.NopCloser(strings.NewReader(body)))
+	if err != nil {
+		t.Fatalf("HandleStreamResponse returned error: %v", err)
+	}
+
+	events := collectStreamEvents(eventChan)
+	select {
+	case streamErr := <-errChan:
+		if streamErr != nil {
+			t.Fatalf("unexpected stream error: %v", streamErr)
+		}
+	default:
+	}
+
+	joined := strings.Join(events, "\n")
+	if !strings.Contains(joined, `"type":"thinking"`) {
+		t.Fatalf("expected thinking content block, got %v", events)
+	}
+	if !strings.Contains(joined, `"type":"thinking_delta"`) || !strings.Contains(joined, `"thinking":"think"`) {
+		t.Fatalf("expected thinking_delta from reasoning_content, got %v", events)
+	}
+	if !strings.Contains(joined, `"type":"text_delta"`) || !strings.Contains(joined, `"text":"answer"`) {
+		t.Fatalf("expected text delta after reasoning, got %v", events)
+	}
+}
+
 func TestGeminiProvider_HandleStreamResponse_AcceptsNoSpaceDataLines(t *testing.T) {
 	body := strings.Join([]string{
 		`data:{"candidates":[{"content":{"parts":[{"text":"OK"}]},"finishReason":"STOP"}]}`,

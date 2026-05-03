@@ -183,6 +183,13 @@ func ClaudeResponseToGemini(claudeResp map[string]interface{}) (*types.GeminiRes
 
 		blockType, _ := contentBlock["type"].(string)
 		switch blockType {
+		case "thinking":
+			if thinking, _ := contentBlock["thinking"].(string); thinking != "" {
+				parts = append(parts, types.GeminiPart{
+					Text:    thinking,
+					Thought: true,
+				})
+			}
 		case "text":
 			text, _ := contentBlock["text"].(string)
 			parts = append(parts, types.GeminiPart{
@@ -267,6 +274,13 @@ func OpenAIResponseToGemini(openaiResp map[string]interface{}) (*types.GeminiRes
 
 	// 处理 message
 	if message, ok := choice["message"].(map[string]interface{}); ok {
+		if reasoning, ok := message["reasoning_content"].(string); ok && reasoning != "" {
+			parts = append(parts, types.GeminiPart{
+				Text:    reasoning,
+				Thought: true,
+			})
+		}
+
 		// 文本内容
 		if content, ok := message["content"].(string); ok && content != "" {
 			parts = append(parts, types.GeminiPart{
@@ -355,6 +369,13 @@ func geminiContentToClaudeMessage(content *types.GeminiContent) (map[string]inte
 
 	for _, part := range content.Parts {
 		if part.Text != "" {
+			if part.Thought && role == "assistant" {
+				claudeContent = append(claudeContent, map[string]interface{}{
+					"type":     "thinking",
+					"thinking": part.Text,
+				})
+				continue
+			}
 			claudeContent = append(claudeContent, map[string]interface{}{
 				"type": "text",
 				"text": part.Text,
@@ -426,12 +447,17 @@ func geminiContentToOpenAIMessage(content *types.GeminiContent) (map[string]inte
 	// 检查是否有工具调用
 	var toolCalls []map[string]interface{}
 	var textParts []string
+	var reasoningParts []string
 	var hasToolResponse bool
 	var toolResponseName string
 	var toolResponseContent interface{}
 
 	for idx, part := range content.Parts {
 		if part.Text != "" {
+			if part.Thought && role == "assistant" {
+				reasoningParts = append(reasoningParts, part.Text)
+				continue
+			}
 			textParts = append(textParts, part.Text)
 		}
 
@@ -491,6 +517,12 @@ func geminiContentToOpenAIMessage(content *types.GeminiContent) (map[string]inte
 	} else {
 		// 普通消息
 		msg["content"] = strings.Join(textParts, "\n")
+	}
+	if len(reasoningParts) > 0 && role == "assistant" {
+		msg["reasoning_content"] = strings.Join(reasoningParts, "\n")
+		if _, ok := msg["content"]; !ok {
+			msg["content"] = nil
+		}
 	}
 
 	return msg, nil

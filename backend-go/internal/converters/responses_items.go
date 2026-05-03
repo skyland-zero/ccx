@@ -6,6 +6,7 @@ package converters
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/BenedictKing/ccx/internal/types"
 )
@@ -105,6 +106,48 @@ func resolveResponsesTextItem(item types.ResponsesItem) (string, string) {
 		role = "user"
 	}
 	return role, extractTextFromContent(item.Content)
+}
+
+func extractResponsesReasoningText(item types.ResponsesItem) string {
+	if text := extractReasoningTextFromSummary(item.Summary); text != "" {
+		return text
+	}
+	return extractReasoningTextFromSummary(item.Content)
+}
+
+func extractReasoningTextFromSummary(raw interface{}) string {
+	switch v := raw.(type) {
+	case string:
+		return v
+	case []interface{}:
+		parts := make([]string, 0, len(v))
+		for _, rawPart := range v {
+			if part, ok := rawPart.(map[string]interface{}); ok {
+				if text, ok := part["text"].(string); ok && text != "" {
+					parts = append(parts, text)
+				}
+			}
+		}
+		return strings.Join(parts, "\n")
+	case []map[string]interface{}:
+		parts := make([]string, 0, len(v))
+		for _, part := range v {
+			if text, ok := part["text"].(string); ok && text != "" {
+				parts = append(parts, text)
+			}
+		}
+		return strings.Join(parts, "\n")
+	case []types.ContentBlock:
+		parts := make([]string, 0, len(v))
+		for _, part := range v {
+			if part.Text != "" {
+				parts = append(parts, part.Text)
+			}
+		}
+		return strings.Join(parts, "\n")
+	default:
+		return ""
+	}
 }
 
 func normalizeGeminiRole(role string) string {
