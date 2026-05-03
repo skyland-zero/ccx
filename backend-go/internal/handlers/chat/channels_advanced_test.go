@@ -45,11 +45,12 @@ func TestBuildHealthCheckURLs_UseExistingVersionSuffix(t *testing.T) {
 
 func TestGetUpstreams_IncludesUnifiedStateFields(t *testing.T) {
 	cm := setupChatConfigManager(t, []config.UpstreamConfig{{
-		Name:        "chat-ch",
-		ServiceType: "openai",
-		BaseURL:     "https://api.example.com",
-		APIKeys:     []string{"sk-1"},
-		Status:      "suspended",
+		Name:                          "chat-ch",
+		ServiceType:                   "openai",
+		BaseURL:                       "https://api.example.com",
+		APIKeys:                       []string{"sk-1"},
+		Status:                        "suspended",
+		NormalizeNonstandardChatRoles: true,
 		DisabledAPIKeys: []config.DisabledKeyInfo{{
 			Key:        "sk-disabled",
 			Reason:     "insufficient_balance",
@@ -90,6 +91,9 @@ func TestGetUpstreams_IncludesUnifiedStateFields(t *testing.T) {
 	}
 	if got := resp.Channels[0]["runtimeState"]; got != "disabled_keys_present" {
 		t.Fatalf("runtimeState = %v, want disabled_keys_present", got)
+	}
+	if got := resp.Channels[0]["normalizeNonstandardChatRoles"]; got != true {
+		t.Fatalf("normalizeNonstandardChatRoles = %v, want true", got)
 	}
 }
 

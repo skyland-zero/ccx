@@ -205,6 +205,8 @@ export type MessageKey =
   | 'addChannel.autoBlacklistBalanceHint'
   | 'addChannel.normalizeMetadataUserIdLabel'
   | 'addChannel.normalizeMetadataUserIdHint'
+  | 'addChannel.normalizeNonstandardChatRolesLabel'
+  | 'addChannel.normalizeNonstandardChatRolesHint'
   | 'addChannel.injectDummyThoughtSignatureLabel'
   | 'addChannel.injectDummyThoughtSignatureHint'
   | 'addChannel.stripThoughtSignatureLabel'
@@ -571,6 +573,8 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'addChannel.autoBlacklistBalanceHint': 'Automatically move the key to the blacklist when the upstream reports insufficient balance.',
     'addChannel.normalizeMetadataUserIdLabel': 'Normalize metadata.user_id',
     'addChannel.normalizeMetadataUserIdHint': 'Auto-convert JSON object user_id to a flat string for upstream compatibility.',
+    'addChannel.normalizeNonstandardChatRolesLabel': 'Normalize non-standard chat roles',
+    'addChannel.normalizeNonstandardChatRolesHint': 'When enabled, roles outside system/user/assistant/tool are sent upstream as user.',
     'addChannel.injectDummyThoughtSignatureLabel': 'Inject dummy thought signature',
     'addChannel.injectDummyThoughtSignatureHint': 'Injects a dummy signature into functionCall for third-party APIs that require this field. Disable it for the official API.',
     'addChannel.stripThoughtSignatureLabel': 'Strip thought signature',
@@ -936,6 +940,8 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'addChannel.autoBlacklistBalanceHint': 'Pindahkan key ke daftar blokir otomatis saat upstream melaporkan saldo tidak cukup.',
     'addChannel.normalizeMetadataUserIdLabel': 'Normalisasi metadata.user_id',
     'addChannel.normalizeMetadataUserIdHint': 'Otomatis ubah user_id objek JSON menjadi string datar untuk kompatibilitas upstream.',
+    'addChannel.normalizeNonstandardChatRolesLabel': 'Normalisasi role chat non-standar',
+    'addChannel.normalizeNonstandardChatRolesHint': 'Jika aktif, role di luar system/user/assistant/tool dikirim ke upstream sebagai user.',
     'addChannel.injectDummyThoughtSignatureLabel': 'Sisipkan dummy thought signature',
     'addChannel.injectDummyThoughtSignatureHint': 'Menyisipkan dummy signature ke functionCall agar kompatibel dengan API pihak ketiga yang membutuhkan field ini. Matikan untuk API resmi.',
     'addChannel.stripThoughtSignatureLabel': 'Hapus thought signature',
@@ -1301,6 +1307,8 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'addChannel.autoBlacklistBalanceHint': '当上游返回余额不足时，自动将该 Key 移入拉黑列表。',
     'addChannel.normalizeMetadataUserIdLabel': '规范化 metadata.user_id',
     'addChannel.normalizeMetadataUserIdHint': '自动将 JSON 对象格式的 user_id 转换为扁平字符串，确保上游兼容性。',
+    'addChannel.normalizeNonstandardChatRolesLabel': '规范化非常见 Chat role',
+    'addChannel.normalizeNonstandardChatRolesHint': '开启后将 system/user/assistant/tool 之外的 role 作为 user 转发给上游。',
     'addChannel.injectDummyThoughtSignatureLabel': '注入 Dummy Thought Signature',
     'addChannel.injectDummyThoughtSignatureHint': '为 functionCall 注入 dummy signature，兼容需要该字段的第三方 API（官方 API 请关闭）',
     'addChannel.stripThoughtSignatureLabel': '移除 Thought Signature',

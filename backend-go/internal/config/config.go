@@ -31,6 +31,8 @@ type UpstreamConfig struct {
 	ReasoningMapping   map[string]string `json:"reasoningMapping,omitempty"`
 	TextVerbosity      string            `json:"textVerbosity,omitempty"`
 	FastMode           bool              `json:"fastMode,omitempty"`
+	// OpenAI Chat 上游配置：启用后将非标准 Chat role 改写为 user（默认 false）
+	NormalizeNonstandardChatRoles bool `json:"normalizeNonstandardChatRoles,omitempty"`
 	// 多渠道调度相关字段
 	Priority       int        `json:"priority"`                 // 渠道优先级（数字越小优先级越高，默认按索引）
 	Status         string     `json:"status"`                   // 渠道状态：active（正常）, suspended（暂停）, disabled（备用池）
@@ -91,18 +93,19 @@ func (u *UpstreamConfig) IsNormalizeMetadataUserIDEnabled() bool {
 
 // UpstreamUpdate 用于部分更新 UpstreamConfig
 type UpstreamUpdate struct {
-	Name               *string           `json:"name"`
-	ServiceType        *string           `json:"serviceType"`
-	BaseURL            *string           `json:"baseUrl"`
-	BaseURLs           []string          `json:"baseUrls"`
-	APIKeys            []string          `json:"apiKeys"`
-	Description        *string           `json:"description"`
-	Website            *string           `json:"website"`
-	InsecureSkipVerify *bool             `json:"insecureSkipVerify"`
-	ModelMapping       map[string]string `json:"modelMapping"`
-	ReasoningMapping   map[string]string `json:"reasoningMapping"`
-	TextVerbosity      *string           `json:"textVerbosity"`
-	FastMode           *bool             `json:"fastMode"`
+	Name                          *string           `json:"name"`
+	ServiceType                   *string           `json:"serviceType"`
+	BaseURL                       *string           `json:"baseUrl"`
+	BaseURLs                      []string          `json:"baseUrls"`
+	APIKeys                       []string          `json:"apiKeys"`
+	Description                   *string           `json:"description"`
+	Website                       *string           `json:"website"`
+	InsecureSkipVerify            *bool             `json:"insecureSkipVerify"`
+	ModelMapping                  map[string]string `json:"modelMapping"`
+	ReasoningMapping              map[string]string `json:"reasoningMapping"`
+	TextVerbosity                 *string           `json:"textVerbosity"`
+	FastMode                      *bool             `json:"fastMode"`
+	NormalizeNonstandardChatRoles *bool             `json:"normalizeNonstandardChatRoles"`
 	// 多渠道调度相关字段
 	Priority                *int       `json:"priority"`
 	Status                  *string    `json:"status"`

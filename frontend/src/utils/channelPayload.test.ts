@@ -216,4 +216,33 @@ describe('buildChannelPayload', () => {
 
     expect(result.normalizeMetadataUserId).toBe(false)
   })
+
+  it('应携带 normalizeNonstandardChatRoles 开关', () => {
+    const result = buildChannelPayload({
+      name: 'chat-role-guard',
+      serviceType: 'openai',
+      baseUrl: 'https://api.example.com/v1',
+      baseUrls: [],
+      website: '',
+      insecureSkipVerify: false,
+      lowQuality: false,
+      injectDummyThoughtSignature: false,
+      stripThoughtSignature: false,
+      description: '',
+      apiKeys: ['sk-1'],
+      modelMapping: {},
+      reasoningMapping: {},
+      textVerbosity: '',
+      fastMode: false,
+      customHeaders: {},
+      proxyUrl: '',
+      routePrefix: '',
+      supportedModels: [],
+      autoBlacklistBalance: true,
+      normalizeMetadataUserId: true,
+      normalizeNonstandardChatRoles: true
+    })
+
+    expect(result.normalizeNonstandardChatRoles).toBe(true)
+  })
 })

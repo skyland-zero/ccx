@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/BenedictKing/ccx/internal/config"
+	"github.com/BenedictKing/ccx/internal/converters"
 	"github.com/BenedictKing/ccx/internal/handlers/common"
 	"github.com/BenedictKing/ccx/internal/middleware"
 	"github.com/BenedictKing/ccx/internal/scheduler"
@@ -242,6 +243,44 @@ func handleSingleChannel(
 	handleAllKeysFailed(c, lastFailoverError, lastError)
 }
 
+func buildChatCompletionRequestBody(
+	bodyBytes []byte,
+	model string,
+	mappedModel string,
+	upstream *config.UpstreamConfig,
+	includeAdvancedOptions bool,
+) ([]byte, error) {
+	needsRewrite := includeAdvancedOptions || mappedModel != model || upstream.NormalizeNonstandardChatRoles
+	if !needsRewrite {
+		return bodyBytes, nil
+	}
+
+	var reqMap map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &reqMap); err != nil {
+		return nil, err
+	}
+
+	reqMap["model"] = mappedModel
+
+	if includeAdvancedOptions {
+		if effort := config.ResolveReasoningEffort(model, upstream); effort != "" {
+			reqMap["reasoning"] = map[string]interface{}{"effort": effort}
+		}
+		if upstream.TextVerbosity != "" {
+			reqMap["text"] = map[string]interface{}{"verbosity": upstream.TextVerbosity}
+		}
+		if upstream.FastMode {
+			reqMap["service_tier"] = "priority"
+		}
+	}
+
+	if upstream.NormalizeNonstandardChatRoles {
+		converters.NormalizeNonstandardChatRolesInRequest(reqMap)
+	}
+
+	return json.Marshal(reqMap)
+}
+
 // buildProviderRequest 构建上游请求
 func buildProviderRequest(
 	c *gin.Context,
@@ -263,22 +302,8 @@ func buildProviderRequest(
 	switch upstream.ServiceType {
 	case "openai", "responses", "":
 		// OpenAI 兼容上游：透传请求，仅替换 model 并注入高级参数
-		var reqMap map[string]interface{}
-		if err := json.Unmarshal(bodyBytes, &reqMap); err != nil {
-			return nil, err
-		}
-		reqMap["model"] = mappedModel
-		if effort := config.ResolveReasoningEffort(model, upstream); effort != "" {
-			reqMap["reasoning"] = map[string]interface{}{"effort": effort}
-		}
-		if upstream.TextVerbosity != "" {
-			reqMap["text"] = map[string]interface{}{"verbosity": upstream.TextVerbosity}
-		}
-		if upstream.FastMode {
-			reqMap["service_tier"] = "priority"
-		}
 		var err error
-		requestBody, err = json.Marshal(reqMap)
+		requestBody, err = buildChatCompletionRequestBody(bodyBytes, model, mappedModel, upstream, true)
 		if err != nil {
 			return nil, err
 		}
@@ -306,19 +331,10 @@ func buildProviderRequest(
 
 	case "gemini":
 		// Gemini 上游：透传为 OpenAI Chat 格式（大部分 Gemini 兼容端点支持 OpenAI 格式）
-		if mappedModel != model {
-			var reqMap map[string]interface{}
-			if err := json.Unmarshal(bodyBytes, &reqMap); err != nil {
-				return nil, err
-			}
-			reqMap["model"] = mappedModel
-			var err error
-			requestBody, err = json.Marshal(reqMap)
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			requestBody = bodyBytes
+		var err error
+		requestBody, err = buildChatCompletionRequestBody(bodyBytes, model, mappedModel, upstream, false)
+		if err != nil {
+			return nil, err
 		}
 		if skipVersionPrefix {
 			url = fmt.Sprintf("%s/chat/completions", strings.TrimRight(baseURL, "/"))
@@ -328,19 +344,10 @@ func buildProviderRequest(
 
 	default:
 		// 默认当作 OpenAI 兼容处理
-		if mappedModel != model {
-			var reqMap map[string]interface{}
-			if err := json.Unmarshal(bodyBytes, &reqMap); err != nil {
-				return nil, err
-			}
-			reqMap["model"] = mappedModel
-			var err error
-			requestBody, err = json.Marshal(reqMap)
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			requestBody = bodyBytes
+		var err error
+		requestBody, err = buildChatCompletionRequestBody(bodyBytes, model, mappedModel, upstream, false)
+		if err != nil {
+			return nil, err
 		}
 		if skipVersionPrefix {
 			url = fmt.Sprintf("%s/chat/completions", strings.TrimRight(baseURL, "/"))

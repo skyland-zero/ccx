@@ -134,6 +134,12 @@ func (p *ResponsesProvider) buildProviderRequestBody(c *gin.Context, requestPath
 		providerReq = convertedReq
 	}
 
+	if upstream.NormalizeNonstandardChatRoles {
+		if reqMap, ok := providerReq.(map[string]interface{}); ok {
+			converters.NormalizeNonstandardChatRolesInRequest(reqMap)
+		}
+	}
+
 	return providerReq, bodyBytes, nil
 }
 

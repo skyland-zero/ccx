@@ -177,3 +177,51 @@ func TestResponsesEntry_RequestMatrix_PreservesKeyParams(t *testing.T) {
 		}
 	})
 }
+
+func TestResponsesProvider_NormalizeNonstandardChatRolesForOpenAIChatUpstream(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name      string
+		enabled   bool
+		wantFirst string
+	}{
+		{name: "default_off", enabled: false, wantFirst: "developer"},
+		{name: "enabled", enabled: true, wantFirst: "user"},
+	}
+
+	body := []byte(`{"model":"gpt-5","input":[{"type":"message","role":"developer","content":"dev message"},{"type":"message","role":"user","content":"user message"}]}`)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := newGinContext(http.MethodPost, "/v1/responses", body, context.Background())
+			upstream := &config.UpstreamConfig{
+				BaseURL:                       "https://api.example.com",
+				ServiceType:                   "openai",
+				NormalizeNonstandardChatRoles: tt.enabled,
+			}
+
+			provider := &ResponsesProvider{}
+			req, _, err := provider.ConvertToProviderRequest(c, upstream, "sk-test")
+			if err != nil {
+				t.Fatalf("ConvertToProviderRequest() err = %v", err)
+			}
+
+			var got map[string]interface{}
+			if err := json.NewDecoder(req.Body).Decode(&got); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+
+			messages, ok := got["messages"].([]interface{})
+			if !ok || len(messages) != 2 {
+				t.Fatalf("messages = %#v, want 2 items", got["messages"])
+			}
+			first, ok := messages[0].(map[string]interface{})
+			if !ok {
+				t.Fatalf("message[0] = %#v, want object", messages[0])
+			}
+			if first["role"] != tt.wantFirst {
+				t.Fatalf("message[0].role = %v, want %s", first["role"], tt.wantFirst)
+			}
+		})
+	}
+}

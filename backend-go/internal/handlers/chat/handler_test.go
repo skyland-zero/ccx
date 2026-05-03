@@ -59,6 +59,83 @@ func TestBuildProviderRequest_InjectsReasoningBeforeModelRedirect(t *testing.T) 
 	}
 }
 
+func TestBuildProviderRequest_NormalizeNonstandardChatRolesDefaultOff(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil).WithContext(context.Background())
+
+	bodyBytes := []byte(`{"model":"gpt-5","messages":[{"role":"developer","content":"dev"},{"role":"user","content":"hi"}]}`)
+	upstream := &config.UpstreamConfig{ServiceType: "openai"}
+
+	req, err := buildProviderRequest(c, upstream, "https://api.example.com", "sk-test", bodyBytes, "gpt-5", false)
+	if err != nil {
+		t.Fatalf("buildProviderRequest() err = %v", err)
+	}
+
+	var got map[string]interface{}
+	if err := json.NewDecoder(req.Body).Decode(&got); err != nil {
+		t.Fatalf("decode request body: %v", err)
+	}
+
+	messages := got["messages"].([]interface{})
+	first := messages[0].(map[string]interface{})
+	if first["role"] != "developer" {
+		t.Fatalf("role = %v, want developer when switch is off", first["role"])
+	}
+}
+
+func TestBuildProviderRequest_NormalizeNonstandardChatRoles(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tests := []struct {
+		name        string
+		serviceType string
+	}{
+		{name: "openai", serviceType: "openai"},
+		{name: "gemini_without_model_redirect", serviceType: "gemini"},
+	}
+
+	bodyBytes := []byte(`{"model":"gpt-5","messages":[{"role":"system","content":"sys"},{"role":"developer","content":"dev"},{"role":"user","content":"hi"},{"role":"assistant","content":"ok"},{"role":"tool","tool_call_id":"call_1","content":"{}"},{"role":"function","content":"legacy"},{"content":"missing"},{"role":123,"content":"number"}]}`)
+	wantRoles := []string{"system", "user", "user", "assistant", "tool", "user", "user", "user"}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil).WithContext(context.Background())
+
+			upstream := &config.UpstreamConfig{
+				ServiceType:                   tt.serviceType,
+				NormalizeNonstandardChatRoles: true,
+			}
+			req, err := buildProviderRequest(c, upstream, "https://api.example.com", "sk-test", bodyBytes, "gpt-5", false)
+			if err != nil {
+				t.Fatalf("buildProviderRequest() err = %v", err)
+			}
+
+			var got map[string]interface{}
+			if err := json.NewDecoder(req.Body).Decode(&got); err != nil {
+				t.Fatalf("decode request body: %v", err)
+			}
+
+			messages, ok := got["messages"].([]interface{})
+			if !ok || len(messages) != len(wantRoles) {
+				t.Fatalf("messages = %#v, want %d items", got["messages"], len(wantRoles))
+			}
+
+			for i, want := range wantRoles {
+				msg, ok := messages[i].(map[string]interface{})
+				if !ok {
+					t.Fatalf("message[%d] = %#v, want object", i, messages[i])
+				}
+				if gotRole := msg["role"]; gotRole != want {
+					t.Fatalf("message[%d].role = %v, want %s", i, gotRole, want)
+				}
+			}
+		})
+	}
+}
+
 func TestBuildProviderRequest_PreservesMultimodalContentArray(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

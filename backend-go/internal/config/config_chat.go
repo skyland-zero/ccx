@@ -177,6 +177,9 @@ func (cm *ConfigManager) UpdateChatUpstream(index int, updates UpstreamUpdate) (
 	if updates.FastMode != nil {
 		upstream.FastMode = *updates.FastMode
 	}
+	if updates.NormalizeNonstandardChatRoles != nil {
+		upstream.NormalizeNonstandardChatRoles = *updates.NormalizeNonstandardChatRoles
+	}
 	if updates.InsecureSkipVerify != nil {
 		upstream.InsecureSkipVerify = *updates.InsecureSkipVerify
 	}

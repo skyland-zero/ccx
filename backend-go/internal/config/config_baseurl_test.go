@@ -516,6 +516,51 @@ func TestLoadConfig_BackfillsLegacyServiceTypeDefaults(t *testing.T) {
 	}
 }
 
+func TestUpdateChatUpstreamCanSetNormalizeNonstandardChatRoles(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.json")
+	initialConfig := `{
+		"chatUpstream": [{
+			"name": "chat-channel",
+			"baseUrl": "https://chat.example.com/v1",
+			"apiKeys": ["sk-c"],
+			"serviceType": "openai"
+		}]
+	}`
+	if err := os.WriteFile(configPath, []byte(initialConfig), 0644); err != nil {
+		t.Fatalf("写入初始配置失败: %v", err)
+	}
+
+	cm, err := NewConfigManager(configPath)
+	if err != nil {
+		t.Fatalf("初始化配置管理器失败: %v", err)
+	}
+	defer cm.Close()
+
+	cfg := cm.GetConfig()
+	if cfg.ChatUpstream[0].NormalizeNonstandardChatRoles {
+		t.Fatal("NormalizeNonstandardChatRoles = true, want default false")
+	}
+
+	enabled := true
+	if _, err := cm.UpdateChatUpstream(0, UpstreamUpdate{NormalizeNonstandardChatRoles: &enabled}); err != nil {
+		t.Fatalf("UpdateChatUpstream(enable) 失败: %v", err)
+	}
+	cfg = cm.GetConfig()
+	if !cfg.ChatUpstream[0].NormalizeNonstandardChatRoles {
+		t.Fatal("NormalizeNonstandardChatRoles = false, want true")
+	}
+
+	disabled := false
+	if _, err := cm.UpdateChatUpstream(0, UpstreamUpdate{NormalizeNonstandardChatRoles: &disabled}); err != nil {
+		t.Fatalf("UpdateChatUpstream(disable) 失败: %v", err)
+	}
+	cfg = cm.GetConfig()
+	if cfg.ChatUpstream[0].NormalizeNonstandardChatRoles {
+		t.Fatal("NormalizeNonstandardChatRoles = true, want false")
+	}
+}
+
 // strPtr 辅助函数：返回字符串指针
 func strPtr(s string) *string {
 	return &s

@@ -718,6 +718,19 @@
               </div>
             </v-col>
 
+            <v-col v-if="supportsChatRoleNormalization" cols="12">
+              <div class="d-flex align-center justify-space-between">
+                <div class="d-flex align-center ga-2">
+                  <v-icon color="primary">mdi-account-switch</v-icon>
+                  <div>
+                    <div class="section-title section-title--soft">{{ t('addChannel.normalizeNonstandardChatRolesLabel') }}</div>
+                    <div class="text-caption text-medium-emphasis">{{ t('addChannel.normalizeNonstandardChatRolesHint') }}</div>
+                  </div>
+                </div>
+                <v-switch v-model="form.normalizeNonstandardChatRoles" inset color="primary" hide-details />
+              </div>
+            </v-col>
+
             <!-- 注入 Dummy Thought Signature（仅 Gemini 渠道显示） -->
             <v-col v-if="props.channelType === 'gemini'" cols="12">
               <div class="d-flex align-center justify-space-between">
@@ -1339,6 +1352,9 @@ const textVerbosityOptions = [
 ]
 
 const supportsOpenAIAdvancedOptions = computed(() => supportsAdvancedChannelOptions(form.serviceType))
+const supportsChatRoleNormalization = computed(() => {
+  return props.channelType === 'chat' || (props.channelType === 'responses' && form.serviceType === 'openai')
+})
 
 const showModelMappingPresets = computed(() => {
   return props.channelType === 'messages' && (form.serviceType === 'openai' || form.serviceType === 'responses')
@@ -1490,6 +1506,7 @@ const form = reactive({
   supportedModels: [] as string[],
   autoBlacklistBalance: true,
   normalizeMetadataUserId: true,
+  normalizeNonstandardChatRoles: false,
 })
 
 // 多 BaseURL 文本输入（独立变量，保留用户输入的换行）
@@ -1798,6 +1815,7 @@ const hasEditableDraftChanges = computed(() => {
     supportedModels: normalizeStringArray(props.channel.supportedModels || []),
     autoBlacklistBalance: props.channel.autoBlacklistBalance ?? true,
     normalizeMetadataUserId: props.channel.normalizeMetadataUserId ?? true,
+    normalizeNonstandardChatRoles: !!props.channel.normalizeNonstandardChatRoles,
   }
 
   return JSON.stringify(currentPayload) !== JSON.stringify(originalPayload)
@@ -1865,6 +1883,7 @@ const resetForm = () => {
   supportedModelsError.value = ''
   form.autoBlacklistBalance = true
   form.normalizeMetadataUserId = true
+  form.normalizeNonstandardChatRoles = false
 
   // 重置 baseUrlsText
   baseUrlsText.value = ''
@@ -1926,6 +1945,7 @@ const loadChannelData = (channel: Channel) => {
   supportedModelsError.value = hasInvalidPatterns ? t('addChannel.supportedModelsInvalidPattern') : ''
   form.autoBlacklistBalance = channel.autoBlacklistBalance ?? true
   form.normalizeMetadataUserId = channel.normalizeMetadataUserId ?? true
+  form.normalizeNonstandardChatRoles = !!channel.normalizeNonstandardChatRoles
 
   // 立即同步 baseUrl 到预览变量，避免等待 debounce
   formBaseUrlPreview.value = channel.baseUrl

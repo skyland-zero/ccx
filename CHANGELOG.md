@@ -1,3 +1,14 @@
+## [Unreleased]
+
+### Added
+
+- **OpenAI Chat 渠道新增非标准 role 规范化选项** - 新增 `normalizeNonstandardChatRoles` 配置项，启用后将非标准 Chat role（如 `developer`、`function` 等）自动改写为 `user`，提高与不支持扩展 role 的上游兼容性；前端渠道编辑弹窗增加对应开关
+- 新增 `backend-go/internal/converters/chat_roles.go` 实现 role 规范化逻辑
+
+### Changed
+
+- **提取 `buildChatCompletionRequestBody` 统一请求体构造逻辑** - 将 openai/gemini/default 三个分支中重复的 model 映射和参数注入逻辑抽离为独立函数，消除重复代码
+
 ## [v2.6.72] - 2026-05-03
 
 ### Added
