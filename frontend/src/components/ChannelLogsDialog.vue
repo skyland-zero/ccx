@@ -68,13 +68,13 @@
                 <v-chip v-if="log.isRetry" size="small" color="warning" variant="tonal">{{ t('channelLogs.retry') }}</v-chip>
                 <template v-if="calculateDurations(log)">
                   <span v-if="calculateDurations(log)!.connectMs !== null" class="text-medium-emphasis log-meta">
-                    连接 {{ formatDurationSeconds(calculateDurations(log)!.connectMs!) }}
+                    {{ t('channelLogs.duration.connect') }} {{ formatDurationSeconds(calculateDurations(log)!.connectMs!) }}
                   </span>
                   <span v-if="calculateDurations(log)!.firstByteMs !== null" class="text-medium-emphasis log-meta">
-                    首字 {{ formatDurationSeconds(calculateDurations(log)!.firstByteMs!) }}
+                    {{ t('channelLogs.duration.firstByte') }} {{ formatDurationSeconds(calculateDurations(log)!.firstByteMs!) }}
                   </span>
                   <span v-if="calculateDurations(log)!.totalMs !== null" class="text-medium-emphasis log-meta">
-                    总计 {{ formatDurationSeconds(calculateDurations(log)!.totalMs!) }}
+                    {{ t('channelLogs.duration.total') }} {{ formatDurationSeconds(calculateDurations(log)!.totalMs!) }}
                   </span>
                 </template>
                 <span v-else class="text-medium-emphasis log-meta">{{ formatDurationSeconds(log.durationMs) }}</span>
@@ -143,14 +143,14 @@ const requestStatusColor = (status: string): string => {
 
 const requestStatusText = (status: string): string => {
   switch (status) {
-    case 'pending': return '等待中'
-    case 'connecting': return '连接中'
-    case 'first_byte': return '首字节'
-    case 'streaming': return '传输中'
-    case 'completed': return '已完成'
-    case 'failed': return '失败'
+    case 'pending': return t('channelLogs.status.pending')
+    case 'connecting': return t('channelLogs.status.connecting')
+    case 'first_byte': return t('channelLogs.status.firstByte')
+    case 'streaming': return t('channelLogs.status.streaming')
+    case 'completed': return t('channelLogs.status.completed')
+    case 'failed': return t('channelLogs.status.failed')
     case 'cancelled':
-    case 'canceled': return '已取消'
+    case 'canceled': return t('channelLogs.status.cancelled')
     default: return status
   }
 }
@@ -192,7 +192,7 @@ const interfaceTypeColor = (type: string): string => {
 
 const formatTime = (ts: string): string => {
   const d = new Date(ts)
-  return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
 const fetchLogs = async () => {

@@ -276,6 +276,16 @@ export type MessageKey =
   | 'channelLogs.empty'
   | 'channelLogs.retry'
   | 'channelLogs.sourceCapabilityTest'
+  | 'channelLogs.duration.connect'
+  | 'channelLogs.duration.firstByte'
+  | 'channelLogs.duration.total'
+  | 'channelLogs.status.pending'
+  | 'channelLogs.status.connecting'
+  | 'channelLogs.status.firstByte'
+  | 'channelLogs.status.streaming'
+  | 'channelLogs.status.completed'
+  | 'channelLogs.status.failed'
+  | 'channelLogs.status.cancelled'
   | 'store.channel.updated'
   | 'store.channel.added'
   | 'store.channel.deleted'
@@ -644,6 +654,16 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'channelLogs.empty': 'No logs yet',
     'channelLogs.retry': 'Retry',
     'channelLogs.sourceCapabilityTest': 'Capability Test',
+    'channelLogs.duration.connect': 'Connect',
+    'channelLogs.duration.firstByte': 'First Byte',
+    'channelLogs.duration.total': 'Total',
+    'channelLogs.status.pending': 'Pending',
+    'channelLogs.status.connecting': 'Connecting',
+    'channelLogs.status.firstByte': 'First Byte',
+    'channelLogs.status.streaming': 'Streaming',
+    'channelLogs.status.completed': 'Completed',
+    'channelLogs.status.failed': 'Failed',
+    'channelLogs.status.cancelled': 'Cancelled',
     'store.channel.updated': 'Channel updated successfully',
     'store.channel.added': 'Channel added successfully',
     'store.channel.deleted': 'Channel deleted successfully',
@@ -1011,6 +1031,16 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'channelLogs.empty': 'Belum ada log',
     'channelLogs.retry': 'Retry',
     'channelLogs.sourceCapabilityTest': 'Tes Kemampuan',
+    'channelLogs.duration.connect': 'Koneksi',
+    'channelLogs.duration.firstByte': 'Byte Pertama',
+    'channelLogs.duration.total': 'Total',
+    'channelLogs.status.pending': 'Menunggu',
+    'channelLogs.status.connecting': 'Menghubungkan',
+    'channelLogs.status.firstByte': 'Byte Pertama',
+    'channelLogs.status.streaming': 'Streaming',
+    'channelLogs.status.completed': 'Selesai',
+    'channelLogs.status.failed': 'Gagal',
+    'channelLogs.status.cancelled': 'Dibatalkan',
     'store.channel.updated': 'Channel berhasil diperbarui',
     'store.channel.added': 'Channel berhasil ditambahkan',
     'store.channel.deleted': 'Channel berhasil dihapus',
@@ -1378,6 +1408,16 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'channelLogs.empty': '暂无日志记录',
     'channelLogs.retry': '重试',
     'channelLogs.sourceCapabilityTest': '能力测试',
+    'channelLogs.duration.connect': '连接',
+    'channelLogs.duration.firstByte': '首字',
+    'channelLogs.duration.total': '总计',
+    'channelLogs.status.pending': '等待中',
+    'channelLogs.status.connecting': '连接中',
+    'channelLogs.status.firstByte': '首字节',
+    'channelLogs.status.streaming': '传输中',
+    'channelLogs.status.completed': '已完成',
+    'channelLogs.status.failed': '失败',
+    'channelLogs.status.cancelled': '已取消',
     'store.channel.updated': '渠道更新成功',
     'store.channel.added': '渠道添加成功',
     'store.channel.deleted': '渠道删除成功',
