@@ -144,6 +144,7 @@ export type MessageKey =
   | 'orchestration.resumeSuccess'
   | 'orchestration.resumeSuccessWithKeys'
   | 'orchestration.deleteActiveGuard'
+  | 'orchestration.blacklistedKeys'
   | 'addChannel.editTitle'
   | 'addChannel.createTitle'
   | 'addChannel.editSubtitle'
@@ -522,6 +523,7 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'orchestration.resumeSuccess': 'Channel resumed and metrics reset',
     'orchestration.resumeSuccessWithKeys': 'Channel resumed, metrics reset, and {count} blacklisted key(s) restored',
     'orchestration.deleteActiveGuard': 'Cannot delete: keep at least one active channel in the failover sequence',
+    'orchestration.blacklistedKeys': '{count} key(s) blacklisted',
     'addChannel.editTitle': 'Edit channel',
     'addChannel.createTitle': 'Add new channel',
     'addChannel.editSubtitle': 'Modify channel configuration',
@@ -899,6 +901,7 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'orchestration.resumeSuccess': 'Channel dilanjutkan dan metrik direset',
     'orchestration.resumeSuccessWithKeys': 'Channel dilanjutkan, metrik direset, dan {count} key blacklist dipulihkan',
     'orchestration.deleteActiveGuard': 'Tidak bisa dihapus: urutan failover harus menyisakan minimal satu channel aktif',
+    'orchestration.blacklistedKeys': '{count} key diblokir',
     'addChannel.editTitle': 'Edit channel',
     'addChannel.createTitle': 'Tambah channel baru',
     'addChannel.editSubtitle': 'Ubah konfigurasi channel',
@@ -1276,6 +1279,7 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'orchestration.resumeSuccess': '渠道已恢复，熔断指标已重置',
     'orchestration.resumeSuccessWithKeys': '渠道已恢复，熔断指标已重置，并恢复了 {count} 个拉黑密钥',
     'orchestration.deleteActiveGuard': '无法删除：故障转移序列中至少需要保留一个活跃渠道',
+    'orchestration.blacklistedKeys': '{count} 个密钥已拉黑',
     'addChannel.editTitle': '编辑渠道',
     'addChannel.createTitle': '添加新渠道',
     'addChannel.editSubtitle': '修改渠道配置信息',

@@ -2,7 +2,6 @@ import { useTheme as useVuetifyTheme } from 'vuetify'
 
 // 复古像素主题配置
 export const RETRO_THEME = {
-  name: '复古像素',
   font: '"Courier New", Consolas, "Liberation Mono", monospace'
 }
 

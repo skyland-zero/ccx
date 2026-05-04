@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import type { VersionInfo } from '@/services/version'
 
 /**
@@ -40,32 +40,6 @@ export const useSystemStore = defineStore('system', () => {
   const stripBillingHeaderLoadError = ref(false)
 
   // ===== 计算属性 =====
-
-  const systemStatusText = computed(() => {
-    switch (systemStatus.value) {
-      case 'running':
-        return '运行中'
-      case 'error':
-        return '连接失败'
-      case 'connecting':
-        return '连接中'
-      default:
-        return '未知'
-    }
-  })
-
-  const systemStatusDesc = computed(() => {
-    switch (systemStatus.value) {
-      case 'running':
-        return '服务正常运行'
-      case 'error':
-        return '无法连接后端'
-      case 'connecting':
-        return '正在连接后端'
-      default:
-        return ''
-    }
-  })
 
   // ===== 操作方法 =====
 
@@ -157,8 +131,6 @@ export const useSystemStore = defineStore('system', () => {
     stripBillingHeaderLoadError,
 
     // 计算属性
-    systemStatusText,
-    systemStatusDesc,
 
     // 方法
     setSystemStatus,
