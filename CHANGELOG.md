@@ -1,3 +1,9 @@
+## [v2.6.76] - 2026-05-04
+
+### 修复
+
+- **移除 Gemini 和 Passthrough 路径中 responses input 的 status 字段** - `stripStatusFromResponsesInput` 处理也覆盖 Gemini→Responses 转换器和 Passthrough 通道，防止上游收到 `Unknown parameter: input[n].status` 报错
+
 ## [v2.6.75] - 2026-05-04
 
 ### Fixed
