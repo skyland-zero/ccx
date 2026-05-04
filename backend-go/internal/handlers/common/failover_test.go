@@ -84,6 +84,7 @@ func TestClassifyMessage(t *testing.T) {
 		{"token expired", "Your token has expired", true, false},
 		{"permission denied", "Permission denied for this resource", true, false},
 		{"中文-密钥无效", "密钥无效，请检查", true, false},
+		{"中文-令牌已过期", "该令牌已过期", true, false},
 
 		// 临时错误
 		{"timeout", "Request timeout, please retry", true, false},
@@ -593,6 +594,16 @@ func TestShouldBlacklistKey_BalanceMessages(t *testing.T) {
 				ShouldBlacklist: true,
 				Reason:          "authentication_error",
 				Message:         "无效的API Key",
+			},
+		},
+		{
+			name:       "401 new api token expired message should blacklist as authentication",
+			statusCode: 401,
+			body:       `{"error":{"code":"","message":"该令牌已过期 (request id: 202605041407066680249308268d9d6QnF3nAtC)","type":"new_api_error"}}`,
+			want: BlacklistResult{
+				ShouldBlacklist: true,
+				Reason:          "authentication_error",
+				Message:         "该令牌已过期 (request id: 202605041407066680249308268d9d6QnF3nAtC)",
 			},
 		},
 		{

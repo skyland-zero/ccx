@@ -279,7 +279,8 @@ func classifyMessage(msg string) (bool, bool) {
 		"api key", "apikey", "token", "expired",
 		"permission", "forbidden", "denied",
 		"密钥无效", "认证失败", "权限不足",
-		"身份验证失败", "身份验证", "无效的令牌", "令牌无效", "未授权", "鉴权失败",
+		"身份验证失败", "身份验证", "无效的令牌", "令牌无效", "令牌已过期",
+		"令牌过期", "令牌已失效", "令牌失效", "未授权", "鉴权失败",
 	}
 	for _, keyword := range authKeywords {
 		if strings.Contains(msgLower, keyword) {
@@ -715,6 +716,9 @@ func isAuthenticationMessage(msg string) bool {
 		"invalid_api_key",
 		"invalid key",
 		"invalid token",
+		"token expired",
+		"token has expired",
+		"expired token",
 		"authentication failed",
 		"authentication error",
 		"unauthorized",
@@ -727,6 +731,10 @@ func isAuthenticationMessage(msg string) bool {
 		"身份验证失败",
 		"无效的令牌",
 		"令牌无效",
+		"令牌已过期",
+		"令牌过期",
+		"令牌已失效",
+		"令牌失效",
 		"鉴权失败",
 	}
 	for _, keyword := range keywords {
