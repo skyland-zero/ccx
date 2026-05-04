@@ -1,8 +1,15 @@
 ## [Unreleased]
 
+### Added
+
+- **Responses 渠道内置源模型列表新增 mini 模型** - 前端渠道编辑弹窗的 Responses 内置源模型选项中新增 mini 模型
+
 ### Fixed
 
 - **修正 Chat→Responses 缓存 usage 口径** - OpenAI/Responses 风格的 `cached_tokens` 不再转换为 Claude 顶层 `cache_read_input_tokens`，并在协议转换输出中将 cache read 从 `input_tokens` 扣除，避免 `total_tokens` 重复累计缓存命中 token
+- **修正 Responses→Chat 工具调用消息顺序** - 修复 responses 协议转换时工具调用消息排序不正确的问题，确保多轮工具调用按正确顺序排列
+- **补充渠道日志弹窗缺失的 i18n** - 替换 `ChannelLogsDialog` 中硬编码的中文字符串（连接/首字/总计时长标签、请求状态文本），改用 i18n 键值；`toLocaleTimeString` 改为使用系统 locale 而非硬编码 `zh-CN`
+- **清除前端剩余硬编码中文并移除死代码** - 替换 `ChannelOrchestration` 中硬编码的 tooltip 文本；移除 `system` store 中未使用的 `systemStatusText`/`systemStatusDesc` 方法及 `RETRO_THEME.name` 字段
 
 ## [v2.6.73] - 2026-05-04
 
