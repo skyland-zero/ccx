@@ -3,6 +3,8 @@
 ### Fixed
 
 - **修复 Messages→Responses thinking 请求字段兼容** - Claude `thinking` block 转 Responses `input` 的 `reasoning` item 时不再写入仅响应侧使用的 `status` 字段，避免上游报 `Unknown parameter: input[n].status`
+- **修复 Gemini→Responses thinking 请求字段兼容** - Gemini `thought` part 转 Responses `input` 的 `reasoning` item 时不再写入 `status` 字段，消除上游 `Unknown parameter: input[n].status` 报错
+- **修复 Passthrough 路径 input status 泄漏** - `normalizeResponsesInputForPassthrough` 清除所有 input item 上的 `status` 字段，防止客户端回传 response output 时 `status` 泄漏到上游
 
 ## [v2.6.74] - 2026-05-04
 

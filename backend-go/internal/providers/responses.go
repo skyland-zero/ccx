@@ -755,7 +755,13 @@ func normalizeResponsesInputForPassthrough(reqMap map[string]interface{}) {
 
 	for _, rawItem := range input {
 		item, ok := rawItem.(map[string]interface{})
-		if !ok || toString(item["type"]) != "message" {
+		if !ok {
+			continue
+		}
+
+		delete(item, "status")
+
+		if toString(item["type"]) != "message" {
 			continue
 		}
 

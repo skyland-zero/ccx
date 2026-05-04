@@ -97,8 +97,7 @@ func geminiContentToResponsesItems(content *types.GeminiContent) []types.Respons
 		if part.Text != "" {
 			if part.Thought && role == "assistant" {
 				items = append(items, types.ResponsesItem{
-					Type:   "reasoning",
-					Status: "completed",
+					Type: "reasoning",
 					Summary: []interface{}{map[string]interface{}{
 						"type": "summary_text",
 						"text": part.Text,
