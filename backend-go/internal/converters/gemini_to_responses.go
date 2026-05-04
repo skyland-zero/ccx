@@ -254,6 +254,11 @@ func ResponsesResponseToGemini(responsesResp map[string]interface{}) (*types.Gem
 		inputTokens, _ := getIntFromMap(usageRaw, "input_tokens")
 		outputTokens, _ := getIntFromMap(usageRaw, "output_tokens")
 		cachedTokens, _ := getIntFromMap(usageRaw, "cache_read_input_tokens")
+		if cachedTokens == 0 {
+			if details, ok := usageRaw["input_tokens_details"].(map[string]interface{}); ok {
+				cachedTokens, _ = getIntFromMap(details, "cached_tokens")
+			}
+		}
 
 		geminiResp.UsageMetadata = &types.GeminiUsageMetadata{
 			PromptTokenCount:        inputTokens + cachedTokens,

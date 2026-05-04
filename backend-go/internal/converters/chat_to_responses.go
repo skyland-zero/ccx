@@ -31,16 +31,20 @@ type chatToResponsesState struct {
 	ReasoningPartAdded bool
 	ReasoningIndex     int
 	// usage（完整支持详细字段，参考 claude-code-hub）
-	InputTokens     int64
-	OutputTokens    int64
-	CachedTokens    int64 // input_tokens_details.cached_tokens / cache_read_input_tokens
-	ReasoningTokens int64 // output_tokens_details.reasoning_tokens
-	UsageSeen       bool
+	InputTokens             int64
+	InputTokensIncludeCache bool // OpenAI prompt_tokens 口径，已包含 cached tokens
+	OutputTokens            int64
+	TotalTokens             int64
+	CachedTokens            int64 // input_tokens_details.cached_tokens / cache_read_input_tokens
+	ReasoningTokens         int64 // output_tokens_details.reasoning_tokens
+	UsageSeen               bool
 	// Claude 缓存 TTL 细分
 	CacheCreationTokens   int64  // cache_creation_input_tokens
 	CacheCreation5mTokens int64  // cache_creation_5m_input_tokens
 	CacheCreation1hTokens int64  // cache_creation_1h_input_tokens
 	CacheTTL              string // "5m" | "1h" | "mixed"
+	HasClaudeCacheFields  bool
+	HasCacheDetails       bool
 	// 首次消息标记
 	FirstChunk bool
 }
@@ -60,6 +64,18 @@ func effectiveCacheCreationTokens(cacheCreation, cacheCreation5m, cacheCreation1
 
 func calculateClaudeTotalTokens(inputTokens, outputTokens, cacheReadTokens, cacheCreation, cacheCreation5m, cacheCreation1h int64) int64 {
 	return inputTokens + outputTokens + cacheReadTokens + effectiveCacheCreationTokens(cacheCreation, cacheCreation5m, cacheCreation1h)
+}
+
+func normalizeInputTokensWithCache(inputTokens, cacheReadTokens, cacheCreation, cacheCreation5m, cacheCreation1h int64) int64 {
+	cacheTokens := cacheReadTokens + effectiveCacheCreationTokens(cacheCreation, cacheCreation5m, cacheCreation1h)
+	if cacheTokens <= 0 {
+		return inputTokens
+	}
+	normalized := inputTokens - cacheTokens
+	if normalized < 0 {
+		return 0
+	}
+	return normalized
 }
 
 // ConvertOpenAIChatToResponses 将 OpenAI Chat Completions SSE 转换为 Responses SSE 事件
@@ -344,14 +360,19 @@ func ConvertOpenAIChatToResponses(ctx context.Context, modelName string, origina
 		// OpenAI 格式基础字段
 		if v := usage.Get("prompt_tokens"); v.Exists() {
 			st.InputTokens = v.Int()
+			st.InputTokensIncludeCache = true
 		}
 		if v := usage.Get("completion_tokens"); v.Exists() {
 			st.OutputTokens = v.Int()
+		}
+		if v := usage.Get("total_tokens"); v.Exists() {
+			st.TotalTokens = v.Int()
 		}
 
 		// OpenAI 格式详细字段
 		if v := usage.Get("prompt_tokens_details.cached_tokens"); v.Exists() {
 			st.CachedTokens = v.Int()
+			st.HasCacheDetails = true
 		}
 		if v := usage.Get("completion_tokens_details.reasoning_tokens"); v.Exists() {
 			st.ReasoningTokens = v.Int()
@@ -360,6 +381,7 @@ func ConvertOpenAIChatToResponses(ctx context.Context, modelName string, origina
 		// Claude 格式基础字段（优先级高于 OpenAI）
 		if v := usage.Get("input_tokens"); v.Exists() {
 			st.InputTokens = v.Int()
+			st.InputTokensIncludeCache = false
 		}
 		if v := usage.Get("output_tokens"); v.Exists() {
 			st.OutputTokens = v.Int()
@@ -368,15 +390,20 @@ func ConvertOpenAIChatToResponses(ctx context.Context, modelName string, origina
 		// Claude 格式缓存字段
 		if v := usage.Get("cache_read_input_tokens"); v.Exists() {
 			st.CachedTokens = v.Int()
+			st.HasClaudeCacheFields = true
+			st.HasCacheDetails = true
 		}
 		if v := usage.Get("cache_creation_input_tokens"); v.Exists() {
 			st.CacheCreationTokens = v.Int()
+			st.HasClaudeCacheFields = true
 		}
 		if v := usage.Get("cache_creation_5m_input_tokens"); v.Exists() {
 			st.CacheCreation5mTokens = v.Int()
+			st.HasClaudeCacheFields = true
 		}
 		if v := usage.Get("cache_creation_1h_input_tokens"); v.Exists() {
 			st.CacheCreation1hTokens = v.Int()
+			st.HasClaudeCacheFields = true
 		}
 
 		// 设置缓存 TTL 标识
@@ -400,7 +427,9 @@ func ConvertOpenAIChatToResponses(ctx context.Context, modelName string, origina
 				actualInput = 0
 			}
 			st.InputTokens = actualInput
+			st.InputTokensIncludeCache = false
 			st.CachedTokens = cachedTokens
+			st.HasCacheDetails = cachedTokens > 0
 		}
 		if v := usage.Get("candidatesTokenCount"); v.Exists() {
 			st.OutputTokens = v.Int()
@@ -688,24 +717,38 @@ func (st *chatToResponsesState) generateCompletedEvents(originalRequestRawJSON [
 		reasoningTokens = int64(st.ReasoningBuf.Len() / 4)
 	}
 
+	inputTokens := st.InputTokens
+	if st.InputTokensIncludeCache {
+		inputTokens = normalizeInputTokensWithCache(
+			st.InputTokens,
+			st.CachedTokens,
+			st.CacheCreationTokens,
+			st.CacheCreation5mTokens,
+			st.CacheCreation1hTokens,
+		)
+	}
+
 	// 始终添加基础 usage 字段，即使值为 0
 	// 这样 handler 可以检测到 usage 存在，并在需要时用本地估算值替换 0 值
 	// 参见 handler.go 中的 patchResponsesCompletedEventUsage 和 injectResponsesUsageToCompletedEvent
-	completed, _ = sjson.Set(completed, "response.usage.input_tokens", st.InputTokens)
+	completed, _ = sjson.Set(completed, "response.usage.input_tokens", inputTokens)
 	completed, _ = sjson.Set(completed, "response.usage.output_tokens", st.OutputTokens)
-	total := calculateClaudeTotalTokens(
-		st.InputTokens,
-		st.OutputTokens,
-		st.CachedTokens,
-		st.CacheCreationTokens,
-		st.CacheCreation5mTokens,
-		st.CacheCreation1hTokens,
-	)
+	total := st.TotalTokens
+	if total == 0 || st.CachedTokens > 0 || effectiveCacheCreationTokens(st.CacheCreationTokens, st.CacheCreation5mTokens, st.CacheCreation1hTokens) > 0 {
+		total = calculateClaudeTotalTokens(
+			inputTokens,
+			st.OutputTokens,
+			st.CachedTokens,
+			st.CacheCreationTokens,
+			st.CacheCreation5mTokens,
+			st.CacheCreation1hTokens,
+		)
+	}
 	completed, _ = sjson.Set(completed, "response.usage.total_tokens", total)
 
 	// 可选的详情字段，仅在有值时添加
 	// input_tokens_details
-	if st.CachedTokens > 0 {
+	if !st.HasClaudeCacheFields && st.HasCacheDetails && st.CachedTokens > 0 {
 		completed, _ = sjson.Set(completed, "response.usage.input_tokens_details.cached_tokens", st.CachedTokens)
 	}
 
@@ -724,7 +767,7 @@ func (st *chatToResponsesState) generateCompletedEvents(originalRequestRawJSON [
 	if st.CacheCreation1hTokens > 0 {
 		completed, _ = sjson.Set(completed, "response.usage.cache_creation_1h_input_tokens", st.CacheCreation1hTokens)
 	}
-	if st.CachedTokens > 0 {
+	if st.HasClaudeCacheFields && st.CachedTokens > 0 {
 		completed, _ = sjson.Set(completed, "response.usage.cache_read_input_tokens", st.CachedTokens)
 	}
 	if st.CacheTTL != "" {
@@ -902,10 +945,13 @@ func ConvertOpenAIChatToResponsesNonStream(_ context.Context, _ string, original
 		var cacheCreation, cacheCreation5m, cacheCreation1h int64
 		var cacheTTL string
 		hasClaudeCacheFields := false
+		hasCacheDetails := false
+		inputTokensIncludeCache := false
 
 		// OpenAI 格式
 		if v := usage.Get("prompt_tokens"); v.Exists() {
 			inputTokens = v.Int()
+			inputTokensIncludeCache = true
 		}
 		if v := usage.Get("completion_tokens"); v.Exists() {
 			outputTokens = v.Int()
@@ -915,12 +961,14 @@ func ConvertOpenAIChatToResponsesNonStream(_ context.Context, _ string, original
 		}
 		if v := usage.Get("prompt_tokens_details.cached_tokens"); v.Exists() {
 			cachedTokens = v.Int()
+			hasCacheDetails = true
 		}
 		reasoningTokensFromUsage := usage.Get("completion_tokens_details.reasoning_tokens").Int()
 
 		// Claude 格式（优先级高于 OpenAI）
 		if v := usage.Get("input_tokens"); v.Exists() {
 			inputTokens = v.Int()
+			inputTokensIncludeCache = false
 		}
 		if v := usage.Get("output_tokens"); v.Exists() {
 			outputTokens = v.Int()
@@ -928,6 +976,7 @@ func ConvertOpenAIChatToResponsesNonStream(_ context.Context, _ string, original
 		if v := usage.Get("cache_read_input_tokens"); v.Exists() {
 			hasClaudeCacheFields = true
 			cachedTokens = v.Int()
+			hasCacheDetails = true
 		}
 		if v := usage.Get("cache_creation_input_tokens"); v.Exists() {
 			hasClaudeCacheFields = true
@@ -961,34 +1010,44 @@ func ConvertOpenAIChatToResponsesNonStream(_ context.Context, _ string, original
 				actualInput = 0
 			}
 			inputTokens = actualInput
+			inputTokensIncludeCache = false
 			cachedTokens = geminiCached
+			hasCacheDetails = geminiCached > 0
 		}
 		if v := usage.Get("candidatesTokenCount"); v.Exists() {
 			outputTokens = v.Int()
 		}
 
+		usageInputTokens := inputTokens
+		if inputTokensIncludeCache {
+			usageInputTokens = normalizeInputTokensWithCache(
+				inputTokens,
+				cachedTokens,
+				cacheCreation,
+				cacheCreation5m,
+				cacheCreation1h,
+			)
+		}
+
 		// 计算总量
-		if totalTokens == 0 {
-			totalTokens = inputTokens + outputTokens
-			if hasClaudeCacheFields {
-				totalTokens = calculateClaudeTotalTokens(
-					inputTokens,
-					outputTokens,
-					cachedTokens,
-					cacheCreation,
-					cacheCreation5m,
-					cacheCreation1h,
-				)
-			}
+		if totalTokens == 0 || cachedTokens > 0 || effectiveCacheCreationTokens(cacheCreation, cacheCreation5m, cacheCreation1h) > 0 {
+			totalTokens = calculateClaudeTotalTokens(
+				usageInputTokens,
+				outputTokens,
+				cachedTokens,
+				cacheCreation,
+				cacheCreation5m,
+				cacheCreation1h,
+			)
 		}
 
 		// 写入基础字段
-		out, _ = sjson.Set(out, "usage.input_tokens", inputTokens)
+		out, _ = sjson.Set(out, "usage.input_tokens", usageInputTokens)
 		out, _ = sjson.Set(out, "usage.output_tokens", outputTokens)
 		out, _ = sjson.Set(out, "usage.total_tokens", totalTokens)
 
 		// input_tokens_details
-		if cachedTokens > 0 {
+		if !hasClaudeCacheFields && hasCacheDetails && cachedTokens > 0 {
 			out, _ = sjson.Set(out, "usage.input_tokens_details.cached_tokens", cachedTokens)
 		}
 
@@ -1011,7 +1070,7 @@ func ConvertOpenAIChatToResponsesNonStream(_ context.Context, _ string, original
 		if cacheCreation1h > 0 {
 			out, _ = sjson.Set(out, "usage.cache_creation_1h_input_tokens", cacheCreation1h)
 		}
-		if cachedTokens > 0 {
+		if hasClaudeCacheFields && cachedTokens > 0 {
 			out, _ = sjson.Set(out, "usage.cache_read_input_tokens", cachedTokens)
 		}
 		if cacheTTL != "" {

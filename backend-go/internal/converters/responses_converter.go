@@ -671,6 +671,9 @@ func OpenAIChatResponseToResponses(openaiResp map[string]interface{}, sessionID 
 
 	// 提取 usage（使用统一入口自动检测格式）
 	usage := ExtractUsageMetrics(openaiResp["usage"])
+	if shouldNormalizeOpenAICachedUsageForResponses(openaiResp["usage"]) {
+		normalizeOpenAICachedUsageForResponses(&usage)
+	}
 
 	// 生成 response ID
 	responseID := generateResponseID()
@@ -844,6 +847,56 @@ func calculateClaudeTotalTokensInt(inputTokens, outputTokens, cacheRead, cacheCr
 	return inputTokens + outputTokens + cacheRead + effectiveCacheCreationTokensInt(cacheCreation, cacheCreation5m, cacheCreation1h)
 }
 
+func normalizeInputTokensWithCacheInt(inputTokens, cacheRead, cacheCreation, cacheCreation5m, cacheCreation1h int) int {
+	cacheTokens := cacheRead + effectiveCacheCreationTokensInt(cacheCreation, cacheCreation5m, cacheCreation1h)
+	if cacheTokens <= 0 {
+		return inputTokens
+	}
+	normalized := inputTokens - cacheTokens
+	if normalized < 0 {
+		return 0
+	}
+	return normalized
+}
+
+func normalizeOpenAICachedUsageForResponses(usage *types.ResponsesUsage) {
+	if usage == nil || usage.InputTokensDetails == nil || usage.InputTokensDetails.CachedTokens <= 0 {
+		return
+	}
+	usage.InputTokens = normalizeInputTokensWithCacheInt(usage.InputTokens, usage.InputTokensDetails.CachedTokens, 0, 0, 0)
+	usage.TotalTokens = calculateClaudeTotalTokensInt(usage.InputTokens, usage.OutputTokens, usage.InputTokensDetails.CachedTokens, 0, 0, 0)
+}
+
+func shouldNormalizeOpenAICachedUsageForResponses(usageRaw interface{}) bool {
+	usageMap, ok := usageRaw.(map[string]interface{})
+	if !ok {
+		return false
+	}
+	if details, ok := usageMap["prompt_tokens_details"].(map[string]interface{}); ok {
+		if cached, ok := getIntFromMap(details, "cached_tokens"); ok && cached > 0 {
+			return true
+		}
+	}
+	if _, hasCacheRead := usageMap["cache_read_input_tokens"]; hasCacheRead {
+		return false
+	}
+	if _, hasCacheCreation := usageMap["cache_creation_input_tokens"]; hasCacheCreation {
+		return false
+	}
+	if _, hasCacheCreation5m := usageMap["cache_creation_5m_input_tokens"]; hasCacheCreation5m {
+		return false
+	}
+	if _, hasCacheCreation1h := usageMap["cache_creation_1h_input_tokens"]; hasCacheCreation1h {
+		return false
+	}
+	if details, ok := usageMap["input_tokens_details"].(map[string]interface{}); ok {
+		if cached, ok := getIntFromMap(details, "cached_tokens"); ok && cached > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // parseResponsesUsage 解析 Responses API 的 usage 字段
 // 完整支持 OpenAI Responses API 的详细 usage 结构
 func parseResponsesUsage(usageRaw interface{}) types.ResponsesUsage {
@@ -869,12 +922,6 @@ func parseResponsesUsage(usageRaw interface{}) types.ResponsesUsage {
 		usage.OutputTokens = v
 	}
 
-	if v, ok := getIntFromMap(usageMap, "total_tokens"); ok {
-		usage.TotalTokens = v
-	} else {
-		usage.TotalTokens = usage.InputTokens + usage.OutputTokens
-	}
-
 	// 解析 input_tokens_details（兼容 prompt_tokens_details）
 	inputDetailsRaw := usageMap["input_tokens_details"]
 	if inputDetailsRaw == nil {
@@ -885,6 +932,12 @@ func parseResponsesUsage(usageRaw interface{}) types.ResponsesUsage {
 		if v, ok := getIntFromMap(detailsMap, "cached_tokens"); ok {
 			usage.InputTokensDetails.CachedTokens = v
 		}
+	}
+
+	if v, ok := getIntFromMap(usageMap, "total_tokens"); ok {
+		usage.TotalTokens = v
+	} else {
+		usage.TotalTokens = usage.InputTokens + usage.OutputTokens
 	}
 
 	// 解析 output_tokens_details（兼容 completion_tokens_details）
@@ -1037,12 +1090,19 @@ func ExtractUsageMetrics(usageRaw interface{}) types.ResponsesUsage {
 		return types.ResponsesUsage{}
 	}
 
-	// 1. 检测 Claude 格式：有 cache_creation_input_tokens 或 cache_read_input_tokens
+	_, hasInputDetails := usageMap["input_tokens_details"]
+	if !hasInputDetails {
+		_, hasInputDetails = usageMap["prompt_tokens_details"]
+	}
+
+	// 1. 检测 Claude 格式：有 cache_creation_input_tokens 或没有 OpenAI details 的 cache_read_input_tokens
 	if _, hasCacheCreation := usageMap["cache_creation_input_tokens"]; hasCacheCreation {
 		return parseClaudeUsage(usageRaw)
 	}
 	if _, hasCacheRead := usageMap["cache_read_input_tokens"]; hasCacheRead {
-		return parseClaudeUsage(usageRaw)
+		if !hasInputDetails {
+			return parseClaudeUsage(usageRaw)
+		}
 	}
 	if _, hasCacheCreation5m := usageMap["cache_creation_5m_input_tokens"]; hasCacheCreation5m {
 		return parseClaudeUsage(usageRaw)

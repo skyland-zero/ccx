@@ -480,6 +480,40 @@ func TestConvertOpenAIChatToResponses_Stream_ClaudeCacheTotalTokens(t *testing.T
 	}
 }
 
+func TestConvertOpenAIChatToResponses_Stream_OpenAICacheDetailsNormalizesInput(t *testing.T) {
+	ctx := context.Background()
+	sseLines := []string{
+		`data: {"id":"chatcmpl-openai-cache","object":"chat.completion.chunk","created":1234567890,"model":"gpt-5.5","choices":[{"index":0,"delta":{"role":"assistant","content":"ok"},"finish_reason":null}]}`,
+		`data: {"id":"chatcmpl-openai-cache","object":"chat.completion.chunk","created":1234567890,"model":"gpt-5.5","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":38451,"completion_tokens":1275,"total_tokens":39726,"prompt_tokens_details":{"cached_tokens":36608}}}`,
+		`data: [DONE]`,
+	}
+
+	originalReq := []byte(`{"model":"gpt-5.5","input":"hi"}`)
+	var state any
+	var allEvents []string
+	for _, line := range sseLines {
+		allEvents = append(allEvents, ConvertOpenAIChatToResponses(ctx, "gpt-5.5", originalReq, nil, []byte(line), &state)...)
+	}
+
+	usage := extractResponseCompletedUsage(t, allEvents)
+	if got := int(usage["input_tokens"].(float64)); got != 1843 {
+		t.Fatalf("input_tokens = %d, want 1843", got)
+	}
+	if got := int(usage["total_tokens"].(float64)); got != 39726 {
+		t.Fatalf("total_tokens = %d, want 39726", got)
+	}
+	if _, exists := usage["cache_read_input_tokens"]; exists {
+		t.Fatalf("cache_read_input_tokens should not be emitted for OpenAI cache details: %#v", usage)
+	}
+	details, ok := usage["input_tokens_details"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("input_tokens_details missing: %#v", usage)
+	}
+	if got := int(details["cached_tokens"].(float64)); got != 36608 {
+		t.Fatalf("cached_tokens = %d, want 36608", got)
+	}
+}
+
 func TestConvertOpenAIChatToResponsesNonStream_ClaudeCacheTTLTotalFallback(t *testing.T) {
 	ctx := context.Background()
 	chatResponse := `{
@@ -500,5 +534,36 @@ func TestConvertOpenAIChatToResponsesNonStream_ClaudeCacheTTLTotalFallback(t *te
 	result := ConvertOpenAIChatToResponsesNonStream(ctx, "claude", []byte(`{"model":"claude","input":"hi"}`), nil, []byte(chatResponse), nil)
 	if got := gjson.Get(result, "usage.total_tokens").Int(); got != 160 {
 		t.Fatalf("usage.total_tokens = %d, want 160", got)
+	}
+}
+
+func TestConvertOpenAIChatToResponsesNonStream_OpenAICacheDetailsNormalizesInput(t *testing.T) {
+	ctx := context.Background()
+	chatResponse := `{
+		"id":"chatcmpl-openai-cache",
+		"object":"chat.completion",
+		"created":1234567890,
+		"model":"gpt-5.5",
+		"choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],
+		"usage":{
+			"prompt_tokens":38451,
+			"completion_tokens":1275,
+			"total_tokens":39726,
+			"prompt_tokens_details":{"cached_tokens":36608}
+		}
+	}`
+
+	result := ConvertOpenAIChatToResponsesNonStream(ctx, "gpt-5.5", []byte(`{"model":"gpt-5.5","input":"hi"}`), nil, []byte(chatResponse), nil)
+	if got := gjson.Get(result, "usage.input_tokens").Int(); got != 1843 {
+		t.Fatalf("usage.input_tokens = %d, want 1843", got)
+	}
+	if got := gjson.Get(result, "usage.total_tokens").Int(); got != 39726 {
+		t.Fatalf("usage.total_tokens = %d, want 39726", got)
+	}
+	if gjson.Get(result, "usage.cache_read_input_tokens").Exists() {
+		t.Fatalf("usage.cache_read_input_tokens should not be emitted: %s", result)
+	}
+	if got := gjson.Get(result, "usage.input_tokens_details.cached_tokens").Int(); got != 36608 {
+		t.Fatalf("usage.input_tokens_details.cached_tokens = %d, want 36608", got)
 	}
 }

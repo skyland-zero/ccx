@@ -96,3 +96,24 @@ func TestMetricsUsageFromResponsesUsage_UsesCachedTokensFallback(t *testing.T) {
 		t.Fatalf("PromptTokensTotal = %d, want 114931", usage.PromptTokensTotal)
 	}
 }
+
+func TestCheckResponsesEventUsage_OpenAICacheDetailsNotClaudeCache(t *testing.T) {
+	event := `event: response.completed
+data: {"type":"response.completed","response":{"usage":{"input_tokens":1843,"output_tokens":1275,"total_tokens":39726,"input_tokens_details":{"cached_tokens":36608}}}}
+
+`
+
+	detected, needPatch, usage := checkResponsesEventUsage(event, false)
+	if !detected {
+		t.Fatal("usage should be detected")
+	}
+	if needPatch {
+		t.Fatal("usage should not need patch")
+	}
+	if usage.HasClaudeCache {
+		t.Fatal("OpenAI input_tokens_details.cached_tokens should not set HasClaudeCache")
+	}
+	if usage.InputTokens != 1843 || usage.CacheReadInputTokens != 36608 {
+		t.Fatalf("usage = %#v, want input 1843 and cache read 36608", usage)
+	}
+}

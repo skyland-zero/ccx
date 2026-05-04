@@ -1,3 +1,9 @@
+## [Unreleased]
+
+### Fixed
+
+- **修正 Chat→Responses 缓存 usage 口径** - OpenAI/Responses 风格的 `cached_tokens` 不再转换为 Claude 顶层 `cache_read_input_tokens`，并在协议转换输出中将 cache read 从 `input_tokens` 扣除，避免 `total_tokens` 重复累计缓存命中 token
+
 ## [v2.6.73] - 2026-05-04
 
 ### Added
