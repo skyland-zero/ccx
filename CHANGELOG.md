@@ -1,3 +1,9 @@
+## [Unreleased]
+
+### Fixed
+
+- **修复 Messages→Responses thinking 请求字段兼容** - Claude `thinking` block 转 Responses `input` 的 `reasoning` item 时不再写入仅响应侧使用的 `status` 字段，避免上游报 `Unknown parameter: input[n].status`
+
 ## [v2.6.74] - 2026-05-04
 
 ### Added

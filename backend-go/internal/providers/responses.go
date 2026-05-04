@@ -183,8 +183,7 @@ func (p *ResponsesProvider) buildResponsesRequestFromClaude(c *gin.Context, body
 					if thinking, ok := block["thinking"].(string); ok && thinking != "" {
 						flushMessage()
 						input = append(input, map[string]interface{}{
-							"type":   "reasoning",
-							"status": "completed",
+							"type": "reasoning",
 							"summary": []map[string]interface{}{{
 								"type": "summary_text",
 								"text": thinking,

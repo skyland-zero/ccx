@@ -185,6 +185,52 @@ func TestResponsesProvider_BuildResponsesRequestFromClaude_AssistantTextUsesOutp
 	assertMessageBlockType(5, "user", "input_text", "继续总结")
 }
 
+func TestResponsesProvider_BuildResponsesRequestFromClaude_ReasoningInputOmitsStatus(t *testing.T) {
+	provider := &ResponsesProvider{}
+	upstream := &config.UpstreamConfig{ServiceType: "responses"}
+
+	body := []byte(`{
+		"model":"gpt-5",
+		"messages":[
+			{"role":"user","content":[{"type":"text","text":"先分析"}]},
+			{"role":"assistant","content":[
+				{"type":"thinking","thinking":"内部推理摘要"},
+				{"type":"text","text":"结论"}
+			]}
+		]
+	}`)
+
+	result, err := provider.buildResponsesRequestFromClaude(nil, body, upstream)
+	if err != nil {
+		t.Fatalf("buildResponsesRequestFromClaude() err = %v", err)
+	}
+
+	b, _ := json.Marshal(result["input"])
+	var input []map[string]interface{}
+	if err := json.Unmarshal(b, &input); err != nil {
+		t.Fatalf("input decode err: %v", err)
+	}
+
+	if len(input) != 3 {
+		t.Fatalf("len(input) = %d, want 3; input=%#v", len(input), input)
+	}
+	reasoning := input[1]
+	if reasoning["type"] != "reasoning" {
+		t.Fatalf("input[1].type = %v, want reasoning", reasoning["type"])
+	}
+	if _, exists := reasoning["status"]; exists {
+		t.Fatalf("input[1].status exists = true, want false; reasoning=%#v", reasoning)
+	}
+	summary, ok := reasoning["summary"].([]interface{})
+	if !ok || len(summary) != 1 {
+		t.Fatalf("summary = %#v, want single summary item", reasoning["summary"])
+	}
+	summaryItem, ok := summary[0].(map[string]interface{})
+	if !ok || summaryItem["type"] != "summary_text" || summaryItem["text"] != "内部推理摘要" {
+		t.Fatalf("summary[0] = %#v, want summary_text", summary[0])
+	}
+}
+
 func TestResponsesProvider_BuildResponsesRequestFromClaude_MapsPromptCacheOnly(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	provider := &ResponsesProvider{}
