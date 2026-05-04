@@ -385,6 +385,58 @@ func TestResponsesToOpenAIChatMessages_FunctionCallDefaultsCallIDToName(t *testi
 	assert.Equal(t, "get_weather", toolCalls[0]["id"])
 }
 
+func TestResponsesToOpenAIChatMessages_ReordersUserMessagesAfterPendingToolOutputs(t *testing.T) {
+	sess := &session.Session{
+		Messages: []types.ResponsesItem{
+			{
+				Type:      "function_call",
+				CallID:    "call_1",
+				Name:      "exec_command",
+				Arguments: `{"cmd":"go test ./..."}`,
+			},
+			{
+				Type:      "function_call",
+				CallID:    "call_2",
+				Name:      "exec_command",
+				Arguments: `{"cmd":"bun run build"}`,
+			},
+		},
+	}
+
+	messages, err := ResponsesToOpenAIChatMessages(sess, []interface{}{
+		map[string]interface{}{
+			"type": "message",
+			"role": "user",
+			"content": []interface{}{
+				map[string]interface{}{
+					"type": "input_text",
+					"text": "Approved command prefix saved",
+				},
+			},
+		},
+		map[string]interface{}{
+			"type":    "function_call_output",
+			"call_id": "call_1",
+			"output":  "tests passed",
+		},
+		map[string]interface{}{
+			"type":    "function_call_output",
+			"call_id": "call_2",
+			"output":  "build passed",
+		},
+	}, "")
+
+	assert.NoError(t, err)
+	assert.Len(t, messages, 4)
+	assert.Equal(t, "assistant", messages[0]["role"])
+	assert.Equal(t, "tool", messages[1]["role"])
+	assert.Equal(t, "tool", messages[2]["role"])
+	assert.Equal(t, "user", messages[3]["role"])
+	assert.Equal(t, "call_1", messages[1]["tool_call_id"])
+	assert.Equal(t, "call_2", messages[2]["tool_call_id"])
+	assert.Equal(t, "Approved command prefix saved", messages[3]["content"])
+}
+
 // TestResponsesToOpenAIChatMessages_DeepSeekMultiTurnToolCalls 模拟 DeepSeek 多轮 tool_calls 场景
 // 验证 Responses→Chat 转换符合 DeepSeek 文档要求：
 // 1. 有 tool_calls 的 assistant 消息必须包含 reasoning_content

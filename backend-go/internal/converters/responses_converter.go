@@ -315,7 +315,95 @@ func ResponsesToOpenAIChatMessages(sess *session.Session, newInput interface{}, 
 
 	messages = appendResponsesItemsToOpenAIMessages(messages, newItems)
 
-	return messages, nil
+	return normalizeOpenAIToolCallMessageOrder(messages), nil
+}
+
+func normalizeOpenAIToolCallMessageOrder(messages []map[string]interface{}) []map[string]interface{} {
+	normalized := append([]map[string]interface{}(nil), messages...)
+
+	for i := 0; i < len(normalized); i++ {
+		pendingIDs := openAIToolCallIDs(normalized[i])
+		if len(pendingIDs) == 0 {
+			continue
+		}
+
+		toolMessages := make([]map[string]interface{}, 0, len(pendingIDs))
+		deferredMessages := make([]map[string]interface{}, 0)
+		end := i
+		for j := i + 1; j < len(normalized) && len(pendingIDs) > 0; j++ {
+			msg := normalized[j]
+			if id := openAIToolMessageID(msg); id != "" {
+				if _, ok := pendingIDs[id]; ok {
+					toolMessages = append(toolMessages, msg)
+					delete(pendingIDs, id)
+				} else {
+					deferredMessages = append(deferredMessages, msg)
+				}
+			} else {
+				deferredMessages = append(deferredMessages, msg)
+			}
+			end = j
+		}
+
+		if len(pendingIDs) > 0 || len(deferredMessages) == 0 {
+			continue
+		}
+
+		reordered := make([]map[string]interface{}, 0, len(normalized))
+		reordered = append(reordered, normalized[:i+1]...)
+		reordered = append(reordered, toolMessages...)
+		reordered = append(reordered, deferredMessages...)
+		reordered = append(reordered, normalized[end+1:]...)
+		normalized = reordered
+		i += len(toolMessages)
+	}
+
+	return normalized
+}
+
+func openAIToolCallIDs(msg map[string]interface{}) map[string]struct{} {
+	if role, _ := msg["role"].(string); role != "assistant" {
+		return nil
+	}
+
+	ids := map[string]struct{}{}
+	switch toolCalls := msg["tool_calls"].(type) {
+	case []map[string]interface{}:
+		for _, toolCall := range toolCalls {
+			if id, _ := toolCall["id"].(string); id != "" {
+				ids[id] = struct{}{}
+			}
+		}
+	case []interface{}:
+		for _, rawToolCall := range toolCalls {
+			toolCall, ok := rawToolCall.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			if id, _ := toolCall["id"].(string); id != "" {
+				ids[id] = struct{}{}
+			}
+		}
+	case []types.OpenAIToolCall:
+		for _, toolCall := range toolCalls {
+			if toolCall.ID != "" {
+				ids[toolCall.ID] = struct{}{}
+			}
+		}
+	}
+
+	if len(ids) == 0 {
+		return nil
+	}
+	return ids
+}
+
+func openAIToolMessageID(msg map[string]interface{}) string {
+	if role, _ := msg["role"].(string); role != "tool" {
+		return ""
+	}
+	id, _ := msg["tool_call_id"].(string)
+	return id
 }
 
 func appendResponsesItemsToOpenAIMessages(messages []map[string]interface{}, items []types.ResponsesItem) []map[string]interface{} {
