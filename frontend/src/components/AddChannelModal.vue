@@ -1280,6 +1280,7 @@ const allSourceModelOptions = computed(() => {
     return [
       { title: 'codex', value: 'codex' },
       { title: 'gpt-5', value: 'gpt-5' },
+      { title: 'mini', value: 'mini' },
       { title: 'gpt-5.5', value: 'gpt-5.5' },
       { title: 'gpt-5.4', value: 'gpt-5.4' },
       { title: 'gpt-5.3-codex', value: 'gpt-5.3-codex' },
