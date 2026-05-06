@@ -269,11 +269,12 @@ func TryUpstreamWithAllKeys(
 				}
 
 				// 非 failover 错误，记录失败指标后返回（请求已处理）
+				clientStatusCode := normalizeUpstreamErrorStatus(resp.StatusCode, respBodyBytes)
 				metricsManager.RecordRequestFinalizeFailureWithClass(currentBaseURL, apiKey, metricsServiceType, requestID, metrics.FailureClassNonRetryable)
 				channelScheduler.RecordRequestEnd(currentBaseURL, apiKey, metricsServiceType, kind)
 				// 记录渠道日志
-				CompleteLog(channelLogStore, channelIndex, logRequestID, resp.StatusCode, false, string(respBodyBytes), attempt > 0 || urlIdx > 0)
-				c.Data(resp.StatusCode, "application/json", respBodyBytes)
+				CompleteLog(channelLogStore, channelIndex, logRequestID, clientStatusCode, false, string(respBodyBytes), attempt > 0 || urlIdx > 0)
+				c.Data(clientStatusCode, "application/json", respBodyBytes)
 				return true, "", 0, nil, nil, nil
 			}
 

@@ -424,14 +424,37 @@ func isSchemaValidationMessage(msgLower string) bool {
 	return false
 }
 
+// handleFuzzyModelRoutingError 在 fuzzy 模式下处理可归一化的模型路由错误
+// 如果最后失败的错误可以被归一化为非 503 状态码（如 model_not_found → 404），
+// 则透传该错误体和归一化后的状态码；否则返回 false，由调用方继续返回通用 503
+func handleFuzzyModelRoutingError(c *gin.Context, lastFailoverError *FailoverError) bool {
+	if lastFailoverError == nil {
+		return false
+	}
+	normalizedStatus := normalizeUpstreamErrorStatus(lastFailoverError.Status, lastFailoverError.Body)
+	if normalizedStatus == lastFailoverError.Status {
+		return false
+	}
+	var errBody map[string]interface{}
+	if err := json.Unmarshal(lastFailoverError.Body, &errBody); err == nil {
+		c.JSON(normalizedStatus, errBody)
+	} else {
+		c.JSON(normalizedStatus, gin.H{"error": string(lastFailoverError.Body)})
+	}
+	return true
+}
+
 // HandleAllChannelsFailed 处理所有渠道都失败的情况
 // fuzzyMode: 是否启用模糊模式（返回通用错误）
 // lastFailoverError: 最后一个故障转移错误
 // lastError: 最后一个错误
 // apiType: API 类型（用于错误消息）
 func HandleAllChannelsFailed(c *gin.Context, fuzzyMode bool, lastFailoverError *FailoverError, lastError error, apiType string) {
-	// Fuzzy 模式下返回通用错误，不透传上游详情
+	// Fuzzy 模式下默认返回通用错误，但保留明确的模型路由错误语义
 	if fuzzyMode {
+		if handleFuzzyModelRoutingError(c, lastFailoverError) {
+			return
+		}
 		c.JSON(503, gin.H{
 			"type": "error",
 			"error": gin.H{
@@ -444,7 +467,7 @@ func HandleAllChannelsFailed(c *gin.Context, fuzzyMode bool, lastFailoverError *
 
 	// 非 Fuzzy 模式：透传最后一个错误的详情
 	if lastFailoverError != nil {
-		status := lastFailoverError.Status
+		status := normalizeUpstreamErrorStatus(lastFailoverError.Status, lastFailoverError.Body)
 		if status == 0 {
 			status = 503
 		}
@@ -468,8 +491,11 @@ func HandleAllChannelsFailed(c *gin.Context, fuzzyMode bool, lastFailoverError *
 
 // HandleAllKeysFailed 处理所有密钥都失败的情况（单渠道模式）
 func HandleAllKeysFailed(c *gin.Context, fuzzyMode bool, lastFailoverError *FailoverError, lastError error, apiType string) {
-	// Fuzzy 模式下返回通用错误
+	// Fuzzy 模式下默认返回通用错误，但保留明确的模型路由错误语义
 	if fuzzyMode {
+		if handleFuzzyModelRoutingError(c, lastFailoverError) {
+			return
+		}
 		c.JSON(503, gin.H{
 			"type": "error",
 			"error": gin.H{
@@ -482,7 +508,7 @@ func HandleAllKeysFailed(c *gin.Context, fuzzyMode bool, lastFailoverError *Fail
 
 	// 非 Fuzzy 模式：透传最后一个错误的详情
 	if lastFailoverError != nil {
-		status := lastFailoverError.Status
+		status := normalizeUpstreamErrorStatus(lastFailoverError.Status, lastFailoverError.Body)
 		if status == 0 {
 			status = 500
 		}
@@ -583,6 +609,39 @@ func isNonRetryableError(bodyBytes []byte) bool {
 		return isNonRetryableErrorCode(errCode)
 	}
 	return false
+}
+
+// isModelRoutingError 识别上游将模型路由失败误报为 5xx 的错误
+// 仅用于状态码归一化（5xx → 404），不阻断 failover
+func isModelRoutingError(bodyBytes []byte) bool {
+	var errResp map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &errResp); err != nil {
+		return false
+	}
+	errObj, ok := errResp["error"].(map[string]interface{})
+	if !ok {
+		return false
+	}
+	if errCode, ok := errObj["code"].(string); ok {
+		if strings.ToLower(errCode) == "model_not_found" {
+			return true
+		}
+	}
+	if errMsg, ok := errObj["message"].(string); ok {
+		msgLower := strings.ToLower(errMsg)
+		if strings.Contains(msgLower, "no available channel for model") {
+			return true
+		}
+	}
+	return false
+}
+
+// normalizeUpstreamErrorStatus 修正上游误报的客户端配置错误状态码
+func normalizeUpstreamErrorStatus(status int, bodyBytes []byte) int {
+	if status >= 500 && len(bodyBytes) > 0 && isModelRoutingError(bodyBytes) {
+		return 404
+	}
+	return status
 }
 
 // BlacklistResult 拉黑判定结果

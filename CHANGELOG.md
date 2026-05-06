@@ -1,3 +1,9 @@
+## [Unreleased]
+
+### Fixed
+
+- **修复上游 model_not_found 503 错误被误判为可重试故障** - 上游 new-api 对 `model_not_found` 返回 HTTP 503，原逻辑将其视为临时故障触发全量 failover（所有 key/channel 耗尽后才返回 503）。新增 `isModelRoutingError` 识别 `model_not_found` 错误码，并通过 `normalizeUpstreamErrorStatus` 将最终 5xx 状态码归一化为 404 返回客户端；failover 仍允许跨 channel 尝试（不同上游实例可能支持该模型）
+
 ## [v2.6.77] - 2026-05-05
 
 ### 修复

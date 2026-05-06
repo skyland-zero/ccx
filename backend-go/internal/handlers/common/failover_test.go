@@ -2,7 +2,11 @@ package common
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+
+	"github.com/gin-gonic/gin"
 )
 
 // TestClassifyByStatusCode 测试基于状态码的分类
@@ -1145,6 +1149,230 @@ func TestShouldRetryWithNextKey_SensitiveWordsDetected(t *testing.T) {
 			}
 			if gotQuota != tt.wantQuota {
 				t.Errorf("ShouldRetryWithNextKey(%d, sensitive_words_body, %v) quota = %v, want %v",
+					tt.statusCode, tt.fuzzyMode, gotQuota, tt.wantQuota)
+			}
+		})
+	}
+}
+
+// TestIsModelRoutingError 测试模型路由错误识别（仅用于状态码归一化）
+func TestIsModelRoutingError(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{
+			name: "model_not_found code",
+			body: `{"error":{"code":"model_not_found","message":"No available channel for model gpt-5.4 under group codex (distributor)","type":"new_api_error"}}`,
+			want: true,
+		},
+		{
+			name: "no available channel message without code",
+			body: `{"error":{"message":"No available channel for model gpt-5.4 under group codex","type":"new_api_error"}}`,
+			want: true,
+		},
+		{
+			name: "model_not_found code case insensitive",
+			body: `{"error":{"code":"MODEL_NOT_FOUND","message":"some error"}}`,
+			want: true,
+		},
+		{
+			name: "generic model not found without no available channel",
+			body: `{"error":{"message":"model not found: gpt-5.4","type":"error"}}`,
+			want: false,
+		},
+		{
+			name: "quota error not client config",
+			body: `{"error":{"type":"new_api_error","message":"预扣费额度失败, 用户剩余额度: ¥0.053950"}}`,
+			want: false,
+		},
+		{
+			name: "auth error not client config",
+			body: `{"error":{"type":"new_api_error","message":"该令牌已过期","code":""}}`,
+			want: false,
+		},
+		{
+			name: "invalid request not client config",
+			body: `{"error":{"code":"invalid_request","message":"bad request"}}`,
+			want: false,
+		},
+		{
+			name: "invalid json",
+			body: `not json`,
+			want: false,
+		},
+		{
+			name: "no error object",
+			body: `{"status":"ok"}`,
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isModelRoutingError([]byte(tt.body))
+			if got != tt.want {
+				t.Errorf("isModelRoutingError() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestNormalizeUpstreamErrorStatus 测试状态码归一化
+func TestNormalizeUpstreamErrorStatus(t *testing.T) {
+	modelNotFoundBody := []byte(`{"error":{"code":"model_not_found","message":"No available channel for model gpt-5.4 under group codex","type":"new_api_error"}}`)
+
+	tests := []struct {
+		name       string
+		status     int
+		body       []byte
+		wantStatus int
+	}{
+		{"503 model_not_found normalizes to 404", 503, modelNotFoundBody, 404},
+		{"500 model_not_found normalizes to 404", 500, modelNotFoundBody, 404},
+		{"502 model_not_found normalizes to 404", 502, modelNotFoundBody, 404},
+		{"403 model_not_found stays 403", 403, modelNotFoundBody, 403},
+		{"200 model_not_found stays 200", 200, modelNotFoundBody, 200},
+		{"503 empty body stays 503", 503, []byte{}, 503},
+		{"503 nil body stays 503", 503, nil, 503},
+		{"503 quota error stays 503", 503, []byte(`{"error":{"message":"quota exceeded"}}`), 503},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := normalizeUpstreamErrorStatus(tt.status, tt.body)
+			if got != tt.wantStatus {
+				t.Errorf("normalizeUpstreamErrorStatus(%d, ...) = %d, want %d", tt.status, got, tt.wantStatus)
+			}
+		})
+	}
+}
+
+func TestHandleAllFailedFuzzyMode_ModelNotFoundNormalizesTo404(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	modelNotFoundBody := []byte(`{"error":{"code":"model_not_found","message":"No available channel for model gpt-5.4 under group codex","type":"new_api_error"}}`)
+	quotaBody := []byte(`{"error":{"message":"quota exceeded"}}`)
+
+	tests := []struct {
+		name       string
+		handle     func(*gin.Context)
+		wantStatus int
+	}{
+		{
+			name: "all channels failed - model_not_found normalizes to 404",
+			handle: func(c *gin.Context) {
+				HandleAllChannelsFailed(c, true, &FailoverError{Status: http.StatusServiceUnavailable, Body: modelNotFoundBody}, nil, "Messages")
+			},
+			wantStatus: http.StatusNotFound,
+		},
+		{
+			name: "all keys failed - model_not_found normalizes to 404",
+			handle: func(c *gin.Context) {
+				HandleAllKeysFailed(c, true, &FailoverError{Status: http.StatusServiceUnavailable, Body: modelNotFoundBody}, nil, "Messages")
+			},
+			wantStatus: http.StatusNotFound,
+		},
+		{
+			name: "all channels failed - 429 quota stays generic 503 in fuzzy mode",
+			handle: func(c *gin.Context) {
+				HandleAllChannelsFailed(c, true, &FailoverError{Status: http.StatusTooManyRequests, Body: quotaBody}, nil, "Messages")
+			},
+			wantStatus: http.StatusServiceUnavailable,
+		},
+		{
+			name: "all keys failed - 429 quota stays generic 503 in fuzzy mode",
+			handle: func(c *gin.Context) {
+				HandleAllKeysFailed(c, true, &FailoverError{Status: http.StatusTooManyRequests, Body: quotaBody}, nil, "Messages")
+			},
+			wantStatus: http.StatusServiceUnavailable,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			ctx, _ := gin.CreateTestContext(recorder)
+
+			tt.handle(ctx)
+
+			if recorder.Code != tt.wantStatus {
+				t.Fatalf("status = %d, want %d", recorder.Code, tt.wantStatus)
+			}
+			if recorder.Body.String() == "" {
+				t.Fatal("response body is empty")
+			}
+		})
+	}
+}
+
+// TestShouldRetryWithNextKey_ModelNotFound 测试 model_not_found 允许 failover
+// 模拟生产环境真实响应：上游 new-api 对 model_not_found 返回 503
+// model_not_found 应允许 failover（不同 channel/上游实例可能支持该模型）
+func TestShouldRetryWithNextKey_ModelNotFound(t *testing.T) {
+	// 用户实际遇到的生产环境响应体
+	body := []byte(`{"error":{"code":"model_not_found","message":"No available channel for model gpt-5.4 under group codex (distributor) (request id: 20260506023117409510104ddJSBEMJ)","type":"new_api_error"}}`)
+
+	tests := []struct {
+		name         string
+		statusCode   int
+		fuzzyMode    bool
+		wantFailover bool
+		wantQuota    bool
+	}{
+		{
+			name:         "503 model_not_found - normal mode allows failover",
+			statusCode:   503,
+			fuzzyMode:    false,
+			wantFailover: true,
+			wantQuota:    false,
+		},
+		{
+			name:         "503 model_not_found - fuzzy mode allows failover",
+			statusCode:   503,
+			fuzzyMode:    true,
+			wantFailover: true,
+			wantQuota:    false,
+		},
+		{
+			name:         "500 model_not_found - normal mode allows failover",
+			statusCode:   500,
+			fuzzyMode:    false,
+			wantFailover: true,
+			wantQuota:    false,
+		},
+		{
+			name:         "500 model_not_found - fuzzy mode allows failover",
+			statusCode:   500,
+			fuzzyMode:    true,
+			wantFailover: true,
+			wantQuota:    false,
+		},
+		{
+			name:         "403 model_not_found - normal mode allows failover",
+			statusCode:   403,
+			fuzzyMode:    false,
+			wantFailover: true,
+			wantQuota:    false,
+		},
+		{
+			name:         "403 model_not_found - fuzzy mode allows failover",
+			statusCode:   403,
+			fuzzyMode:    true,
+			wantFailover: true,
+			wantQuota:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotFailover, gotQuota := ShouldRetryWithNextKey(tt.statusCode, body, tt.fuzzyMode, "Messages")
+			if gotFailover != tt.wantFailover {
+				t.Errorf("ShouldRetryWithNextKey(%d, model_not_found_body, %v) failover = %v, want %v",
+					tt.statusCode, tt.fuzzyMode, gotFailover, tt.wantFailover)
+			}
+			if gotQuota != tt.wantQuota {
+				t.Errorf("ShouldRetryWithNextKey(%d, model_not_found_body, %v) quota = %v, want %v",
 					tt.statusCode, tt.fuzzyMode, gotQuota, tt.wantQuota)
 			}
 		})
