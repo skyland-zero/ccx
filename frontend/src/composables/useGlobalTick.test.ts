@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
-import { defineComponent, h } from 'vue'
+import { defineComponent, h, onMounted } from 'vue'
 import { mount } from '@vue/test-utils'
-import { registerGlobalTick, useGlobalTick } from './useGlobalTick'
+import { registerGlobalTick, useGlobalTick, __resetForTests__ } from './useGlobalTick'
 
 /**
  * 模拟 document.visibilityState 变化并触发 visibilitychange 事件
@@ -22,6 +22,7 @@ describe('registerGlobalTick', () => {
   })
 
   afterEach(() => {
+    __resetForTests__()
     vi.restoreAllMocks()
     vi.useRealTimers()
   })
@@ -185,6 +186,33 @@ describe('registerGlobalTick', () => {
 
     u1(); u2()
   })
+
+  it('P1 fix: tab 隐藏时首次注册订阅不应启动 setInterval', () => {
+    const spy = vi.spyOn(globalThis, 'setInterval')
+    const fn = vi.fn()
+
+    // 模拟后台 tab 打开场景：visibilityState === 'hidden'
+    setVisibility('hidden')
+    const unsubscribe = registerGlobalTick(1000, fn)
+
+    // setInterval 不应被调用
+    expect(spy).not.toHaveBeenCalled()
+
+    // 即使时间推进也不触发回调
+    vi.advanceTimersByTime(10_000)
+    expect(fn).not.toHaveBeenCalled()
+
+    // visibility 恢复时：启动定时器 + 因已超期立即补触发一次
+    setVisibility('visible')
+    expect(spy).toHaveBeenCalledTimes(1)
+    expect(fn).toHaveBeenCalledTimes(1) // 立即补触发
+
+    // 此后每 1000ms 正常触发
+    vi.advanceTimersByTime(1000)
+    expect(fn).toHaveBeenCalledTimes(2)
+
+    unsubscribe()
+  })
 })
 
 describe('useGlobalTick (组件级)', () => {
@@ -194,6 +222,7 @@ describe('useGlobalTick (组件级)', () => {
   })
 
   afterEach(() => {
+    __resetForTests__()
     vi.restoreAllMocks()
     vi.useRealTimers()
   })
@@ -251,6 +280,62 @@ describe('useGlobalTick (组件级)', () => {
     expect(otherCb).toHaveBeenCalledTimes(3)
 
     unsubOther()
+    wrapper.unmount()
+  })
+
+  it('P1 fix: onTick 在 onMounted 回调中调用时也能正确退订', () => {
+    // 回归：useGlobalTick 必须在 setup 同步阶段注册 onUnmounted，
+    // 不能依赖 onTick 内部注册（否则放在 onMounted 里时 Vue 会丢弃 onUnmounted）
+    const fn = vi.fn()
+
+    const TestComp = defineComponent({
+      setup() {
+        const tick = useGlobalTick(1000, 'late-register')
+        // 模拟常见用法：在 onMounted 回调里调 onTick（因为 refreshData 等可能在下方定义）
+        onMounted(() => {
+          tick.onTick(fn)
+        })
+        return () => h('div')
+      },
+    })
+
+    const wrapper = mount(TestComp)
+    vi.advanceTimersByTime(1000)
+    expect(fn).toHaveBeenCalledTimes(1)
+
+    // 卸载后应立即停止接收 tick
+    wrapper.unmount()
+    vi.advanceTimersByTime(10_000)
+    expect(fn).toHaveBeenCalledTimes(1) // 不再增加，说明退订成功
+  })
+
+  it('P2 fix: onTick 的 async 拒绝走 fireListeners 的 warn 路径，不产生 unhandled rejection', async () => {
+    // 回归：wrapped 必须 `return fn()`，否则 Promise 不会冒到 fireListeners
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const rejectingAsync = vi.fn(async () => {
+      throw new Error('async boom')
+    })
+
+    const TestComp = defineComponent({
+      setup() {
+        const tick = useGlobalTick(500, 'async-reject')
+        tick.onTick(rejectingAsync)
+        return () => h('div')
+      },
+    })
+
+    const wrapper = mount(TestComp)
+    vi.advanceTimersByTime(500)
+    expect(rejectingAsync).toHaveBeenCalledTimes(1)
+
+    // 等微任务队列冲刷，让 .catch 运行
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(warnSpy).toHaveBeenCalled()
+    const warnMsg = warnSpy.mock.calls[0].join(' ')
+    expect(warnMsg).toContain('[useGlobalTick]')
+
     wrapper.unmount()
   })
 })
