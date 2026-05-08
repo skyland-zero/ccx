@@ -31,6 +31,10 @@
           </template>
           <div v-if="getModelTooltipView(modelResult) === 'success'" class="tooltip-content">
             <div class="tooltip-title">{{ modelResult.model }}</div>
+            <div v-if="modelResult.actualModel" class="tooltip-row">
+              <span class="tooltip-label">{{ t('capability.actualModel') }}</span>
+              <span class="tooltip-value">{{ modelResult.actualModel }}</span>
+            </div>
             <div class="tooltip-row">
               <span class="tooltip-label">{{ t('capability.tooltipLatency') }}</span>
               <span class="tooltip-value">{{ getModelTooltipLatencyText(modelResult) }}</span>
@@ -46,6 +50,10 @@
           </div>
           <div v-else-if="getModelTooltipView(modelResult) === 'pending'" class="tooltip-content">
             <div class="tooltip-title">{{ modelResult.model }}</div>
+            <div v-if="modelResult.actualModel" class="tooltip-row">
+              <span class="tooltip-label">{{ t('capability.actualModel') }}</span>
+              <span class="tooltip-value">{{ modelResult.actualModel }}</span>
+            </div>
             <div class="tooltip-row">
               <span class="tooltip-label">{{ t('capability.modelStatus') }}</span>
               <span class="tooltip-value">{{ getModelStatusText(modelResult) }}</span>
@@ -53,6 +61,10 @@
           </div>
           <div v-else class="tooltip-content">
             <div class="tooltip-title">{{ modelResult.model }}</div>
+            <div v-if="modelResult.actualModel" class="tooltip-row">
+              <span class="tooltip-label">{{ t('capability.actualModel') }}</span>
+              <span class="tooltip-value">{{ modelResult.actualModel }}</span>
+            </div>
             <div class="tooltip-row">
               <span class="tooltip-label">{{ t('capability.modelStatus') }}</span>
               <span class="tooltip-value">{{ getModelStatusText(modelResult) }}</span>

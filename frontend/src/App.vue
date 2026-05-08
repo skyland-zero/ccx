@@ -31,7 +31,7 @@
               type="password"
               variant="outlined"
               prepend-inner-icon="mdi-key"
-              :rules="[v => !!v || t('app.auth.inputRequired')]"
+              :rules="[(v: string) => !!v || t('app.auth.inputRequired')]"
               required
               autofocus
               @keyup.enter="handleAuthSubmit"
@@ -460,19 +460,22 @@ const theme = useTheme()
 const { init: initTheme } = useAppTheme()
 
 // 认证 Store
-const authStore = useAuthStore()
+// 注意：as any 是 Pinia 3.x + Vue 3.5 + TS 6.x 兼容补丁——
+// Vue 3.5 将 Ref<T> 改为 Ref<T, S>，Pinia 的 UnwrapRef<Ref<infer V, unknown>> 模式失效，
+// 导致模板中访问 store 属性时类型未被自动解包。运行时行为正常。
+const authStore = useAuthStore() as any
 
 // 渠道 Store
-const channelStore = useChannelStore()
+const channelStore = useChannelStore() as any
 
 // 偏好设置 Store
-const preferencesStore = usePreferencesStore()
+const preferencesStore = usePreferencesStore() as any
 
 // 对话框 Store
-const dialogStore = useDialogStore()
+const dialogStore = useDialogStore() as any
 
 // 系统状态 Store
-const systemStore = useSystemStore()
+const systemStore = useSystemStore() as any
 const { locale, t, setLocale } = useI18n()
 
 const languageOptions: Array<{ value: SupportedLocale, label: string, shortLabel: string }> = [
@@ -727,11 +730,26 @@ const capabilityPlaceholderModels: Record<string, string[]> = {
   images: ['gpt-image-1', 'dall-e-3', 'dall-e-2']
 }
 
-const capabilityProtocolOrder = ['messages', 'responses', 'chat', 'gemini'] as const
-type CapabilityProtocol = typeof capabilityProtocolOrder[number]
+// 复合协议支持：将 from->to 的 from 映射到对应的占位模型集
+const getPlaceholderModelsForProtocol = (protocol: string): string[] => {
+  if (protocol.includes('->')) {
+    const from = protocol.split('->')[0]
+    return capabilityPlaceholderModels[from] ?? []
+  }
+  return capabilityPlaceholderModels[protocol] ?? []
+}
 
-const isCapabilityProtocol = (protocol: string): protocol is CapabilityProtocol => {
-  return capabilityProtocolOrder.includes(protocol as CapabilityProtocol)
+const capabilityBaseProtocolOrder = ['messages', 'responses', 'chat', 'gemini'] as const
+type CapabilityBaseProtocol = typeof capabilityBaseProtocolOrder[number]
+
+// 判断协议是否为已知协议（基础协议 或 复合协议 from->to，其中 from 是已知基础协议）
+const isCapabilityProtocol = (protocol: string): boolean => {
+  if (capabilityBaseProtocolOrder.includes(protocol as CapabilityBaseProtocol)) return true
+  if (protocol.includes('->')) {
+    const from = protocol.split('->')[0]
+    return capabilityBaseProtocolOrder.includes(from as CapabilityBaseProtocol)
+  }
+  return false
 }
 
 const buildCapabilityModels = (
@@ -739,7 +757,7 @@ const buildCapabilityModels = (
   status: CapabilityModelJobResult['status']
 ): CapabilityModelJobResult[] => {
   const now = new Date().toISOString()
-  return (capabilityPlaceholderModels[protocol] ?? []).map(model => ({
+  return getPlaceholderModelsForProtocol(protocol).map(model => ({
     model,
     status,
     lifecycle: status === 'running' ? 'active' : 'pending',
@@ -752,7 +770,7 @@ const buildCapabilityModels = (
 }
 
 const buildCapabilityProtocolResult = (
-  protocol: CapabilityProtocol,
+  protocol: string,
   status: CapabilityProtocolJobResult['status']
 ): CapabilityProtocolJobResult => {
   const now = new Date().toISOString()
@@ -910,19 +928,37 @@ const buildCapabilityProgress = (tests: CapabilityProtocolJobResult[]) => {
   return progress
 }
 
+// normalizeCapabilityTests 将测试结果归一化：
+// 1. 保留所有已知协议（含复合协议），复合协议排在最前
+// 2. 补齐缺失的基础协议（以 idle 状态占位）
 const normalizeCapabilityTests = (tests: CapabilityProtocolJobResult[]): CapabilityProtocolJobResult[] => {
   const testsByProtocol = new Map<string, CapabilityProtocolJobResult>()
+  const compositeTests: CapabilityProtocolJobResult[] = []
+
   for (const test of tests) {
     if (isCapabilityProtocol(test.protocol)) {
+      if (test.protocol.includes('->')) {
+        // 复合协议去重（保留最后出现的）
+        if (!compositeTests.some(t => t.protocol === test.protocol)) {
+          compositeTests.push(test)
+        }
+      }
       testsByProtocol.set(test.protocol, test)
     }
   }
-  return capabilityProtocolOrder.map(protocol => testsByProtocol.get(protocol) ?? buildCapabilityProtocolResult(protocol, 'idle'))
+
+  // 基础协议补齐
+  const baseTests = capabilityBaseProtocolOrder.map(protocol =>
+    testsByProtocol.get(protocol) ?? buildCapabilityProtocolResult(protocol, 'idle')
+  )
+
+  // 复合协议排在基础协议前面
+  return [...compositeTests, ...baseTests]
 }
 
 const buildCapabilityIdleJob = (channelId: number, channelName: string, channelKind: CapabilityChannelKind): CapabilityTestJob => {
   const now = new Date().toISOString()
-  const tests = capabilityProtocolOrder.map(protocol => buildCapabilityProtocolResult(protocol, 'idle'))
+  const tests = capabilityBaseProtocolOrder.map(protocol => buildCapabilityProtocolResult(protocol, 'idle'))
   const progress = buildCapabilityProgress(tests)
 
   return {
@@ -939,7 +975,7 @@ const buildCapabilityIdleJob = (channelId: number, channelName: string, channelK
     compatibleProtocols: [],
     totalDuration: 0,
     updatedAt: now,
-    targetProtocols: [...capabilityProtocolOrder],
+    targetProtocols: [...capabilityBaseProtocolOrder],
     progress
   }
 }
@@ -980,7 +1016,7 @@ const mergeCapabilityJob = (baseJob: CapabilityTestJob, incomingJob: CapabilityT
     tests,
     compatibleProtocols: tests.filter(isSuccessfulCapabilityTest).map(test => test.protocol),
     progress: buildCapabilityProgress(tests),
-    targetProtocols: [...capabilityProtocolOrder],
+    targetProtocols: [...capabilityBaseProtocolOrder],
     updatedAt: incomingJob.updatedAt || baseJob.updatedAt || new Date().toISOString()
   }
 }
@@ -1092,7 +1128,7 @@ const updateCapabilityJob = (job: CapabilityTestJob) => {
   }
 }
 
-const getCapabilityPreviousJobId = (protocol: CapabilityProtocol): string | undefined => {
+const getCapabilityPreviousJobId = (protocol: string): string | undefined => {
   const currentJob = capabilityTestJob.value
   return currentJob?.protocolJobRefs?.[protocol]?.jobId ||
     currentJob?.protocolJobIds?.[protocol] ||
@@ -1107,7 +1143,7 @@ const testChannelCapability = async (channelId: number) => {
   }
 
   const channelType = channelStore.activeTab
-  const channel = channelStore.currentChannelsData.channels?.find(ch => ch.index === channelId)
+  const channel = channelStore.currentChannelsData.channels?.find((ch: Channel) => ch.index === channelId)
   capabilityTestChannelName.value = channel?.name || t('capability.channelFallback', { id: channelId })
   capabilityTestChannelId.value = channelId
 
@@ -1239,7 +1275,7 @@ const handleRetryCapabilityModel = async (protocol: string, model: string) => {
 
 // 复制渠道到目标协议 Tab
 const handleCopyToTab = async (targetProtocol: string) => {
-  const sourceChannel = channelStore.currentChannelsData.channels?.find(ch => ch.index === capabilityTestChannelId.value)
+  const sourceChannel = channelStore.currentChannelsData.channels?.find((ch: Channel) => ch.index === capabilityTestChannelId.value)
   if (!sourceChannel) {
     showToast(t('toast.sourceChannelMissing'), 'error')
     return

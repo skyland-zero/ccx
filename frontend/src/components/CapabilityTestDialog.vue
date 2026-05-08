@@ -96,53 +96,6 @@
             </v-btn>
           </div>
 
-          <!-- 重定向验证结果（独立区域，仅在命中 ModelMapping 时显示） -->
-          <div v-if="redirectTests.length > 0" class="redirect-section">
-            <div class="redirect-section-header">
-              <v-icon size="small" color="primary">mdi-swap-horizontal</v-icon>
-              <span class="redirect-section-title">{{ t('capability.redirectTestTitle') }}</span>
-              <span class="redirect-section-desc">{{ t('capability.redirectTestDescription') }}</span>
-            </div>
-            <div class="redirect-results-flow">
-              <v-tooltip
-                v-for="rt in redirectTests"
-                :key="rt.probeModel"
-                location="top"
-                :content-class="rt.success ? 'success-tooltip' : 'error-tooltip'"
-              >
-                <template #activator="{ props: tooltipProps }">
-                  <div
-                    v-bind="tooltipProps"
-                    :class="['redirect-badge', rt.success ? 'redirect-success' : 'redirect-error']"
-                  >
-                    <span class="probe-model">{{ rt.probeModel }}</span>
-                    <v-icon size="14" class="redirect-arrow">mdi-arrow-right-thin</v-icon>
-                    <span class="actual-model">{{ rt.actualModel }}</span>
-                    <v-icon size="16" class="redirect-status-icon">
-                      {{ rt.success ? 'mdi-check-circle' : 'mdi-close-circle' }}
-                    </v-icon>
-                  </div>
-                </template>
-                <div class="tooltip-content">
-                  <div class="tooltip-title">{{ rt.probeModel }}</div>
-                  <div class="tooltip-row">
-                    <span class="tooltip-label">{{ t('capability.redirectedTo') }}</span>
-                    <span class="tooltip-value">{{ rt.actualModel }}</span>
-                  </div>
-                  <div v-if="rt.success" class="tooltip-row">
-                    <span class="tooltip-label">{{ t('capability.tooltipLatency') }}</span>
-                    <span class="tooltip-value">{{ rt.latency }}ms</span>
-                  </div>
-                  <div v-if="rt.success" class="tooltip-row">
-                    <span class="tooltip-label">{{ t('capability.tooltipStreaming') }}</span>
-                    <span class="tooltip-value">{{ rt.streamingSupported ? t('capability.supported') : t('capability.unsupported') }}</span>
-                  </div>
-                  <div v-else-if="rt.error" class="tooltip-error">{{ rt.error }}</div>
-                </div>
-              </v-tooltip>
-            </div>
-          </div>
-
           <!-- 移动端卡片布局 -->
           <div class="mobile-layout">
             <div v-for="test in sortedTests" :key="test.protocol" class="protocol-card">
@@ -400,11 +353,21 @@ watch(state, (newState) => {
 })
 
 const job = computed(() => props.capabilityJob)
-const redirectTests = computed(() => job.value?.redirectTests ?? [])
 
-const knownProtocols = ['messages', 'chat', 'responses', 'gemini'] as const
+const knownBaseProtocols = ['messages', 'chat', 'responses', 'gemini'] as const
 
-const isKnownProtocol = (protocol: string) => knownProtocols.includes(protocol as typeof knownProtocols[number])
+// 复合协议检测：包含 "->" 的协议字符串（如 "messages->responses"）
+const isCompositeProtocol = (protocol: string): boolean => protocol.includes('->')
+
+// 基础协议校验：直接匹配已知协议，或从复合协议中提取 from 部分校验
+const isKnownProtocol = (protocol: string): boolean => {
+  if (knownBaseProtocols.includes(protocol as typeof knownBaseProtocols[number])) return true
+  if (isCompositeProtocol(protocol)) {
+    const from = protocol.split('->')[0]
+    return knownBaseProtocols.includes(from as typeof knownBaseProtocols[number])
+  }
+  return false
+}
 
 const getRunModeLabel = (mode: string) => {
   switch (mode) {
@@ -416,17 +379,25 @@ const getRunModeLabel = (mode: string) => {
   }
 }
 
-const getProtocolDisplayName = (protocol: string) => {
-  const map: Record<string, string> = {
-    messages: 'Claude',
-    chat: 'OpenAI Chat',
-    gemini: 'Gemini',
-    responses: 'Codex'
-  }
-  return map[protocol] || protocol
+const baseProtocolDisplayNames: Record<string, string> = {
+  messages: 'Claude',
+  chat: 'OpenAI Chat',
+  gemini: 'Gemini',
+  responses: 'Codex'
 }
 
-const getProtocolColor = (protocol: string) => {
+const getProtocolDisplayName = (protocol: string): string => {
+  if (isCompositeProtocol(protocol)) {
+    const [from, to] = protocol.split('->')
+    const fromName = baseProtocolDisplayNames[from] || from
+    const toName = baseProtocolDisplayNames[to] || to
+    return `${fromName} → ${toName}`
+  }
+  return baseProtocolDisplayNames[protocol] || protocol
+}
+
+const getProtocolColor = (protocol: string): string => {
+  if (isCompositeProtocol(protocol)) return 'cyan-darken-1'
   const map: Record<string, string> = {
     messages: 'orange',
     chat: 'primary',
@@ -436,7 +407,8 @@ const getProtocolColor = (protocol: string) => {
   return map[protocol] || 'grey'
 }
 
-const getProtocolIcon = (protocol: string) => {
+const getProtocolIcon = (protocol: string): string => {
+  if (isCompositeProtocol(protocol)) return 'mdi-swap-horizontal'
   const map: Record<string, string> = {
     messages: 'mdi-message-processing',
     chat: 'mdi-robot',
@@ -453,15 +425,23 @@ const getSuccessfulProtocols = () => {
     .map(t => t.protocol)
 }
 
-const protocolOrder = ['messages', 'responses', 'chat', 'gemini']
+// 协议排序：复合协议始终排在第一位，其余按固定顺序
+const baseProtocolOrder = ['messages', 'responses', 'chat', 'gemini']
 
 const sortedTests = computed(() => {
   if (!job.value) return []
   return [...job.value.tests]
     .filter(test => isKnownProtocol(test.protocol))
     .sort((a, b) => {
-      const indexA = protocolOrder.indexOf(a.protocol)
-      const indexB = protocolOrder.indexOf(b.protocol)
+      const aIsComposite = isCompositeProtocol(a.protocol)
+      const bIsComposite = isCompositeProtocol(b.protocol)
+      // 复合协议始终排在最前面
+      if (aIsComposite && !bIsComposite) return -1
+      if (!aIsComposite && bIsComposite) return 1
+      // 同类型内按基础协议顺序排序
+      const getBase = (p: string) => isCompositeProtocol(p) ? p.split('->')[0] : p
+      const indexA = baseProtocolOrder.indexOf(getBase(a.protocol))
+      const indexB = baseProtocolOrder.indexOf(getBase(b.protocol))
       return (indexA === -1 ? 999 : indexA) - (indexB === -1 ? 999 : indexB)
     })
 })
@@ -787,106 +767,5 @@ defineExpose({ setError })
   .desktop-layout {
     display: none;
   }
-}
-
-/* 重定向验证区域 */
-.redirect-section {
-  margin-bottom: 16px;
-  padding: 12px 16px;
-  border-radius: 12px;
-  background: rgba(99, 102, 241, 0.06);
-  border: 1px solid rgba(99, 102, 241, 0.18);
-}
-
-.redirect-section-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 10px;
-  flex-wrap: wrap;
-}
-
-.redirect-section-title {
-  font-size: 0.82rem;
-  font-weight: 700;
-  color: rgba(79, 70, 229, 0.95);
-}
-
-.redirect-section-desc {
-  font-size: 0.72rem;
-  color: rgba(107, 114, 128, 0.85);
-  margin-left: 4px;
-}
-
-:global(.v-theme--dark) .redirect-section {
-  background: rgba(129, 140, 248, 0.08);
-  border-color: rgba(129, 140, 248, 0.24);
-}
-
-:global(.v-theme--dark) .redirect-section-title {
-  color: rgba(165, 180, 252, 0.96);
-}
-
-:global(.v-theme--dark) .redirect-section-desc {
-  color: rgba(203, 213, 225, 0.75);
-}
-
-.redirect-results-flow {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.redirect-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  border-radius: 999px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  line-height: 1;
-  border: 1px solid transparent;
-  cursor: default;
-}
-
-.redirect-badge .probe-model,
-.redirect-badge .actual-model {
-  max-width: 180px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.redirect-badge .probe-model {
-  opacity: 0.78;
-}
-
-.redirect-badge .actual-model {
-  font-weight: 700;
-}
-
-.redirect-badge .redirect-arrow {
-  opacity: 0.6;
-}
-
-.redirect-success {
-  background: rgba(34, 197, 94, 0.12);
-  color: rgba(21, 128, 61, 0.95);
-  border-color: rgba(34, 197, 94, 0.24);
-}
-
-.redirect-error {
-  background: rgba(239, 68, 68, 0.12);
-  color: rgba(185, 28, 28, 0.95);
-  border-color: rgba(239, 68, 68, 0.24);
-}
-
-:global(.v-theme--dark) .redirect-success {
-  color: rgba(134, 239, 172, 0.96);
-}
-
-:global(.v-theme--dark) .redirect-error {
-  color: rgba(252, 165, 165, 0.96);
 }
 </style>

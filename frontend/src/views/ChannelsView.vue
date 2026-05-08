@@ -1,19 +1,19 @@
 <template>
   <!-- 渠道编排（高密度列表模式） -->
   <ChannelOrchestration
-    v-if="channelStore.currentChannelsData.channels?.length"
-    :channels="channelStore.currentChannelsData.channels"
-    :current-channel-index="channelStore.currentChannelsData.current ?? 0"
+    v-if="(channelStore.currentChannelsData as any).channels?.length"
+    :channels="(channelStore.currentChannelsData as any).channels"
+    :current-channel-index="(channelStore.currentChannelsData as any).current ?? 0"
     :channel-type="channelType"
-    :dashboard-metrics="channelStore.currentDashboardMetrics"
-    :dashboard-stats="channelStore.currentDashboardStats"
-    :dashboard-recent-activity="channelStore.currentDashboardRecentActivity"
+    :dashboard-metrics="channelStore.currentDashboardMetrics as any"
+    :dashboard-stats="channelStore.currentDashboardStats as any"
+    :dashboard-recent-activity="channelStore.currentDashboardRecentActivity as any"
     class="mb-6"
     v-bind="$attrs"
   />
 
   <!-- 空状态 -->
-  <v-card v-if="!channelStore.currentChannelsData.channels?.length" elevation="2" class="text-center pa-12" rounded="lg">
+  <v-card v-if="!(channelStore.currentChannelsData as any).channels?.length" elevation="2" class="text-center pa-12" rounded="lg">
     <v-avatar size="120" color="primary" class="mb-6">
       <v-icon size="60" color="white">mdi-rocket-launch</v-icon>
     </v-avatar>

@@ -1845,7 +1845,7 @@ const ensureLatestSavedChannel = async (): Promise<number | null> => {
     const payload = buildChannelPayload(form)
     const result = await channelStore.saveChannel(payload, props.channel.index)
     await channelStore.refreshChannels()
-    const latestChannel = channelStore.currentChannelsData.channels?.find(ch => ch.index === props.channel!.index) || null
+    const latestChannel = (channelStore.currentChannelsData as any).channels?.find((ch: any) => ch.index === props.channel!.index) || null
     if (latestChannel) {
       dialogStore.editingChannel = latestChannel
     }
