@@ -135,9 +135,9 @@ func TestCapabilityCacheHit_DoesNotBindExecutionLookupKey(t *testing.T) {
 	baseURL := channel.GetAllBaseURLs()[0]
 	apiKey := channel.APIKeys[0]
 	protocols := []string{"messages"}
-	cacheKey := buildCapabilityCacheKey(baseURL, apiKey, channel.ServiceType, protocols, nil)
+	cacheKey := buildCapabilityCacheKey(baseURL, apiKey, channel.ServiceType, protocols, nil, hashModelMapping(channel.ModelMapping))
 	identityKey := resolveCapabilityIdentityKey(&channel)
-	executionLookupKey := buildCapabilityExecutionLookupKey(identityKey, "messages", protocols, nil)
+	executionLookupKey := buildCapabilityExecutionLookupKey(identityKey, "messages", protocols, nil, hashModelMapping(channel.ModelMapping))
 
 	setCapabilityCache(cacheKey, CapabilityTestResponse{
 		ChannelID:           0,
@@ -564,8 +564,8 @@ func TestResumedCancelledJob_ReturnsUpdatedState(t *testing.T) {
 	}
 
 	// 绑定 execution lookupKey，模拟取消后保留的 identity 运行复用键
-	executionLookupKey := buildCapabilityExecutionLookupKey(resolveCapabilityIdentityKey(&channel), "messages", []string{"messages"}, nil)
-	cacheKey := buildCapabilityCacheKey(baseURL, apiKey, channel.ServiceType, []string{"messages"}, nil)
+	executionLookupKey := buildCapabilityExecutionLookupKey(resolveCapabilityIdentityKey(&channel), "messages", []string{"messages"}, nil, hashModelMapping(channel.ModelMapping))
+	cacheKey := buildCapabilityCacheKey(baseURL, apiKey, channel.ServiceType, []string{"messages"}, nil, hashModelMapping(channel.ModelMapping))
 	lookupKey := buildCapabilityJobLookupKey(cacheKey, "messages", 0)
 	capabilityJobs.bindLookupKey(executionLookupKey, job.JobID)
 	capabilityJobs.bindLookupKey(lookupKey, job.JobID)
@@ -706,8 +706,8 @@ func TestCapabilityRunningJobReuse_ByIdentityAcrossChannels(t *testing.T) {
 
 	cfg := cfgManager.GetConfig()
 	channel := cfg.Upstream[0]
-	cacheKey := buildCapabilityCacheKey(channel.GetAllBaseURLs()[0], channel.APIKeys[0], channel.ServiceType, []string{"messages"}, nil)
-	executionLookupKey := buildCapabilityExecutionLookupKey(resolveCapabilityIdentityKey(&channel), "messages", []string{"messages"}, nil)
+	cacheKey := buildCapabilityCacheKey(channel.GetAllBaseURLs()[0], channel.APIKeys[0], channel.ServiceType, []string{"messages"}, nil, hashModelMapping(channel.ModelMapping))
+	executionLookupKey := buildCapabilityExecutionLookupKey(resolveCapabilityIdentityKey(&channel), "messages", []string{"messages"}, nil, hashModelMapping(channel.ModelMapping))
 	lookupKey := buildCapabilityJobLookupKey(cacheKey, "messages", 0)
 	capabilityJobs.bindLookupKey(executionLookupKey, runningJob.JobID)
 	capabilityJobs.bindLookupKey(lookupKey, runningJob.JobID)

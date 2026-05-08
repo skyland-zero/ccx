@@ -12,6 +12,14 @@
 
 ### Added
 
+- **能力测试新增「重定向验证」独立结果区域** - 渠道若配置了 ModelMapping，点击能力测试时会额外用该渠道类型的原生探测模型走一遍 ModelMapping 重定向并发往上游，直接验证"重定向规则+上游"链路是否可用，结果在能力测试对话框上方独立展示，不影响下方 4 协议原生兼容性测试
+  - 后端：新增 `runRedirectVerification()` 并发编排器和 `executeRedirectModelTest()` 单模型测试函数；仅测试命中 ModelMapping 的探测模型，未命中则 `RedirectTests` 为空；复用现有 dispatcher RPM 限流、流式检测和渠道日志；渠道日志记录重定向后的实际模型名（与代理运行时一致）
+  - 后端：`CapabilityTestJob`、`CapabilityTestResponse`、`CapabilitySnapshot` 新增 `RedirectTests []RedirectModelResult` 字段，snapshot clone/build/merge 同步处理
+  - 后端：`buildCapabilityCacheKey` 和 `buildCapabilityExecutionLookupKey` 新增 `modelMappingHash` 参数，新增 `hashModelMapping()` 辅助函数（按 key 字典序 SHA-1 截 16 位 hex），ModelMapping 变更时缓存自动失效
+  - 前端：`CapabilityTestDialog.vue` 状态栏下方新增重定向验证独立区域，徽标展示 `原模型 → 目标模型` 映射关系及成功/失败图标，悬停 tooltip 显示延迟、流式支持、错误详情
+  - 前端：`api.ts` 新增 `RedirectModelResult` 接口；`vuetify.ts` 按需导入 `mdiArrowRightThin` 图标；`messages.ts` 三种语言补充 `capability.redirectTestTitle/redirectTestDescription/redirectTestEmpty/redirectedTo`
+  - 测试：`capability_cache_key_test.go` 新增两条用例验证 ModelMapping hash 差异导致缓存 key 不同、`hashModelMapping` 对 key 顺序不敏感
+
 - **前端单元测试补齐** - 为本批改动中的纯逻辑新增 32 个单元测试（总计 155 通过）
   - `channelMerge.test.ts`：冻结幂等性、预索引、5 分钟 latency 有效期边界、1000 项 O(1) 查找（11 tests）
   - `expandSparseSegments.test.ts`：稀疏展开、reuse 复用、防 API 数据污染回归（9 tests）

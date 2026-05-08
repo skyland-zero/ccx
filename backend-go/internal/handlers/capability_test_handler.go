@@ -3,6 +3,8 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -55,15 +57,41 @@ var (
 	capabilityResponsesProvider providers.Provider = &providers.ResponsesProvider{}
 )
 
-// buildCapabilityCacheKey 构建缓存 key（基于 baseURL + apiKey、协议列表、模型列表）
-func buildCapabilityCacheKey(baseURL string, apiKey string, serviceType string, protocols []string, models []string) string {
+// buildCapabilityCacheKey 构建缓存 key（基于 baseURL + apiKey、协议列表、模型列表、ModelMapping hash）
+func buildCapabilityCacheKey(baseURL string, apiKey string, serviceType string, protocols []string, models []string, modelMappingHash string) string {
 	sorted := make([]string, len(protocols))
 	copy(sorted, protocols)
 	sort.Strings(sorted)
 
 	normalizedModels := normalizeCapabilityModels(models)
 	metricsKey := metrics.GenerateMetricsIdentityKey(baseURL, apiKey, serviceType)
-	return fmt.Sprintf("%s:%s:%s", metricsKey, strings.Join(sorted, ","), strings.Join(normalizedModels, ","))
+	key := fmt.Sprintf("%s:%s:%s", metricsKey, strings.Join(sorted, ","), strings.Join(normalizedModels, ","))
+	if modelMappingHash != "" {
+		key += ":" + modelMappingHash
+	}
+	return key
+}
+
+// hashModelMapping 对 ModelMapping 按 key 字典序排序后拼接，计算 SHA-1 截 16 位 hex。
+// 空 map 和 nil map 返回空字符串（等效无重定向，缓存 key 相同）。
+func hashModelMapping(m map[string]string) string {
+	if len(m) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var sb strings.Builder
+	for _, k := range keys {
+		sb.WriteString(k)
+		sb.WriteString("=>")
+		sb.WriteString(m[k])
+		sb.WriteByte(';')
+	}
+	h := sha1.Sum([]byte(sb.String()))
+	return hex.EncodeToString(h[:8])
 }
 
 func normalizeCapabilityModels(models []string) []string {
@@ -183,12 +211,13 @@ type ProtocolTestResult struct {
 
 // CapabilityTestResponse 能力测试响应体
 type CapabilityTestResponse struct {
-	ChannelID           int                  `json:"channelId"`
-	ChannelName         string               `json:"channelName"`
-	SourceType          string               `json:"sourceType"`
-	Tests               []ProtocolTestResult `json:"tests"`
-	CompatibleProtocols []string             `json:"compatibleProtocols"`
-	TotalDuration       int64                `json:"totalDuration"` // 毫秒
+	ChannelID           int                   `json:"channelId"`
+	ChannelName         string                `json:"channelName"`
+	SourceType          string                `json:"sourceType"`
+	Tests               []ProtocolTestResult  `json:"tests"`
+	RedirectTests       []RedirectModelResult `json:"redirectTests,omitempty"`
+	CompatibleProtocols []string              `json:"compatibleProtocols"`
+	TotalDuration       int64                 `json:"totalDuration"` // 毫秒
 }
 
 // ============== 主处理器 ==============
@@ -271,8 +300,9 @@ func TestChannelCapability(cfgManager *config.ConfigManager, channelLogStore *me
 
 		normalizedModels := normalizeCapabilityModels(req.Models)
 		identityKey := metrics.GenerateMetricsIdentityKey(baseURL, apiKey, channel.ServiceType)
-		cacheKey := buildCapabilityCacheKey(baseURL, apiKey, channel.ServiceType, protocols, normalizedModels)
-		executionLookupKey := buildCapabilityExecutionLookupKey(identityKey, channelKind, protocols, normalizedModels)
+		modelMappingHash := hashModelMapping(channel.ModelMapping)
+		cacheKey := buildCapabilityCacheKey(baseURL, apiKey, channel.ServiceType, protocols, normalizedModels, modelMappingHash)
+		executionLookupKey := buildCapabilityExecutionLookupKey(identityKey, channelKind, protocols, normalizedModels, modelMappingHash)
 		lookupKey := buildCapabilityJobLookupKey(cacheKey, channelKind, id)
 
 		if cached, ok := getCapabilityCache(cacheKey); ok {
@@ -461,7 +491,8 @@ func buildRoundRobinQueue(protocolModels map[string][]string, protocols []string
 }
 
 func runCapabilityTestJob(jobID, channelKind string, channelID int, channel config.UpstreamConfig, protocols []string, timeout time.Duration, effectiveRPM int, cacheKey, lookupKey, dispatcherKey string, previousResults map[string]map[string]ModelTestResult, userModels []string, cfgManager *config.ConfigManager, channelLogStore *metrics.ChannelLogStore) {
-	executionKey := buildCapabilityExecutionLookupKey(dispatcherKey, channelKind, protocols, userModels)
+	modelMappingHash := hashModelMapping(channel.ModelMapping)
+	executionKey := buildCapabilityExecutionLookupKey(dispatcherKey, channelKind, protocols, userModels, modelMappingHash)
 	// 创建可取消的 context，用于支持前端取消操作
 	ctx, cancel := context.WithCancel(context.Background())
 	capabilityJobs.setCancelFunc(jobID, cancel)
@@ -506,7 +537,30 @@ func runCapabilityTestJob(jobID, channelKind string, channelID int, channel conf
 	} else if len(channel.DisabledAPIKeys) > 0 {
 		apiKey = channel.DisabledAPIKeys[0].Key
 	}
+
+	// 并发运行重定向验证（不影响下方 4 协议兼容性测试）
+	// 通过 buffered channel 传递结果，避免共享变量在 cancel+超时场景下产生数据竞争：
+	// - goroutine 单向写入 channel（容量 1，即便主协程放弃等待也不会阻塞）
+	// - 主协程仅通过 channel 接收赋值，与 goroutine 无共享内存写入
+	var redirectResults []RedirectModelResult
+	redirectCh := make(chan []RedirectModelResult, 1)
+	go func() {
+		redirectCh <- runRedirectVerification(ctx, &channel, channelKind, timeout, effectiveRPM, jobID, cfgManager, channelID, apiKey, dispatcherKey, channelLogStore)
+	}()
+
 	results := runRoundRobinTests(ctx, &channel, protocols, timeout, effectiveRPM, jobID, previousResults, userModels, cfgManager, channelID, channelKind, apiKey, dispatcherKey, channelLogStore)
+
+	// 等待重定向协程结果：优先直接等待；若任务被取消，给 2s 宽限后立即返回，
+	// 避免阻塞在正在排队的限流槽位或未完成的 HTTP 请求上。超时丢弃则 redirectResults 保持 nil。
+	select {
+	case redirectResults = <-redirectCh:
+	case <-ctx.Done():
+		select {
+		case redirectResults = <-redirectCh:
+		case <-time.After(2 * time.Second):
+			log.Printf("[RedirectTest-Cancel] 任务取消后 2s 内重定向验证协程未结束，放弃等待以加速退出 (jobID=%s)", jobID)
+		}
+	}
 	totalDuration := time.Since(totalStart).Milliseconds()
 
 	compatible := make([]string, 0)
@@ -521,6 +575,7 @@ func runCapabilityTestJob(jobID, channelKind string, channelID int, channel conf
 		ChannelName:         channel.Name,
 		SourceType:          channel.ServiceType,
 		Tests:               results,
+		RedirectTests:       redirectResults,
 		CompatibleProtocols: compatible,
 		TotalDuration:       totalDuration,
 	}
@@ -530,13 +585,15 @@ func runCapabilityTestJob(jobID, channelKind string, channelID int, channel conf
 	capabilityJobs.update(jobID, func(job *CapabilityTestJob) {
 		if job.Lifecycle == CapabilityLifecycleCancelled {
 			job.TotalDuration = totalDuration
+			job.RedirectTests = append([]RedirectModelResult(nil), redirectResults...)
 			return
 		}
 		job.ChannelName = channel.Name
 		job.SourceType = channel.ServiceType
 		job.IdentityKey = dispatcherKey
-		job.ExecutionKey = buildCapabilityExecutionLookupKey(dispatcherKey, channelKind, protocols, userModels)
+		job.ExecutionKey = buildCapabilityExecutionLookupKey(dispatcherKey, channelKind, protocols, userModels, modelMappingHash)
 		job.CompatibleProtocols = append([]string(nil), compatible...)
+		job.RedirectTests = append([]RedirectModelResult(nil), redirectResults...)
 		job.TotalDuration = totalDuration
 		job.FinishedAt = time.Now().Format(time.RFC3339Nano)
 	})
@@ -968,6 +1025,153 @@ func truncateCapabilityError(msg string) string {
 		return msg[:200]
 	}
 	return msg
+}
+
+// ============== 重定向验证 ==============
+
+// runRedirectVerification 测试当前渠道类型原生探测模型经 ModelMapping 重定向后是否在上游可用。
+// 仅测试命中映射的模型；无映射命中则返回 nil。
+func runRedirectVerification(ctx context.Context, channel *config.UpstreamConfig, channelKind string, perModelTimeout time.Duration, effectiveRPM int, jobID string, cfgManager *config.ConfigManager, channelID int, apiKey, dispatcherKey string, channelLogStore *metrics.ChannelLogStore) []RedirectModelResult {
+	probeModels, err := getCapabilityProbeModels(channelKind)
+	if err != nil {
+		log.Printf("[RedirectTest-Skip] 渠道 %s (类型:%s) 获取探测模型列表失败: %v", channel.Name, channelKind, err)
+		return nil
+	}
+
+	// 仅保留命中 ModelMapping 的模型
+	var redirectedModels []RedirectModelResult
+	for _, m := range probeModels {
+		actual := config.RedirectModel(m, channel)
+		if actual != m {
+			redirectedModels = append(redirectedModels, RedirectModelResult{
+				ProbeModel:  m,
+				ActualModel: actual,
+			})
+		}
+	}
+	if len(redirectedModels) == 0 {
+		return nil
+	}
+
+	log.Printf("[RedirectTest-Start] 渠道 %s (类型:%s) 命中重定向模型: %d 个", channel.Name, channelKind, len(redirectedModels))
+
+	interval := time.Minute / time.Duration(effectiveRPM)
+	if interval <= 0 {
+		interval = time.Minute / 10
+	}
+
+	results := make([]RedirectModelResult, 0, len(redirectedModels))
+	for _, rt := range redirectedModels {
+		if ctx.Err() != nil {
+			log.Printf("[RedirectTest-Timeout] 全局上下文取消，终止重定向验证")
+			break
+		}
+		if err := GetCapabilityTestDispatcher(dispatcherKey).AcquireSendSlot(ctx, interval); err != nil {
+			log.Printf("[RedirectTest-Dispatcher] 获取发送槽位失败: %v", err)
+			break
+		}
+		result := executeRedirectModelTest(ctx, channel, channelKind, rt.ProbeModel, rt.ActualModel, perModelTimeout, jobID, cfgManager, channelID, apiKey, channelLogStore)
+		results = append(results, result)
+	}
+
+	log.Printf("[RedirectTest-Done] 渠道 %s 重定向验证完成，成功: %d/%d", channel.Name, countRedirectSuccesses(results), len(results))
+	return results
+}
+
+func countRedirectSuccesses(results []RedirectModelResult) int {
+	n := 0
+	for _, r := range results {
+		if r.Success {
+			n++
+		}
+	}
+	return n
+}
+
+// executeRedirectModelTest 单个重定向模型测试：用 actualModel 构建请求，probeModel 记录到结果
+func executeRedirectModelTest(ctx context.Context, channel *config.UpstreamConfig, protocol, probeModel, actualModel string, timeout time.Duration, jobID string, cfgManager *config.ConfigManager, channelID int, apiKey string, channelLogStore *metrics.ChannelLogStore) RedirectModelResult {
+	startedAt := time.Now()
+	result := RedirectModelResult{
+		ProbeModel:  probeModel,
+		ActualModel: actualModel,
+		StartedAt:   startedAt.Format(time.RFC3339Nano),
+	}
+
+	req, err := buildTestRequestWithModel(protocol, channel, actualModel)
+	if err != nil {
+		errMsg := fmt.Sprintf("build_request_failed: %v", err)
+		result.Error = &errMsg
+		result.TestedAt = time.Now().Format(time.RFC3339Nano)
+		log.Printf("[RedirectTest-Model] 渠道 %s 构建请求失败 (探测: %s → 实际: %s): %v", channel.Name, probeModel, actualModel, err)
+		return result
+	}
+
+	reqCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	req = req.WithContext(reqCtx)
+
+	client := httpclient.GetManager().GetStandardClient(timeout, channel.InsecureSkipVerify, channel.ProxyURL)
+	startTime := time.Now()
+	log.Printf("[RedirectTest-Model] 渠道 %s 启动重定向测试 (探测: %s → 实际: %s)", channel.Name, probeModel, actualModel)
+
+	success, streamingSupported, statusCode, respBody, sendErr := sendAndCheckStream(reqCtx, client, req, protocol)
+	result.Latency = time.Since(startTime).Milliseconds()
+	result.TestedAt = time.Now().Format(time.RFC3339Nano)
+
+	baseURL := req.URL.String()
+	recordLog := func(success bool, statusCode int, errorInfo string) {
+		common.RecordChannelLogWithSource(
+			channelLogStore,
+			channelID,
+			actualModel, // 渠道日志记录重定向后的模型
+			"",
+			statusCode,
+			result.Latency,
+			success,
+			apiKey,
+			baseURL,
+			errorInfo,
+			protocol,
+			false,
+			metrics.RequestSourceCapabilityTest,
+		)
+	}
+
+	// 拉黑判定：复用现有策略
+	if !success && cfgManager != nil && apiKey != "" && respBody != nil {
+		blacklistResult := common.ShouldBlacklistKey(statusCode, respBody)
+		if blacklistResult.ShouldBlacklist {
+			isBalanceError := blacklistResult.Reason == "insufficient_balance"
+			if !isBalanceError || channel.IsAutoBlacklistBalanceEnabled() {
+				apiType := channelKindToApiType(protocol)
+				log.Printf("[RedirectTest-Blacklist] 渠道 %s 触发 Key 拉黑 (探测: %s → 实际: %s, 原因: %s, 状态码: %d)",
+					channel.Name, probeModel, actualModel, blacklistResult.Reason, statusCode)
+				if err := cfgManager.BlacklistKey(apiType, channelID, apiKey, blacklistResult.Reason, blacklistResult.Message); err != nil {
+					log.Printf("[RedirectTest-Blacklist] 拉黑 Key 失败: %v", err)
+				}
+			}
+		}
+	}
+
+	if success {
+		result.Success = true
+		result.StreamingSupported = streamingSupported
+		recordLog(true, statusCode, "")
+		log.Printf("[RedirectTest-Model] 渠道 %s 重定向测试成功 (探测: %s → 实际: %s, 流式: %v, 耗时: %dms)",
+			channel.Name, probeModel, actualModel, streamingSupported, result.Latency)
+		return result
+	}
+
+	errMsg := classifyError(sendErr, statusCode, reqCtx)
+	if len(respBody) > 0 {
+		errMsg = string(respBody)
+	}
+	errMsg = truncateCapabilityError(errMsg)
+	result.Error = &errMsg
+	recordLog(false, statusCode, errMsg)
+	log.Printf("[RedirectTest-Model] 渠道 %s 重定向测试失败 (探测: %s → 实际: %s, 耗时: %dms): %s",
+		channel.Name, probeModel, actualModel, result.Latency, errMsg)
+	return result
 }
 
 // testProtocolCompatibility 并发测试多个协议的兼容性（已废弃，保留用于兼容）

@@ -227,6 +227,17 @@ export interface CapabilityModelJobResult {
   testedAt?: string
 }
 
+export interface RedirectModelResult {
+  probeModel: string
+  actualModel: string
+  success: boolean
+  latency: number
+  streamingSupported?: boolean
+  error?: string
+  startedAt?: string
+  testedAt: string
+}
+
 export interface CapabilityProtocolJobResult {
   protocol: string
   status: CapabilityProtocolJobStatus
@@ -262,6 +273,7 @@ export interface CapabilityTestJob {
   isResumed?: boolean
   hasReusedResults?: boolean
   tests: CapabilityProtocolJobResult[]
+  redirectTests?: RedirectModelResult[]
   compatibleProtocols: string[]
   totalDuration: number
   startedAt?: string
@@ -281,6 +293,7 @@ export interface CapabilitySnapshot {
   protocolJobIds?: Record<string, string>
   protocolJobRefs?: Record<string, CapabilityProtocolJobRef>
   tests: CapabilityProtocolJobResult[]
+  redirectTests?: RedirectModelResult[]
   compatibleProtocols: string[]
   totalDuration: number
   progress: CapabilityJobProgress

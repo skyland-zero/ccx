@@ -99,6 +99,10 @@ export type MessageKey =
   | 'capability.snapshotUpdated'
   | 'capability.noApiKeyError'
   | 'capability.genericJobError'
+  | 'capability.redirectTestTitle'
+  | 'capability.redirectTestDescription'
+  | 'capability.redirectTestEmpty'
+  | 'capability.redirectedTo'
   | 'orchestration.title'
   | 'orchestration.multiChannel'
   | 'orchestration.singleChannel'
@@ -478,6 +482,10 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'capability.snapshotUpdated': 'Updated: {time}',
     'capability.noApiKeyError': 'This channel has no API key configured and cannot run capability tests.',
     'capability.genericJobError': 'Capability test failed: {message}',
+    'capability.redirectTestTitle': 'Redirect Verification',
+    'capability.redirectTestDescription': 'Testing whether the configured model redirects work with the upstream',
+    'capability.redirectTestEmpty': 'No model redirects configured for this channel type',
+    'capability.redirectedTo': 'Redirected to',
     'orchestration.title': 'Channel orchestration',
     'orchestration.multiChannel': 'Multi-channel mode',
     'orchestration.singleChannel': 'Single-channel mode',
@@ -856,6 +864,10 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'capability.snapshotUpdated': 'Diperbarui: {time}',
     'capability.noApiKeyError': 'Channel ini tidak memiliki API key dan tidak dapat menjalankan tes kemampuan.',
     'capability.genericJobError': 'Tes kemampuan gagal: {message}',
+    'capability.redirectTestTitle': 'Verifikasi Redirect',
+    'capability.redirectTestDescription': 'Menguji apakah redirect model yang dikonfigurasi berfungsi dengan upstream',
+    'capability.redirectTestEmpty': 'Tidak ada redirect model yang dikonfigurasi untuk tipe channel ini',
+    'capability.redirectedTo': 'Diredirect ke',
     'orchestration.title': 'Orkestrasi channel',
     'orchestration.multiChannel': 'Mode multi-channel',
     'orchestration.singleChannel': 'Mode single-channel',
@@ -1234,6 +1246,10 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'capability.snapshotUpdated': '更新时间：{time}',
     'capability.noApiKeyError': '该渠道未配置 API Key，无法执行能力测试。',
     'capability.genericJobError': '能力测试失败：{message}',
+    'capability.redirectTestTitle': '重定向验证',
+    'capability.redirectTestDescription': '测试配置的模型重定向在上游是否可用',
+    'capability.redirectTestEmpty': '当前渠道类型未配置模型重定向',
+    'capability.redirectedTo': '重定向至',
     'orchestration.title': '渠道编排',
     'orchestration.multiChannel': '多渠道模式',
     'orchestration.singleChannel': '单渠道模式',

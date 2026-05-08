@@ -116,6 +116,18 @@ type CapabilityProtocolJobResult struct {
 	TestedAt           string                     `json:"testedAt"`
 }
 
+// RedirectModelResult 单个探测模型经 ModelMapping 后的测试结果
+type RedirectModelResult struct {
+	ProbeModel         string  `json:"probeModel"`  // 原生探测模型名
+	ActualModel        string  `json:"actualModel"` // ModelMapping 后实际发给上游的模型名
+	Success            bool    `json:"success"`
+	Latency            int64   `json:"latency"` // 毫秒
+	StreamingSupported bool    `json:"streamingSupported,omitempty"`
+	Error              *string `json:"error,omitempty"`
+	StartedAt          string  `json:"startedAt,omitempty"`
+	TestedAt           string  `json:"testedAt"`
+}
+
 type CapabilityTestJob struct {
 	JobID               string                        `json:"jobId"`
 	IdentityKey         string                        `json:"identityKey,omitempty"`
@@ -134,6 +146,7 @@ type CapabilityTestJob struct {
 	IsResumed           bool                          `json:"isResumed,omitempty"`
 	HasReusedResults    bool                          `json:"hasReusedResults,omitempty"`
 	Tests               []CapabilityProtocolJobResult `json:"tests"`
+	RedirectTests       []RedirectModelResult         `json:"redirectTests,omitempty"`
 	CompatibleProtocols []string                      `json:"compatibleProtocols"`
 	TotalDuration       int64                         `json:"totalDuration"`
 	StartedAt           string                        `json:"startedAt,omitempty"`
@@ -252,11 +265,15 @@ func buildCapabilityJobLookupKey(cacheKey, channelKind string, channelID int) st
 	return fmt.Sprintf("%s:%s:%d", cacheKey, channelKind, channelID)
 }
 
-func buildCapabilityExecutionLookupKey(identityKey, channelKind string, protocols []string, models []string) string {
+func buildCapabilityExecutionLookupKey(identityKey, channelKind string, protocols []string, models []string, modelMappingHash string) string {
 	sortedProtocols := append([]string(nil), protocols...)
 	sort.Strings(sortedProtocols)
 	normalizedModels := normalizeCapabilityModels(models)
-	return fmt.Sprintf("%s:%s:%s:%s", identityKey, channelKind, strings.Join(sortedProtocols, ","), strings.Join(normalizedModels, ","))
+	key := fmt.Sprintf("%s:%s:%s:%s", identityKey, channelKind, strings.Join(sortedProtocols, ","), strings.Join(normalizedModels, ","))
+	if modelMappingHash != "" {
+		key += ":" + modelMappingHash
+	}
+	return key
 }
 
 func (s *capabilityTestJobStore) bindLookupKey(lookupKey, jobID string) {
@@ -373,6 +390,7 @@ func cloneCapabilityTestJob(job *CapabilityTestJob) *CapabilityTestJob {
 	}
 	cloned.CompatibleProtocols = append([]string(nil), job.CompatibleProtocols...)
 	cloned.TargetProtocols = append([]string(nil), job.TargetProtocols...)
+	cloned.RedirectTests = append([]RedirectModelResult(nil), job.RedirectTests...)
 	return &cloned
 }
 
@@ -634,6 +652,7 @@ func createCapabilityJobFromResponse(channelID int, channelName, channelKind, so
 		Lifecycle:           CapabilityLifecycleDone,
 		Outcome:             CapabilityOutcomeSuccess,
 		Tests:               capabilityProtocolResultsFromResponse(resp),
+		RedirectTests:       append([]RedirectModelResult(nil), resp.RedirectTests...),
 		CompatibleProtocols: append([]string(nil), resp.CompatibleProtocols...),
 		TotalDuration:       resp.TotalDuration,
 		StartedAt:           now,

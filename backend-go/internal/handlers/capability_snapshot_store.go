@@ -22,6 +22,7 @@ type CapabilitySnapshot struct {
 	ProtocolJobIDs      map[string]string                   `json:"protocolJobIds,omitempty"`
 	ProtocolJobRefs     map[string]CapabilityProtocolJobRef `json:"protocolJobRefs,omitempty"`
 	Tests               []CapabilityProtocolJobResult       `json:"tests"`
+	RedirectTests       []RedirectModelResult               `json:"redirectTests,omitempty"`
 	CompatibleProtocols []string                            `json:"compatibleProtocols"`
 	TotalDuration       int64                               `json:"totalDuration"`
 	Progress            CapabilityTestJobProgress           `json:"progress"`
@@ -71,6 +72,7 @@ func cloneCapabilitySnapshot(snapshot *CapabilitySnapshot) *CapabilitySnapshot {
 		cloned.Tests[i] = test
 		cloned.Tests[i].ModelResults = append([]CapabilityModelJobResult(nil), test.ModelResults...)
 	}
+	cloned.RedirectTests = append([]RedirectModelResult(nil), snapshot.RedirectTests...)
 	cloned.CompatibleProtocols = append([]string(nil), snapshot.CompatibleProtocols...)
 	return &cloned
 }
@@ -98,6 +100,7 @@ func snapshotFromCapabilityJob(identityKey string, job *CapabilityTestJob) *Capa
 		ProtocolJobIDs:      protocolJobIDs,
 		ProtocolJobRefs:     protocolJobRefs,
 		Tests:               append([]CapabilityProtocolJobResult(nil), job.Tests...),
+		RedirectTests:       append([]RedirectModelResult(nil), job.RedirectTests...),
 		CompatibleProtocols: append([]string(nil), job.CompatibleProtocols...),
 		TotalDuration:       job.TotalDuration,
 		Progress:            job.Progress,
@@ -183,6 +186,7 @@ func (s *capabilitySnapshotStore) replaceFromJob(identityKey string, job *Capabi
 	existing.Progress = mergeSnapshotProgress(existing.Tests)
 	existing.Lifecycle = mergeSnapshotLifecycle(existing.Tests)
 	existing.Outcome = mergeSnapshotOutcome(existing.Tests, existing.Lifecycle)
+	existing.RedirectTests = append([]RedirectModelResult(nil), job.RedirectTests...)
 	existing.SourceType = job.SourceType
 	existing.UpdatedAt = job.UpdatedAt
 	if existing.UpdatedAt == "" {
