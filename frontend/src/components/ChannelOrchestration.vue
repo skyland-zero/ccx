@@ -1,5 +1,43 @@
 <template>
   <v-card elevation="0" rounded="lg" class="channel-orchestration" variant="flat">
+    <!--
+      全局共享 gradient 定义（7 档成功率色带）
+      所有渠道的 activity bar 通过 url(#ccx-act-g{0..6}) 引用，
+      避免每个 bar 独立定义 gradient 导致 SVG 节点爆炸（30+ 渠道 × 150 bar = 4500+ 节点）
+    -->
+    <svg class="activity-gradient-defs" aria-hidden="true" width="0" height="0" style="position:absolute;">
+      <defs>
+        <linearGradient id="ccx-act-g0" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="rgb(34, 197, 94)" stop-opacity="0.8" />
+          <stop offset="100%" stop-color="rgb(34, 197, 94)" stop-opacity="0.3" />
+        </linearGradient>
+        <linearGradient id="ccx-act-g1" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="rgb(132, 204, 22)" stop-opacity="0.8" />
+          <stop offset="100%" stop-color="rgb(132, 204, 22)" stop-opacity="0.3" />
+        </linearGradient>
+        <linearGradient id="ccx-act-g2" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="rgb(250, 204, 21)" stop-opacity="0.8" />
+          <stop offset="100%" stop-color="rgb(250, 204, 21)" stop-opacity="0.3" />
+        </linearGradient>
+        <linearGradient id="ccx-act-g3" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="rgb(251, 146, 60)" stop-opacity="0.8" />
+          <stop offset="100%" stop-color="rgb(251, 146, 60)" stop-opacity="0.3" />
+        </linearGradient>
+        <linearGradient id="ccx-act-g4" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="rgb(249, 115, 22)" stop-opacity="0.8" />
+          <stop offset="100%" stop-color="rgb(249, 115, 22)" stop-opacity="0.3" />
+        </linearGradient>
+        <linearGradient id="ccx-act-g5" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="rgb(239, 68, 68)" stop-opacity="0.8" />
+          <stop offset="100%" stop-color="rgb(239, 68, 68)" stop-opacity="0.3" />
+        </linearGradient>
+        <linearGradient id="ccx-act-g6" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="rgb(220, 38, 38)" stop-opacity="0.8" />
+          <stop offset="100%" stop-color="rgb(220, 38, 38)" stop-opacity="0.3" />
+        </linearGradient>
+      </defs>
+    </svg>
+
     <!-- Scheduler statistics -->
     <v-card-title class="d-flex align-center justify-space-between py-3 px-0">
       <div class="d-flex align-center" style="flex-shrink: 1; min-width: 0;">
@@ -60,35 +98,21 @@
               @click="toggleChannelChart(element.index)"
             >
               <!-- SVG activity waveform bar chart background -->
+              <!-- Gradient 定义在组件顶部一次性渲染（见 .activity-gradient-defs），这里只绘制 rect 并引用共享 gradient -->
               <svg class="activity-chart-bg" preserveAspectRatio="none" viewBox="0 0 150 100">
-                <!-- Gradient definitions (define a separate gradient for each bar) -->
-                <defs>
-                  <linearGradient
-                    v-for="(bar, i) in getActivityBars(element.index)"
-                    :id="`gradient-${element.index}-${i}`"
-                    :key="`gradient-${element.index}-${i}`"
-                    x1="0%"
-                    y1="0%"
-                    x2="0%"
-                    y2="100%"
-                  >
-                    <stop offset="0%" :stop-color="bar.color" stop-opacity="0.8" />
-                    <stop offset="100%" :stop-color="bar.color" stop-opacity="0.3" />
-                  </linearGradient>
-                </defs>
-                <!-- Waveform bar chart -->
-                <g v-for="(bar, i) in getActivityBars(element.index)" :key="i">
+                <template v-for="(bar, i) in getActivityBars(element.index)" :key="i">
                   <rect
+                    v-if="bar.v"
                     :x="bar.x"
                     :y="bar.y"
                     :width="bar.width"
                     :height="bar.height"
-                    :fill="`url(#gradient-${element.index}-${i})`"
+                    :fill="`url(#ccx-act-g${bar.g})`"
                     :rx="bar.radius"
                     :ry="bar.radius"
                     class="activity-bar"
                   />
-                </g>
+                </template>
               </svg>
 
               <!-- Grid content container -->
@@ -951,12 +975,23 @@ const getChannelActivity = (channelIndex: number): ChannelRecentActivity | undef
   return activityMap.value.get(channelIndex)
 }
 
+// Bar 模型：x/y/w/h/r + g（gradient id 档位 0-6）+ v（0=无请求不渲染，1=渲染）
+// 相比先前的 color: string，改用 7 档共享 gradient 引用，SVG gradient/stop 节点数从
+// 15,900/31,800 砍到全局 7/14，显著降低 DOM 内存占用。
+// Gradient 档位映射：
+//   0: 95-100% 成功（默认绿）     4: 40-60% 中等（浅橙）
+//   1: 80-95%  良好（黄绿）       5: 20-40% 高失败（深橙）
+//   2: 60-80%  轻微失败（黄）     6:  5-20% 严重失败（红）
+//   3: 40-60%（见上，保留 7 档不变）  7:  0-5% 极端失败（深红）
+// 实际返回 0..6 共 7 档。
+type ActivityBar = { x: number; y: number; width: number; height: number; radius: number; g: number; v: 0 | 1 }
+
 // Cache bar chart data for all channels (avoid repeated computation in the template)
 // 持久化缓存：模块级 Map，不在 Vue 响应式系统内，配合 markRaw 防止未来被误 Proxy 化
-const activityBarsPersistentCache = new Map<number, { segments: ActivitySegment[], bars: Array<{ x: number; y: number; width: number; height: number; radius: number; color: string }> }>()
+const activityBarsPersistentCache = new Map<number, { segments: ActivitySegment[], bars: ActivityBar[] }>()
 
 const activityBarsCache = computed(() => {
-  const cache = new Map<number, Array<{ x: number; y: number; width: number; height: number; radius: number; color: string }>>()
+  const cache = new Map<number, ActivityBar[]>()
 
   // Use activityUpdateTick to trigger reactive updates
   const _ = activityUpdateTick.value
@@ -989,13 +1024,13 @@ const activityBarsCache = computed(() => {
     const maxRequests = record ? Math.max(getDecayedMax(record, now), currentMax) : currentMax
 
     // 复用已有的 bars 数组，避免每次分配 150 个新对象
-    let bars: Array<{ x: number; y: number; width: number; height: number; radius: number; color: string }>
+    let bars: ActivityBar[]
     if (existing && existing.bars.length === numSegments) {
       bars = existing.bars
     } else {
       bars = new Array(numSegments)
       for (let i = 0; i < numSegments; i++) {
-        bars[i] = { x: 0, y: 0, width: 0, height: 0, radius: 0, color: '' }
+        bars[i] = { x: 0, y: 0, width: 0, height: 0, radius: 0, g: 0, v: 0 }
       }
     }
 
@@ -1003,42 +1038,36 @@ const activityBarsCache = computed(() => {
       const segment = segments[i]
       const requests = segment.requestCount
 
-      // Calculate bar height (minimum height 2 to avoid disappearing completely)
-      const heightPercent = requests / maxRequests
-      const height = Math.max(heightPercent * 85, requests > 0 ? 2 : 0)
-      const y = 100 - height
-
-      // Calculate color based on the success rate of this 6-second segment (7 levels: extreme bands + integer bands)
-      let color = 'rgb(74, 222, 128)'  // Default green (no requests or 100% success)
-
-      if (requests > 0) {
-        const successCount = requests - segment.failureCount
-        const successRate = (successCount / requests) * 100
-
-        if (successRate < 5) {
-          color = 'rgb(220, 38, 38)'       // 0-5%: dark red (extreme failure)
-        } else if (successRate < 20) {
-          color = 'rgb(239, 68, 68)'       // 5-20%: red (severe failure)
-        } else if (successRate < 40) {
-          color = 'rgb(249, 115, 22)'      // 20-40%: dark orange (high failure rate)
-        } else if (successRate < 60) {
-          color = 'rgb(251, 146, 60)'      // 40-60%: orange (moderate failure rate)
-        } else if (successRate < 80) {
-          color = 'rgb(250, 204, 21)'      // 60-80%: yellow (minor failure)
-        } else if (successRate < 95) {
-          color = 'rgb(132, 204, 22)'      // 80-95%: yellow-green (good)
-        } else {
-          color = 'rgb(34, 197, 94)'       // 95-100%: green (excellent)
-        }
+      // 无请求：v=0 直接跳过渲染（DOM rect 不产生）
+      if (requests <= 0) {
+        bars[i].v = 0
+        bars[i].height = 0
+        continue
       }
 
-      // 更新已有对象属性，而不是创建新对象
+      // 成功率映射到 7 档 gradient id（与原有 7 档色板一一对应）
+      const successCount = requests - segment.failureCount
+      const successRate = (successCount / requests) * 100
+      let g: number
+      if (successRate < 5) g = 6
+      else if (successRate < 20) g = 5
+      else if (successRate < 40) g = 4
+      else if (successRate < 60) g = 3
+      else if (successRate < 80) g = 2
+      else if (successRate < 95) g = 1
+      else g = 0
+
+      // Calculate bar height (minimum height 2 to avoid disappearing completely)
+      const heightPercent = requests / maxRequests
+      const height = Math.max(heightPercent * 85, 2)
+
+      bars[i].v = 1
       bars[i].x = i * barWidth + barGap / 2
-      bars[i].y = y
+      bars[i].y = 100 - height
       bars[i].width = actualBarWidth
       bars[i].height = height
       bars[i].radius = Math.min(actualBarWidth / 2, 1.5)
-      bars[i].color = color
+      bars[i].g = g
     }
 
     // 更新持久化缓存（markRaw 防止 Vue 对 150 个 bars 对象做响应式 Proxy 化）
@@ -1057,7 +1086,7 @@ const activityBarsCache = computed(() => {
 })
 
 // Generate waveform bar chart data (read from cache)
-const getActivityBars = (channelIndex: number): Array<{ x: number; y: number; width: number; height: number; radius: number; color: string }> => {
+const getActivityBars = (channelIndex: number): ActivityBar[] => {
   return activityBarsCache.value.get(channelIndex) ?? []
 }
 
