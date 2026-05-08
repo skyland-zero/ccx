@@ -179,75 +179,90 @@
             </div>
 
             <!-- Metrics display -->
+            <!--
+              tooltip 懒挂载：仅 hover/focus 当前渠道时才渲染 <v-tooltip>，避免 100+ 渠道常驻 overlay
+            -->
             <div class="channel-metrics" @click.stop>
               <template v-if="getChannelMetrics(element.index)">
-                <v-tooltip location="top" :open-delay="200" content-class="ccx-tooltip">
-                  <template #activator="{ props: tooltipProps }">
-                    <div v-bind="tooltipProps" class="d-flex align-center metrics-display">
-                      <!-- Show success rate when there are requests in the last 15 minutes; otherwise show -- -->
-                      <template v-if="get15mStats(element.index)?.requestCount">
-                        <v-chip
-                          size="x-small"
-                          :color="getSuccessRateColor(get15mStats(element.index)?.successRate)"
-                          variant="tonal"
-                          class="metrics-chip success-chip"
-                        >
-                          {{ get15mStats(element.index)?.successRate?.toFixed(0) }}%
-                        </v-chip>
-                        <span class="request-summary ml-2 mr-1">
-                          {{ get15mStats(element.index)?.requestCount }} {{ t('orchestration.requests') }}
-                        </span>
-                        <v-chip
-                          v-if="shouldShowCacheHitRate(get15mStats(element.index))"
-                          size="x-small"
-                          :color="getCacheHitRateColor(get15mStats(element.index)?.cacheHitRate)"
-                          variant="tonal"
-                          class="ml-1 metrics-chip cache-chip"
-                        >
-                          {{ t('orchestration.cache') }} {{ get15mStats(element.index)?.cacheHitRate?.toFixed(0) }}%
-                        </v-chip>
-                      </template>
-                      <span v-else class="text-caption text-medium-emphasis">--</span>
-                    </div>
+                <div
+                  class="d-flex align-center metrics-display"
+                  tabindex="0"
+                  @mouseenter="hoveredMetricsChannel = element.index"
+                  @mouseleave="hoveredMetricsChannel === element.index && (hoveredMetricsChannel = null)"
+                  @focusin="hoveredMetricsChannel = element.index"
+                  @focusout="hoveredMetricsChannel === element.index && (hoveredMetricsChannel = null)"
+                >
+                  <!-- Show success rate when there are requests in the last 15 minutes; otherwise show -- -->
+                  <template v-if="get15mStats(element.index)?.requestCount">
+                    <v-chip
+                      size="x-small"
+                      :color="getSuccessRateColor(get15mStats(element.index)?.successRate)"
+                      variant="tonal"
+                      class="metrics-chip success-chip"
+                    >
+                      {{ get15mStats(element.index)?.successRate?.toFixed(0) }}%
+                    </v-chip>
+                    <span class="request-summary ml-2 mr-1">
+                      {{ get15mStats(element.index)?.requestCount }} {{ t('orchestration.requests') }}
+                    </span>
+                    <v-chip
+                      v-if="shouldShowCacheHitRate(get15mStats(element.index))"
+                      size="x-small"
+                      :color="getCacheHitRateColor(get15mStats(element.index)?.cacheHitRate)"
+                      variant="tonal"
+                      class="ml-1 metrics-chip cache-chip"
+                    >
+                      {{ t('orchestration.cache') }} {{ get15mStats(element.index)?.cacheHitRate?.toFixed(0) }}%
+                    </v-chip>
                   </template>
-                  <div class="metrics-tooltip">
-                    <div class="text-caption font-weight-bold mb-1">{{ t('orchestration.requestStats') }}</div>
-                    <div class="metrics-tooltip-row">
-                      <span>{{ t('orchestration.minutes15') }}:</span>
-                      <span>{{ formatStats(get15mStats(element.index)) }}</span>
-                    </div>
-                    <div class="metrics-tooltip-row">
-                      <span>{{ t('orchestration.hour1') }}:</span>
-                      <span>{{ formatStats(get1hStats(element.index)) }}</span>
-                    </div>
-                    <div class="metrics-tooltip-row">
-                      <span>{{ t('orchestration.hours6') }}:</span>
-                      <span>{{ formatStats(get6hStats(element.index)) }}</span>
-                    </div>
-                    <div class="metrics-tooltip-row">
-                      <span>{{ t('orchestration.hours24') }}:</span>
-                      <span>{{ formatStats(get24hStats(element.index)) }}</span>
-                    </div>
+                  <span v-else class="text-caption text-medium-emphasis">--</span>
+                  <v-tooltip
+                    v-if="hoveredMetricsChannel === element.index"
+                    :model-value="true"
+                    activator="parent"
+                    location="top"
+                    :open-delay="200"
+                    content-class="ccx-tooltip"
+                  >
+                    <div class="metrics-tooltip">
+                      <div class="text-caption font-weight-bold mb-1">{{ t('orchestration.requestStats') }}</div>
+                      <div class="metrics-tooltip-row">
+                        <span>{{ t('orchestration.minutes15') }}:</span>
+                        <span>{{ formatStats(get15mStats(element.index)) }}</span>
+                      </div>
+                      <div class="metrics-tooltip-row">
+                        <span>{{ t('orchestration.hour1') }}:</span>
+                        <span>{{ formatStats(get1hStats(element.index)) }}</span>
+                      </div>
+                      <div class="metrics-tooltip-row">
+                        <span>{{ t('orchestration.hours6') }}:</span>
+                        <span>{{ formatStats(get6hStats(element.index)) }}</span>
+                      </div>
+                      <div class="metrics-tooltip-row">
+                        <span>{{ t('orchestration.hours24') }}:</span>
+                        <span>{{ formatStats(get24hStats(element.index)) }}</span>
+                      </div>
 
-                    <div class="text-caption font-weight-bold mt-2 mb-1">{{ t('orchestration.cacheStats') }}</div>
-                    <div class="metrics-tooltip-row">
-                      <span>{{ t('orchestration.minutes15') }}:</span>
-                      <span>{{ formatCacheStats(get15mStats(element.index)) }}</span>
+                      <div class="text-caption font-weight-bold mt-2 mb-1">{{ t('orchestration.cacheStats') }}</div>
+                      <div class="metrics-tooltip-row">
+                        <span>{{ t('orchestration.minutes15') }}:</span>
+                        <span>{{ formatCacheStats(get15mStats(element.index)) }}</span>
+                      </div>
+                      <div class="metrics-tooltip-row">
+                        <span>{{ t('orchestration.hour1') }}:</span>
+                        <span>{{ formatCacheStats(get1hStats(element.index)) }}</span>
+                      </div>
+                      <div class="metrics-tooltip-row">
+                        <span>{{ t('orchestration.hours6') }}:</span>
+                        <span>{{ formatCacheStats(get6hStats(element.index)) }}</span>
+                      </div>
+                      <div class="metrics-tooltip-row">
+                        <span>{{ t('orchestration.hours24') }}:</span>
+                        <span>{{ formatCacheStats(get24hStats(element.index)) }}</span>
+                      </div>
                     </div>
-                    <div class="metrics-tooltip-row">
-                      <span>{{ t('orchestration.hour1') }}:</span>
-                      <span>{{ formatCacheStats(get1hStats(element.index)) }}</span>
-                    </div>
-                    <div class="metrics-tooltip-row">
-                      <span>{{ t('orchestration.hours6') }}:</span>
-                      <span>{{ formatCacheStats(get6hStats(element.index)) }}</span>
-                    </div>
-                    <div class="metrics-tooltip-row">
-                      <span>{{ t('orchestration.hours24') }}:</span>
-                      <span>{{ formatCacheStats(get24hStats(element.index)) }}</span>
-                    </div>
-                  </div>
-                </v-tooltip>
+                  </v-tooltip>
+                </div>
               </template>
               <span v-else class="text-caption text-medium-emphasis">--</span>
             </div>
@@ -640,6 +655,9 @@ const activityUpdateTick = ref(0)
 
 // Chart expansion state
 const expandedChannelIndex = ref<number | null>(null)
+
+// tooltip 懒挂载：记录当前 hover/focus 的渠道，避免 100+ 渠道每行常驻 <v-tooltip> overlay 实例
+const hoveredMetricsChannel = ref<number | null>(null)
 
 // Channel config copy state
 const copiedChannelIndex = ref<number | null>(null)

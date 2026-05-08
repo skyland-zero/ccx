@@ -2,6 +2,11 @@
 
 ### Changed
 
+- **前端内存优化（第三批：SVG / Tooltip 常驻资源收敛）** - 针对 100+ 渠道场景下 heap 基线过高（实测 254MB 快照、live 约 1GB）的深度治理
+  - `ChannelOrchestration.vue`：活动波形图由「每渠道 150 个独立 `<linearGradient>`」改为全组件共享 7 个成功率档位 gradient（`ccx-act-g0..g6`），所有 `<rect>` 通过 `url(#id)` 引用；同时移除外层 `<g>` 包裹、`bar.v === 0` 时跳过 rect 渲染（零请求段不落 DOM）。106 渠道场景下 `SVGLinearGradientElement` 从 15,901 降到 7、`SVGStopElement` 从 31,801 降到 14、`SVGGElement` 从 15,901 降到 0，快照总大小 254MB → 123MB
+  - `ChannelOrchestration.vue`：bar 数据模型 `{x, y, width, height, radius, color}` 改为 `{x, y, width, height, radius, g, v}`，`g` 为 7 档 gradient id、`v` 为可见位，视觉输出与原 7 档色板一致
+  - `ChannelOrchestration.vue`、`ChannelStatusBadge.vue`：metrics-display 统计 tooltip 与状态徽章 tooltip 改为 hover/focus 懒挂载（外层 div 监听 `mouseenter`/`mouseleave`/`focusin`/`focusout` 维护 `hovered` / `hoveredMetricsChannel` ref，`<v-tooltip v-if=... activator="parent">` 仅在激活时创建 overlay）。从每渠道常驻 2 个 overlay 降为全局最多 1 个，去除 Vuetify 3,000+ 个 `{activator, persistent, ...}` 响应式对象
+
 - **前端 GC / 内存优化（第二批）** - 降低长时间运行时的内存增长速率和 GC 抖动频率
   - 新增 `useGlobalTick` composable：相同 `intervalMs` 的多订阅者共用一个 `setInterval`（5 个 5s 组件合并为 1 个定时器）；`visibilitychange` 时自动暂停所有 timer，恢复时若已超期立即补触发一次
   - `stores/channel.ts`：自动刷新定时器切换到 `registerGlobalTick`；`mergeChannelsWithLocalData` 抽到 `@/utils/channelMerge` 便于测试，用 `Map<index, Channel>` 预索引将合并复杂度从 O(N²) 降到 O(N)；`apiKeys` / `disabledApiKeys` / `modelMapping` 通过 `Object.freeze` 跳过 Vue 深度 Proxy 化

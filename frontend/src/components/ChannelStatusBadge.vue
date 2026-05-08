@@ -1,12 +1,27 @@
 <template>
-  <div class="status-badge" :class="[statusClass, { 'has-metrics': showMetrics }]">
-    <v-tooltip location="top" content-class="ccx-tooltip">
-      <template #activator="{ props: tooltipProps }">
-        <div class="badge-content" v-bind="tooltipProps">
-          <v-icon :size="iconSize" class="status-icon">{{ statusIcon }}</v-icon>
-          <span v-if="showLabel" class="status-label">{{ statusLabel }}</span>
-        </div>
-      </template>
+  <!--
+    懒挂 tooltip：仅 hover/focus 时才渲染 <v-tooltip>，避免 100+ 渠道常驻 overlay 实例。
+    原方案每个渠道挂 1 个 v-tooltip，对大规模渠道列表内存占用显著（实测 ~10MB）。
+  -->
+  <div
+    class="status-badge"
+    :class="[statusClass, { 'has-metrics': showMetrics }]"
+    @mouseenter="hovered = true"
+    @mouseleave="hovered = false"
+    @focusin="hovered = true"
+    @focusout="hovered = false"
+  >
+    <div class="badge-content">
+      <v-icon :size="iconSize" class="status-icon">{{ statusIcon }}</v-icon>
+      <span v-if="showLabel" class="status-label">{{ statusLabel }}</span>
+    </div>
+    <v-tooltip
+      v-if="hovered"
+      v-model="hovered"
+      activator="parent"
+      location="top"
+      content-class="ccx-tooltip"
+    >
       <div class="tooltip-content">
         <div class="font-weight-bold mb-1">{{ statusLabel }}</div>
         <template v-if="metrics">
@@ -24,7 +39,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import type { ChannelStatus, ChannelMetrics } from '../services/api'
 import { useI18n } from '../i18n'
 
@@ -41,6 +56,9 @@ const props = withDefaults(defineProps<{
 })
 
 const { t } = useI18n()
+
+// hover/focus 状态：控制 tooltip 懒挂载
+const hovered = ref(false)
 
 const effectiveStatus = computed<DisplayStatus>(() => {
   if (props.status === 'disabled') return 'disabled'
