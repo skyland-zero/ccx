@@ -1,0 +1,256 @@
+// @vitest-environment jsdom
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
+import { defineComponent, h } from 'vue'
+import { mount } from '@vue/test-utils'
+import { registerGlobalTick, useGlobalTick } from './useGlobalTick'
+
+/**
+ * 模拟 document.visibilityState 变化并触发 visibilitychange 事件
+ */
+function setVisibility(state: 'visible' | 'hidden'): void {
+  Object.defineProperty(document, 'visibilityState', {
+    configurable: true,
+    get: () => state,
+  })
+  document.dispatchEvent(new Event('visibilitychange'))
+}
+
+describe('registerGlobalTick', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    setVisibility('visible')
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.useRealTimers()
+  })
+
+  it('基本触发：间隔到达时回调被调用', () => {
+    const fn = vi.fn()
+    const unsubscribe = registerGlobalTick(1000, fn)
+
+    vi.advanceTimersByTime(999)
+    expect(fn).not.toHaveBeenCalled()
+
+    vi.advanceTimersByTime(1)
+    expect(fn).toHaveBeenCalledTimes(1)
+
+    vi.advanceTimersByTime(1000)
+    expect(fn).toHaveBeenCalledTimes(2)
+
+    unsubscribe()
+  })
+
+  it('相同 interval 的多订阅者共用一个 setInterval', () => {
+    const spy = vi.spyOn(globalThis, 'setInterval')
+    const a = vi.fn()
+    const b = vi.fn()
+    const c = vi.fn()
+
+    const u1 = registerGlobalTick(500, a)
+    const u2 = registerGlobalTick(500, b)
+    const u3 = registerGlobalTick(500, c)
+
+    // 只应创建一个 setInterval
+    expect(spy).toHaveBeenCalledTimes(1)
+
+    vi.advanceTimersByTime(500)
+    expect(a).toHaveBeenCalledTimes(1)
+    expect(b).toHaveBeenCalledTimes(1)
+    expect(c).toHaveBeenCalledTimes(1)
+
+    u1(); u2(); u3()
+  })
+
+  it('不同 interval 各自独立', () => {
+    const spy = vi.spyOn(globalThis, 'setInterval')
+    const fastCb = vi.fn()
+    const slowCb = vi.fn()
+
+    const u1 = registerGlobalTick(100, fastCb)
+    const u2 = registerGlobalTick(300, slowCb)
+
+    expect(spy).toHaveBeenCalledTimes(2)
+
+    vi.advanceTimersByTime(100)
+    expect(fastCb).toHaveBeenCalledTimes(1)
+    expect(slowCb).not.toHaveBeenCalled()
+
+    vi.advanceTimersByTime(200) // 共 300ms
+    expect(fastCb).toHaveBeenCalledTimes(3)
+    expect(slowCb).toHaveBeenCalledTimes(1)
+
+    u1(); u2()
+  })
+
+  it('unsubscribe 后不再接收回调', () => {
+    const fn = vi.fn()
+    const unsubscribe = registerGlobalTick(1000, fn)
+
+    vi.advanceTimersByTime(1000)
+    expect(fn).toHaveBeenCalledTimes(1)
+
+    unsubscribe()
+    vi.advanceTimersByTime(5000)
+    expect(fn).toHaveBeenCalledTimes(1) // 不再增加
+  })
+
+  it('最后一个订阅者退订后，底层 setInterval 被清理', () => {
+    const clearSpy = vi.spyOn(globalThis, 'clearInterval')
+    const fn = vi.fn()
+    const unsubscribe = registerGlobalTick(2000, fn)
+
+    expect(clearSpy).not.toHaveBeenCalled()
+    unsubscribe()
+    expect(clearSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('多订阅者退订：仅最后一个触发 clearInterval', () => {
+    const clearSpy = vi.spyOn(globalThis, 'clearInterval')
+    const a = vi.fn()
+    const b = vi.fn()
+    const u1 = registerGlobalTick(1500, a)
+    const u2 = registerGlobalTick(1500, b)
+
+    u1()
+    expect(clearSpy).not.toHaveBeenCalled()
+    u2()
+    expect(clearSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('visibility hidden 时暂停，不触发回调', () => {
+    const fn = vi.fn()
+    const unsubscribe = registerGlobalTick(1000, fn)
+
+    setVisibility('hidden')
+    vi.advanceTimersByTime(5000)
+    expect(fn).not.toHaveBeenCalled()
+
+    unsubscribe()
+  })
+
+  it('visibility 恢复：已超期则立即补触发一次', () => {
+    const fn = vi.fn()
+    const unsubscribe = registerGlobalTick(1000, fn)
+
+    vi.advanceTimersByTime(1000)
+    expect(fn).toHaveBeenCalledTimes(1)
+
+    setVisibility('hidden')
+    vi.advanceTimersByTime(5000) // 5s 没触发
+    expect(fn).toHaveBeenCalledTimes(1)
+
+    setVisibility('visible')
+    // 距上次 tick 已 5s，超过 1s 间隔 → 立即补一次
+    expect(fn).toHaveBeenCalledTimes(2)
+
+    // 恢复后 1s 正常触发
+    vi.advanceTimersByTime(1000)
+    expect(fn).toHaveBeenCalledTimes(3)
+
+    unsubscribe()
+  })
+
+  it('visibility 恢复：未超期则不补触发', () => {
+    const fn = vi.fn()
+    const unsubscribe = registerGlobalTick(1000, fn)
+
+    vi.advanceTimersByTime(1000)
+    expect(fn).toHaveBeenCalledTimes(1)
+
+    setVisibility('hidden')
+    vi.advanceTimersByTime(300) // 只过了 300ms（未满 1s）
+    setVisibility('visible')
+    // 距上次 tick 仅 300ms，不应立即补
+    expect(fn).toHaveBeenCalledTimes(1)
+
+    unsubscribe()
+  })
+
+  it('回调抛错不影响其他订阅者', () => {
+    const bad = vi.fn(() => { throw new Error('boom') })
+    const good = vi.fn()
+
+    // 静默 console.warn
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const u1 = registerGlobalTick(500, bad)
+    const u2 = registerGlobalTick(500, good)
+
+    vi.advanceTimersByTime(500)
+    expect(bad).toHaveBeenCalledTimes(1)
+    expect(good).toHaveBeenCalledTimes(1) // 仍然被调用
+    expect(warnSpy).toHaveBeenCalled()
+
+    u1(); u2()
+  })
+})
+
+describe('useGlobalTick (组件级)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    setVisibility('visible')
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.useRealTimers()
+  })
+
+  it('组件 unmount 时自动退订', () => {
+    const fn = vi.fn()
+
+    const TestComp = defineComponent({
+      setup() {
+        const tick = useGlobalTick(1000, 'test')
+        tick.onTick(fn)
+        return () => h('div')
+      },
+    })
+
+    const wrapper = mount(TestComp)
+    vi.advanceTimersByTime(1000)
+    expect(fn).toHaveBeenCalledTimes(1)
+
+    wrapper.unmount()
+    vi.advanceTimersByTime(5000)
+    expect(fn).toHaveBeenCalledTimes(1) // unmount 后不再触发
+  })
+
+  it('pause/resume 只影响自己，不影响其他订阅者', () => {
+    const selfCb = vi.fn()
+    const otherCb = vi.fn()
+
+    const TestComp = defineComponent({
+      setup() {
+        const tick = useGlobalTick(500, 'self')
+        tick.onTick(selfCb)
+        // 暴露 pause/resume 到测试
+        return { pause: tick.pause, resume: tick.resume, render: () => h('div') }
+      },
+      render() { return h('div') },
+    })
+
+    const wrapper = mount(TestComp)
+    // 另一个订阅者（来自模块外）
+    const unsubOther = registerGlobalTick(500, otherCb)
+
+    vi.advanceTimersByTime(500)
+    expect(selfCb).toHaveBeenCalledTimes(1)
+    expect(otherCb).toHaveBeenCalledTimes(1)
+
+    wrapper.vm.pause()
+    vi.advanceTimersByTime(500)
+    expect(selfCb).toHaveBeenCalledTimes(1) // 暂停了
+    expect(otherCb).toHaveBeenCalledTimes(2) // 其他人继续
+
+    wrapper.vm.resume()
+    vi.advanceTimersByTime(500)
+    expect(selfCb).toHaveBeenCalledTimes(2)
+    expect(otherCb).toHaveBeenCalledTimes(3)
+
+    unsubOther()
+    wrapper.unmount()
+  })
+})

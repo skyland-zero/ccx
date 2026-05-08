@@ -540,11 +540,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, defineAsyncComponent, markRaw } from 'vue'
 import draggable from 'vuedraggable'
-import { api, type Channel, type ChannelMetrics, type ChannelStatus, type TimeWindowStats, type ChannelRecentActivity, type SchedulerStatsResponse, expandSparseSegments } from '../services/api'
+import { api, type Channel, type ChannelMetrics, type ChannelStatus, type TimeWindowStats, type ChannelRecentActivity, type SchedulerStatsResponse, type ActivitySegment, expandSparseSegments } from '../services/api'
 import { getChannelTypeApi } from '../utils/channelTypeApi'
 import { useI18n } from '../i18n'
+import { useGlobalTick } from '../composables/useGlobalTick'
 import ChannelStatusBadge from './ChannelStatusBadge.vue'
 // Lazy-load chart components to reduce initial JS bundle size
 const KeyTrendChart = defineAsyncComponent(() => import('./KeyTrendChart.vue'))
@@ -609,11 +610,9 @@ const openLogsDialog = (ch: Channel) => {
 const LATENCY_VALID_DURATION = 5 * 60 * 1000
 // Timestamp used to trigger reactive updates
 const currentTime = ref(Date.now())
-let latencyCheckTimer: ReturnType<typeof setInterval> | null = null
 
 // Timestamp used to trigger activity view updates (updated every 2 seconds)
 const activityUpdateTick = ref(0)
-let activityUpdateTimer: ReturnType<typeof setInterval> | null = null
 
 // Chart expansion state
 const expandedChannelIndex = ref<number | null>(null)
@@ -733,8 +732,9 @@ const initActiveChannels = () => {
   }
 }
 
-// Watch channel changes
-watch(() => props.channels, initActiveChannels, { immediate: true, deep: true })
+// Watch channel changes - 监听引用变化即可（store refresh 时 channels 是全新数组引用）
+// 去掉 deep: true，避免深度遍历 apiKeys/modelMapping 等嵌套结构的性能开销
+watch(() => props.channels, initActiveChannels, { immediate: true })
 
 // Watch dashboard prop changes (merged data passed from the parent component)
 watch(() => props.dashboardMetrics, (newMetrics) => {
@@ -937,6 +937,13 @@ watch(activityMap, (newMap) => {
       maxRequestsHistory.value.set(channelIndex, { max: decayedMax, updatedAt: now })
     }
   }
+
+  // 清理不存在的渠道的历史记录，防止 Map 无限增长
+  for (const key of maxRequestsHistory.value.keys()) {
+    if (!newMap.has(key)) {
+      maxRequestsHistory.value.delete(key)
+    }
+  }
 })
 
 // Get channel activity data
@@ -945,6 +952,9 @@ const getChannelActivity = (channelIndex: number): ChannelRecentActivity | undef
 }
 
 // Cache bar chart data for all channels (avoid repeated computation in the template)
+// 持久化缓存：模块级 Map，不在 Vue 响应式系统内，配合 markRaw 防止未来被误 Proxy 化
+const activityBarsPersistentCache = new Map<number, { segments: ActivitySegment[], bars: Array<{ x: number; y: number; width: number; height: number; radius: number; color: string }> }>()
+
 const activityBarsCache = computed(() => {
   const cache = new Map<number, Array<{ x: number; y: number; width: number; height: number; radius: number; color: string }>>()
 
@@ -957,8 +967,9 @@ const activityBarsCache = computed(() => {
       continue
     }
 
-    // Expand sparse segments into an array
-    const segments = expandSparseSegments(activity)
+    // 复用已有的 segments 数组，避免每次分配 150 个新对象
+    const existing = activityBarsPersistentCache.get(channelIndex)
+    const segments = expandSparseSegments(activity, existing?.segments)
     const numSegments = segments.length  // 150 (the backend has already aggregated data into 6-second segments)
 
     if (numSegments === 0) {
@@ -977,7 +988,16 @@ const activityBarsCache = computed(() => {
     const currentMax = Math.max(...segments.map(s => s.requestCount), 1)
     const maxRequests = record ? Math.max(getDecayedMax(record, now), currentMax) : currentMax
 
-    const bars: Array<{ x: number; y: number; width: number; height: number; radius: number; color: string }> = []
+    // 复用已有的 bars 数组，避免每次分配 150 个新对象
+    let bars: Array<{ x: number; y: number; width: number; height: number; radius: number; color: string }>
+    if (existing && existing.bars.length === numSegments) {
+      bars = existing.bars
+    } else {
+      bars = new Array(numSegments)
+      for (let i = 0; i < numSegments; i++) {
+        bars[i] = { x: 0, y: 0, width: 0, height: 0, radius: 0, color: '' }
+      }
+    }
 
     for (let i = 0; i < numSegments; i++) {
       const segment = segments[i]
@@ -1012,17 +1032,25 @@ const activityBarsCache = computed(() => {
         }
       }
 
-      bars.push({
-        x: i * barWidth + barGap / 2,
-        y,
-        width: actualBarWidth,
-        height,
-        radius: Math.min(actualBarWidth / 2, 1.5),  // Corner radius
-        color
-      })
+      // 更新已有对象属性，而不是创建新对象
+      bars[i].x = i * barWidth + barGap / 2
+      bars[i].y = y
+      bars[i].width = actualBarWidth
+      bars[i].height = height
+      bars[i].radius = Math.min(actualBarWidth / 2, 1.5)
+      bars[i].color = color
     }
 
+    // 更新持久化缓存（markRaw 防止 Vue 对 150 个 bars 对象做响应式 Proxy 化）
+    activityBarsPersistentCache.set(channelIndex, { segments, bars: markRaw(bars) })
     cache.set(channelIndex, bars)
+  }
+
+  // 清理不再存在的渠道的缓存
+  for (const key of activityBarsPersistentCache.keys()) {
+    if (!activityMap.value.has(key)) {
+      activityBarsPersistentCache.delete(key)
+    }
   }
 
   return cache
@@ -1414,28 +1442,17 @@ const handleDeleteChannel = (channel: Channel) => {
 }
 
 // Load metrics and start the latency expiry check timer when the component mounts
+// 全局 tick 订阅（visibility hidden 时自动暂停）
+const latencyTick = useGlobalTick(30000, 'ChannelOrch-latency')
+const activityTick = useGlobalTick(2000, 'ChannelOrch-activity')
+
 onMounted(() => {
   refreshMetrics()
-  // Update currentTime every 30 seconds to trigger reactive latency display updates
-  latencyCheckTimer = setInterval(() => {
-    currentTime.value = Date.now()
-  }, 30000)
-  // Update activityUpdateTick every 2 seconds to trigger activity view updates
-  activityUpdateTimer = setInterval(() => {
-    activityUpdateTick.value++
-  }, 2000)
+  latencyTick.onTick(() => { currentTime.value = Date.now() })
+  activityTick.onTick(() => { activityUpdateTick.value++ })
 })
 
-// Clear timers when the component unmounts
 onUnmounted(() => {
-  if (latencyCheckTimer) {
-    clearInterval(latencyCheckTimer)
-    latencyCheckTimer = null
-  }
-  if (activityUpdateTimer) {
-    clearInterval(activityUpdateTimer)
-    activityUpdateTimer = null
-  }
   if (copyTimeoutId) {
     clearTimeout(copyTimeoutId)
     copyTimeoutId = null

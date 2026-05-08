@@ -1,5 +1,23 @@
 ## [Unreleased]
 
+### Changed
+
+- **前端 GC / 内存优化（第二批）** - 降低长时间运行时的内存增长速率和 GC 抖动频率
+  - 新增 `useGlobalTick` composable：相同 `intervalMs` 的多订阅者共用一个 `setInterval`（5 个 5s 组件合并为 1 个定时器）；`visibilitychange` 时自动暂停所有 timer，恢复时若已超期立即补触发一次
+  - `stores/channel.ts`：自动刷新定时器切换到 `registerGlobalTick`；`mergeChannelsWithLocalData` 抽到 `@/utils/channelMerge` 便于测试，用 `Map<index, Channel>` 预索引将合并复杂度从 O(N²) 降到 O(N)；`apiKeys` / `disabledApiKeys` / `modelMapping` 通过 `Object.freeze` 跳过 Vue 深度 Proxy 化
+  - `ChannelOrchestration.vue`、`GlobalStatsChart.vue`、`KeyTrendChart.vue`、`ModelStatsChart.vue`、`ChannelLogsDialog.vue`：独立 `setInterval` 全部替换为 `useGlobalTick`
+  - `ModelStatsChart.vue`：新增 `chartRef` + silent 模式下 `updateSeries`，避免每 5s 整图重绘
+  - `ChannelOrchestration.vue`：bars 缓存加 `markRaw` 防止未来被误 Proxy 化
+  - `App.vue`：修复 `mediaQuery` 事件监听泄漏（`onUnmounted` 补 `removeEventListener`）
+
+### Added
+
+- **前端单元测试补齐** - 为本批改动中的纯逻辑新增 32 个单元测试（总计 155 通过）
+  - `channelMerge.test.ts`：冻结幂等性、预索引、5 分钟 latency 有效期边界、1000 项 O(1) 查找（11 tests）
+  - `expandSparseSegments.test.ts`：稀疏展开、reuse 复用、防 API 数据污染回归（9 tests）
+  - `useGlobalTick.test.ts`：共享 timer、visibility 暂停/补触发、组件 unmount 自动退订、回调抛错隔离（12 tests）
+  - `package.json` 新增 `test` / `test:watch` 脚本
+
 ### Fixed
 
 - **修复上游 model_not_found 503 错误被误判为可重试故障** - 上游 new-api 对 `model_not_found` 返回 HTTP 503，原逻辑将其视为临时故障触发全量 failover（所有 key/channel 耗尽后才返回 503）。新增 `isModelRoutingError` 识别 `model_not_found` 错误码，并通过 `normalizeUpstreamErrorStatus` 将最终 5xx 状态码归一化为 404 返回客户端；failover 仍允许跨 channel 尝试（不同上游实例可能支持该模型）

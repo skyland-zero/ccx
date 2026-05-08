@@ -4,6 +4,8 @@ import { useRouter } from 'vue-router'
 import { usePreferencesStore } from '@/stores/preferences'
 import { api, type Channel, type ChannelsResponse, type ChannelMetrics, type ChannelDashboardResponse } from '@/services/api'
 import { normalizeLocale, translate } from '@/i18n/core'
+import { registerGlobalTick } from '@/composables/useGlobalTick'
+import { mergeChannelsWithLocalData } from '@/utils/channelMerge'
 
 /**
  * 渠道数据管理 Store
@@ -105,10 +107,10 @@ export const useChannelStore = defineStore('channel', () => {
   // 最后一次刷新状态（用于 systemStatus 更新）
   const lastRefreshSuccess = ref(true)
 
-  // 自动刷新定时器（串行 setTimeout，避免重入）
-  let autoRefreshTimer: ReturnType<typeof setTimeout> | null = null
-  let autoRefreshRunning = false
+  // 全局 tick 订阅（5s），与图表等组件共用同一个 setInterval，visibility hidden 时自动暂停
   const AUTO_REFRESH_INTERVAL = 5000 // 5秒，降低统计聚合与锁竞争压力
+  let autoRefreshRunning = false
+  let autoRefreshUnsubscribe: (() => void) | null = null
 
   // 刷新并发控制：同一时间只允许一个 refresh 在跑；期间再次调用会被合并成一次后续刷新
   let refreshLoopPromise: Promise<void> | null = null
@@ -149,26 +151,7 @@ export const useChannelStore = defineStore('channel', () => {
 
   // ===== 辅助方法 =====
 
-  // 合并渠道数据，保留本地的延迟测试结果
-  const LATENCY_VALID_DURATION = 5 * 60 * 1000 // 5 分钟有效期
-
-  function mergeChannelsWithLocalData(newChannels: Channel[], existingChannels: Channel[] | undefined): Channel[] {
-    if (!existingChannels) return newChannels
-
-    const now = Date.now()
-    return newChannels.map(newCh => {
-      const existingCh = existingChannels.find(ch => ch.index === newCh.index)
-      // 只有在 5 分钟有效期内才保留本地延迟测试结果
-      if (existingCh?.latencyTestTime && (now - existingCh.latencyTestTime) < LATENCY_VALID_DURATION) {
-        return {
-          ...newCh,
-          latency: existingCh.latency,
-          latencyTestTime: existingCh.latencyTestTime
-        }
-      }
-      return newCh
-    })
-  }
+  // 合并渠道数据 + 冻结不可变字段的纯函数已抽到 @/utils/channelMerge，便于单元测试
 
   // ===== 操作方法 =====
 
@@ -468,30 +451,21 @@ export const useChannelStore = defineStore('channel', () => {
   }
 
   /**
-   * 启动自动刷新定时器
+   * 启动自动刷新定时器（使用全局 tick，visibility hidden 时自动暂停）
    */
   function startAutoRefresh() {
     stopAutoRefresh()
     autoRefreshRunning = true
 
-    const tick = async () => {
-      if (!autoRefreshRunning) return
-      try {
-        await refreshChannels()
-      } catch (error) {
-        console.warn(t('store.channel.autoRefreshFailed'), error)
-      } finally {
-        if (autoRefreshRunning) {
-          autoRefreshTimer = setTimeout(() => {
-            void tick()
-          }, AUTO_REFRESH_INTERVAL)
-        }
-      }
-    }
+    // 退订旧订阅（如果 `stopAutoRefresh` 未被调用过）
+    if (autoRefreshUnsubscribe) { autoRefreshUnsubscribe(); autoRefreshUnsubscribe = null }
 
-    autoRefreshTimer = setTimeout(() => {
-      void tick()
-    }, AUTO_REFRESH_INTERVAL)
+    autoRefreshUnsubscribe = registerGlobalTick(AUTO_REFRESH_INTERVAL, () => {
+      if (!autoRefreshRunning) return
+      void refreshChannels().catch((error) => {
+        console.warn(t('store.channel.autoRefreshFailed'), error)
+      })
+    })
   }
 
   /**
@@ -499,9 +473,10 @@ export const useChannelStore = defineStore('channel', () => {
    */
   function stopAutoRefresh() {
     autoRefreshRunning = false
-    if (!autoRefreshTimer) return
-    clearTimeout(autoRefreshTimer)
-    autoRefreshTimer = null
+    if (autoRefreshUnsubscribe) {
+      autoRefreshUnsubscribe()
+      autoRefreshUnsubscribe = null
+    }
   }
 
   /**

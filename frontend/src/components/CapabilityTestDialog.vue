@@ -71,7 +71,7 @@
                   max="60"
                   step="1"
                   @blur="handleRpmBlur"
-                >
+                />
               </label>
 
               <span v-if="job?.progress?.totalModels && isJobActiveLike" class="text-caption text-medium-emphasis">

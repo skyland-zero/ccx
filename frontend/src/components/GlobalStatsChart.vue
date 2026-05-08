@@ -102,6 +102,7 @@ import VueApexCharts from 'vue3-apexcharts'
 import type { ApexOptions } from 'apexcharts'
 import { api, type GlobalStatsHistoryResponse, type GlobalHistoryDataPoint as _GlobalHistoryDataPoint, type GlobalStatsSummary, type ModelHistoryDataPoint } from '../services/api'
 import { useI18n } from '../i18n'
+import { useGlobalTick } from '../composables/useGlobalTick'
 
 // Register apexchart component
 const apexchart = VueApexCharts
@@ -155,26 +156,19 @@ const errorMessage = ref('')
 // Chart ref for updateSeries
 const chartRef = ref<InstanceType<typeof VueApexCharts> | null>(null)
 
-// Auto refresh timer
+// Auto refresh (使用全局 tick，visibility hidden 时自动暂停)
 const AUTO_REFRESH_INTERVAL = 5000
-let autoRefreshTimer: ReturnType<typeof setInterval> | null = null
+const autoRefreshTick = useGlobalTick(AUTO_REFRESH_INTERVAL, 'GlobalStats')
+let autoRefreshActive = false
 const isRefreshing = ref(false)
 let refreshRequestId = 0
 
 const startAutoRefresh = () => {
-  stopAutoRefresh()
-  autoRefreshTimer = setInterval(() => {
-    if (!isRefreshing.value) {
-      refreshData(true)
-    }
-  }, AUTO_REFRESH_INTERVAL)
+  autoRefreshActive = true
 }
 
 const stopAutoRefresh = () => {
-  if (autoRefreshTimer) {
-    clearInterval(autoRefreshTimer)
-    autoRefreshTimer = null
-  }
+  autoRefreshActive = false
 }
 
 // Chart height based on compact mode
@@ -595,11 +589,15 @@ watch(() => props.apiType, (newApiType) => {
 
 // Initial load and start auto refresh
 onMounted(() => {
+  // 注册 tick 回调（global tick，与其他 5s 组件共用 setInterval）
+  autoRefreshTick.onTick(() => {
+    if (autoRefreshActive && !isRefreshing.value) refreshData(true)
+  })
   refreshData()
   startAutoRefresh()
 })
 
-// Cleanup timer on unmount
+// Cleanup on unmount
 onUnmounted(() => {
   stopAutoRefresh()
 })

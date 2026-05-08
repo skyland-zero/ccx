@@ -53,7 +53,7 @@
 
     <!-- Chart -->
     <div v-else>
-      <apexchart type="area" :height="200" :options="chartOptions" :series="chartSeries" />
+      <apexchart ref="chartRef" type="area" :height="200" :options="chartOptions" :series="chartSeries" />
     </div>
   </div>
 </template>
@@ -62,6 +62,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useTheme } from 'vuetify'
 import VueApexCharts from 'vue3-apexcharts'
+import { useGlobalTick } from '../composables/useGlobalTick'
 import type { ApexOptions } from 'apexcharts'
 import { api, type ModelStatsHistoryResponse } from '../services/api'
 import { useI18n } from '../i18n'
@@ -93,6 +94,9 @@ const isLoading = ref(false)
 const historyData = ref<ModelStatsHistoryResponse | null>(null)
 const showError = ref(false)
 const errorMessage = ref('')
+
+// Chart ref for updateSeries (避免 silent refresh 时整图重绘)
+const chartRef = ref<InstanceType<typeof VueApexCharts> | null>(null)
 
 // Model color palette
 const modelColors = [
@@ -188,14 +192,27 @@ const chartOptions = computed<ApexOptions>(() => ({
 }))
 
 let requestVersion = 0
+let isRefreshing = false
 const refreshData = async (silent = false) => {
   if (!silent) stopAutoRefresh()
+  if (silent && isRefreshing) return  // P1 fix: 防止并发请求叠加
   const currentVersion = ++requestVersion
+  isRefreshing = true
   if (!silent) isLoading.value = true
   try {
     const data = await api.getModelStatsHistory(props.apiType, selectedDuration.value)
     if (currentVersion === requestVersion) {
+      // 判断是否可以就地 updateSeries（避免整图重绘闪烁）
+      const oldModels = historyData.value?.models ? Object.keys(historyData.value.models).sort().join(',') : ''
+      const newModels = data.models ? Object.keys(data.models).sort().join(',') : ''
+      const canUpdateInPlace = silent && chartRef.value && oldModels === newModels
+
       historyData.value = data
+
+      if (canUpdateInPlace) {
+        // 用 updateSeries 平滑更新，animate=false 避免动画闪烁
+        chartRef.value!.updateSeries(chartSeries.value, false)
+      }
     }
   } catch (e) {
     if (currentVersion === requestVersion && !silent) {
@@ -205,6 +222,7 @@ const refreshData = async (silent = false) => {
       historyData.value = null
     }
   } finally {
+    isRefreshing = false
     if (currentVersion === requestVersion && !silent) {
       isLoading.value = false
       startAutoRefresh()
@@ -212,13 +230,11 @@ const refreshData = async (silent = false) => {
   }
 }
 
-// Auto refresh
-let timer: ReturnType<typeof setInterval> | null = null
-const startAutoRefresh = () => {
-  stopAutoRefresh()
-  timer = setInterval(() => refreshData(true), 5000) // Poll every 5s to reduce lock contention
-}
-const stopAutoRefresh = () => { if (timer) { clearInterval(timer); timer = null } }
+// Auto refresh (使用全局 tick，visibility hidden 时自动暂停)
+const autoRefreshTick = useGlobalTick(5000, 'ModelStats')
+let autoRefreshActive = false
+const startAutoRefresh = () => { autoRefreshActive = true }
+const stopAutoRefresh = () => { autoRefreshActive = false }
 
 watch(selectedDuration, (v) => { localStorage.setItem(storageKey('duration'), v); refreshData() })
 watch(selectedView, (v) => { localStorage.setItem(storageKey('view'), v) })
@@ -229,7 +245,13 @@ watch(() => props.apiType, (t) => {
   refreshData()
 })
 
-onMounted(() => { refreshData() })
+onMounted(() => {
+  // 注册 tick 回调（global tick，与其他 5s 组件共用 setInterval）
+  autoRefreshTick.onTick(() => {
+    if (autoRefreshActive && !isRefreshing) refreshData(true)
+  })
+  refreshData()
+})
 onUnmounted(() => { stopAutoRefresh() })
 </script>
 

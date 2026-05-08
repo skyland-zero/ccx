@@ -72,6 +72,7 @@ import { useTheme } from 'vuetify'
 import VueApexCharts from 'vue3-apexcharts'
 import type { ApexOptions } from 'apexcharts'
 import { api, type ChannelKeyMetricsHistoryResponse } from '../services/api'
+import { useGlobalTick } from '../composables/useGlobalTick'
 import { useI18n } from '../i18n'
 
 // Register apexchart component
@@ -147,25 +148,17 @@ const chartRef = ref<InstanceType<typeof VueApexCharts> | null>(null)
 // request id for refreshData
 let refreshRequestId = 0
 
-// Auto refresh timer
+// Auto refresh (使用全局 tick，visibility hidden 时自动暂停)
 const AUTO_REFRESH_INTERVAL = 5000
-let autoRefreshTimer: ReturnType<typeof setInterval> | null = null
+const autoRefreshTick = useGlobalTick(AUTO_REFRESH_INTERVAL, 'KeyTrend')
+let autoRefreshActive = false
 
 const startAutoRefresh = () => {
-  stopAutoRefresh()
-  autoRefreshTimer = setInterval(() => {
-    // Skip if already refreshing to prevent concurrent requests / stale overwrites
-    if (!isRefreshing.value) {
-      refreshData(true) // true = auto refresh, use updateSeries
-    }
-  }, AUTO_REFRESH_INTERVAL)
+  autoRefreshActive = true
 }
 
 const stopAutoRefresh = () => {
-  if (autoRefreshTimer) {
-    clearInterval(autoRefreshTimer)
-    autoRefreshTimer = null
-  }
+  autoRefreshActive = false
 }
 
 // Key color palette - supports up to 10 keys
@@ -779,6 +772,10 @@ watch(() => props.channelType, (newChannelType) => {
 
 // Initial load and start auto refresh
 onMounted(() => {
+  // 注册 tick 回调（global tick，与其他 5s 组件共用 setInterval）
+  autoRefreshTick.onTick(() => {
+    if (autoRefreshActive && !isRefreshing.value) refreshData(true)
+  })
   refreshData()
   startAutoRefresh()
 })

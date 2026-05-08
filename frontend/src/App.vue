@@ -1578,6 +1578,16 @@ const handleVersionClick = () => {
   }
 }
 
+// 监听系统主题变化（setup 阶段注册，onUnmounted 清理，避免泄漏）
+// 守卫非浏览器环境（SSR / vitest 非 jsdom）：避免 ReferenceError: window is not defined
+const mediaQuery = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+  ? window.matchMedia('(prefers-color-scheme: dark)')
+  : null
+const handlePref = () => {
+  if (preferencesStore.darkModePreference === 'auto') setDarkMode('auto')
+}
+mediaQuery?.addEventListener('change', handlePref)
+
 // 初始化
 onMounted(async () => {
   // 初始化复古像素主题
@@ -1586,13 +1596,6 @@ onMounted(async () => {
 
   // 加载保存的暗色模式偏好（从 PreferencesStore 读取，已自动从 localStorage 恢复）
   setDarkMode(preferencesStore.darkModePreference)
-
-  // 监听系统主题变化
-  const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
-  const handlePref = () => {
-    if (preferencesStore.darkModePreference === 'auto') setDarkMode('auto')
-  }
-  mediaQuery.addEventListener('change', handlePref)
 
   // 版本检查（独立于认证，静默执行）
   checkVersion()
@@ -1662,10 +1665,11 @@ watch(() => channelStore.lastRefreshSuccess, (success) => {
   }
 })
 
-// 在组件卸载时清除定时器
+// 在组件卸载时清除定时器和事件监听器
 onUnmounted(() => {
   channelStore.stopAutoRefresh()
   stopAllCapabilityPolling()
+  mediaQuery?.removeEventListener('change', handlePref)
 })
 </script>
 

@@ -98,6 +98,7 @@
 import { ref, watch, onUnmounted } from 'vue'
 import { api, type ChannelLogEntry } from '../services/api'
 import { useI18n } from '../i18n'
+import { useGlobalTick } from '../composables/useGlobalTick'
 
 const props = defineProps<{
   modelValue: boolean
@@ -115,7 +116,12 @@ const logs = ref<ChannelLogEntry[]>([])
 const isLoading = ref(false)
 const autoRefresh = ref(true)
 const expandedIndex = ref<number | null>(null)
-let timer: ReturnType<typeof setInterval> | null = null
+
+// 全局 tick（3s），visibility hidden 时自动暂停
+const logsTick = useGlobalTick(3000, 'ChannelLogs')
+let pollingActive = false
+const startPolling = () => { pollingActive = true }
+const stopPolling = () => { pollingActive = false }
 
 const toggleExpand = (i: number) => {
   expandedIndex.value = expandedIndex.value === i ? null : i
@@ -207,11 +213,10 @@ const fetchLogs = async () => {
   }
 }
 
-const startPolling = () => {
-  stopPolling()
-  timer = setInterval(fetchLogs, 3000)
-}
-const stopPolling = () => { if (timer) { clearInterval(timer); timer = null } }
+// 注册 tick 回调（global tick，与其他 3s 组件共用 setInterval）
+logsTick.onTick(() => {
+  if (pollingActive) fetchLogs()
+})
 
 // 打开时加载，关闭时停止
 watch(() => props.modelValue, (open) => {

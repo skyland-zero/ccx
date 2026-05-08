@@ -467,28 +467,52 @@ export interface ChannelRecentActivity {
   tpm: number                                                     // 15分钟平均 TPM
 }
 
-// 辅助函数：将稀疏 segments 展开为完整数组
-export function expandSparseSegments(activity: ChannelRecentActivity): ActivitySegment[] {
+// 辅助函数：将稀疏 segments 展开为完整数组（复用已有数组减少 GC 压力）
+// 注意：永远不在 result 中直接引用 API 的 seg 对象，避免后续复用时 reset 循环污染 API 数据
+export function expandSparseSegments(activity: ChannelRecentActivity, reuse?: ActivitySegment[]): ActivitySegment[] {
   const totalSegs = activity.totalSegs || 150
-  const result: ActivitySegment[] = new Array(totalSegs).fill(null).map(() => ({
-    requestCount: 0,
-    successCount: 0,
-    failureCount: 0,
-    inputTokens: 0,
-    outputTokens: 0
-  }))
 
-  // 兼容旧版数组格式
+  // 兼容旧版数组格式 - 直接返回 API 数组（调用方只读，安全）
   if (Array.isArray(activity.segments)) {
     return activity.segments
   }
 
-  // 稀疏 Map 格式：展开到完整数组
+  // 复用已有数组或创建新数组
+  let result: ActivitySegment[]
+  if (reuse && reuse.length === totalSegs) {
+    result = reuse
+  } else {
+    result = new Array(totalSegs)
+    for (let i = 0; i < totalSegs; i++) {
+      result[i] = {
+        requestCount: 0,
+        successCount: 0,
+        failureCount: 0,
+        inputTokens: 0,
+        outputTokens: 0
+      }
+    }
+  }
+
+  // 重置所有槽位为 0（只修改我们自己的对象，不会影响 API 数据）
+  for (let i = 0; i < totalSegs; i++) {
+    result[i].requestCount = 0
+    result[i].successCount = 0
+    result[i].failureCount = 0
+    result[i].inputTokens = 0
+    result[i].outputTokens = 0
+  }
+
+  // 稀疏 Map 格式：复制字段值（不替换对象引用，避免下次 reset 时污染 API）
   if (activity.segments && typeof activity.segments === 'object') {
     for (const [indexStr, seg] of Object.entries(activity.segments)) {
       const index = parseInt(indexStr, 10)
       if (index >= 0 && index < totalSegs && seg) {
-        result[index] = seg
+        result[index].requestCount = seg.requestCount
+        result[index].successCount = seg.successCount
+        result[index].failureCount = seg.failureCount
+        result[index].inputTokens = seg.inputTokens
+        result[index].outputTokens = seg.outputTokens
       }
     }
   }
