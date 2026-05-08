@@ -19,7 +19,7 @@ import { mergeChannelsWithLocalData } from '@/utils/channelMerge'
 export const useChannelStore = defineStore('channel', () => {
   const preferencesStore = usePreferencesStore()
   const t = (key: Parameters<typeof translate>[1], params?: Parameters<typeof translate>[2]) => {
-    return translate(normalizeLocale(preferencesStore.uiLanguage), key, params)
+    return translate(normalizeLocale(preferencesStore.uiLanguage as unknown as string), key, params)
   }
   // ===== 状态 =====
 

@@ -215,6 +215,7 @@ export interface CapabilityJobProgress {
 
 export interface CapabilityModelJobResult {
   model: string
+  actualModel?: string // 复合协议：经过 ModelMapping 后实际发送给上游的模型名
   status: CapabilityModelJobStatus
   lifecycle: CapabilityLifecycle
   outcome: CapabilityOutcome
@@ -225,17 +226,6 @@ export interface CapabilityModelJobResult {
   error?: string
   startedAt?: string
   testedAt?: string
-}
-
-export interface RedirectModelResult {
-  probeModel: string
-  actualModel: string
-  success: boolean
-  latency: number
-  streamingSupported?: boolean
-  error?: string
-  startedAt?: string
-  testedAt: string
 }
 
 export interface CapabilityProtocolJobResult {
@@ -273,7 +263,6 @@ export interface CapabilityTestJob {
   isResumed?: boolean
   hasReusedResults?: boolean
   tests: CapabilityProtocolJobResult[]
-  redirectTests?: RedirectModelResult[]
   compatibleProtocols: string[]
   totalDuration: number
   startedAt?: string
@@ -293,7 +282,6 @@ export interface CapabilitySnapshot {
   protocolJobIds?: Record<string, string>
   protocolJobRefs?: Record<string, CapabilityProtocolJobRef>
   tests: CapabilityProtocolJobResult[]
-  redirectTests?: RedirectModelResult[]
   compatibleProtocols: string[]
   totalDuration: number
   progress: CapabilityJobProgress
@@ -628,13 +616,13 @@ export interface ChannelModelsRequest {
 export class ApiService {
   private t(key: Parameters<typeof translate>[1], params?: Parameters<typeof translate>[2]): string {
     const preferencesStore = usePreferencesStore()
-    return translate(normalizeLocale(preferencesStore.uiLanguage), key, params)
+    return translate(normalizeLocale(preferencesStore.uiLanguage as unknown as string), key, params)
   }
 
   // 获取当前 API Key（从 AuthStore）
   private getApiKey(): string | null {
     const authStore = useAuthStore()
-    return authStore.apiKey
+    return authStore.apiKey as unknown as string | null
   }
 
   private async parseResponseBody(response: Response): Promise<unknown> {

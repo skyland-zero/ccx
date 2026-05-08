@@ -29,7 +29,7 @@ export type { SupportedLocale } from './messages'
 
 export function useI18n() {
   const preferencesStore = usePreferencesStore()
-  const locale = computed(() => normalizeLocale(preferencesStore.uiLanguage))
+  const locale = computed(() => normalizeLocale(preferencesStore.uiLanguage as unknown as string))
 
   const translateKey = (key: Parameters<ReturnType<typeof createTranslator>>[0], params?: Parameters<ReturnType<typeof createTranslator>>[1]) => {
     return translate(locale.value, key, params)

@@ -11,6 +11,7 @@ import { ref, computed } from 'vue'
  * - 提供响应式的认证状态
  * - 自动持久化到 localStorage
  */
+// @ts-expect-error Pinia 3.x + TS 6.x persist plugin 深层类型推断溢出（运行时正常）
 export const useAuthStore = defineStore('auth', () => {
   // ===== 状态 =====
 
@@ -144,6 +145,6 @@ export const useAuthStore = defineStore('auth', () => {
     key: 'ccx-auth',
     storage: localStorage,
     // 仅持久化必要字段，排除瞬态 UI 状态和敏感输入
-    pick: ['apiKey', 'authAttempts', 'authLockoutTime'],
+    pick: ['apiKey', 'authAttempts', 'authLockoutTime'] as string[],
   },
 })
