@@ -50,15 +50,22 @@ func runRedirectVerification(ctx context.Context, channel *config.UpstreamConfig
 	}
 
 	testedActualModels := make(map[string]bool)
+	userRequested := len(userModels) > 0
 	for _, m := range probeModels {
 		actual := config.RedirectModel(m, channel)
-		// 只有当模型被重定向且目标模型未测试过时才添加
 		if actual != m && !testedActualModels[actual] {
+			// 被重定向的模型
 			redirectedModels = append(redirectedModels, RedirectModelResult{
 				ProbeModel:  m,
 				ActualModel: actual,
 			})
 			testedActualModels[actual] = true
+		} else if userRequested && actual == m {
+			// 用户明确请求的非重定向模型：按原模型测试（actualModel = probeModel）
+			redirectedModels = append(redirectedModels, RedirectModelResult{
+				ProbeModel:  m,
+				ActualModel: m,
+			})
 		}
 	}
 
@@ -83,6 +90,14 @@ func runRedirectVerification(ctx context.Context, channel *config.UpstreamConfig
 					Status:      CapabilityModelStatusQueued,
 					Lifecycle:   CapabilityLifecyclePending,
 					Outcome:     CapabilityOutcomeUnknown,
+				})
+			} else if userRequested {
+				// 用户明确请求的非重定向模型
+				modelResults = append(modelResults, CapabilityModelJobResult{
+					Model:     probeModel,
+					Status:    CapabilityModelStatusQueued,
+					Lifecycle: CapabilityLifecyclePending,
+					Outcome:   CapabilityOutcomeUnknown,
 				})
 			}
 		}
