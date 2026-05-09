@@ -87,6 +87,7 @@ type CapabilityTestJobProgress struct {
 
 type CapabilityModelJobResult struct {
 	Model              string                `json:"model"`
+	ActualModel        string                `json:"actualModel,omitempty"` // 经 ModelMapping 重定向后实际发送给上游的模型名
 	Status             CapabilityModelStatus `json:"status"`
 	Lifecycle          CapabilityLifecycle   `json:"lifecycle"`
 	Outcome            CapabilityOutcome     `json:"outcome"`
@@ -606,6 +607,7 @@ func capabilityProtocolResultsFromResponse(resp CapabilityTestResponse) []Capabi
 			}
 			modelResults = append(modelResults, CapabilityModelJobResult{
 				Model:              modelResult.Model,
+				ActualModel:        modelResult.ActualModel,
 				Status:             modelStatus,
 				Lifecycle:          capabilityModelLifecycleFromLegacy(modelStatus),
 				Outcome:            capabilityModelOutcomeFromLegacy(modelStatus, modelResult.Success),

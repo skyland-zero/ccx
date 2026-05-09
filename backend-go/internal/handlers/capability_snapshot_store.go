@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -341,6 +343,21 @@ func (s *capabilitySnapshotStore) gc() {
 	}
 }
 
+func serviceTypeToChannelKind(serviceType string) string {
+	switch serviceType {
+	case "claude":
+		return "messages"
+	case "openai":
+		return "chat"
+	case "responses":
+		return "responses"
+	case "gemini":
+		return "gemini"
+	default:
+		return "chat"
+	}
+}
+
 func resolveCapabilityIdentityKey(channel *config.UpstreamConfig) string {
 	if channel == nil {
 		return ""
@@ -389,12 +406,112 @@ func GetCapabilitySnapshot(cfgManager *config.ConfigManager, channelKind string)
 			return
 		}
 
+		// 获取 sourceTab 参数（从查询参数）
+		sourceTab := c.Query("sourceTab")
+
 		identityKey := resolveCapabilityIdentityKey(channel)
 		snapshot, ok := capabilitySnapshots.get(identityKey)
 		if !ok {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Capability snapshot not found"})
-			return
+			// 如果没有快照，创建一个空快照，但包含虚拟协议占位符
+			snapshot = &CapabilitySnapshot{
+				IdentityKey:         identityKey,
+				SourceType:          channel.ServiceType,
+				ProtocolJobIDs:      make(map[string]string),
+				ProtocolJobRefs:     make(map[string]CapabilityProtocolJobRef),
+				Tests:               []CapabilityProtocolJobResult{},
+				CompatibleProtocols: []string{},
+				UpdatedAt:           time.Now().Format(time.RFC3339Nano),
+			}
 		}
+
+		// 动态添加虚拟协议占位符（只基于用户选择的 sourceTab）
+		// 使用渠道的实际 serviceType 作为目标协议
+		channelServiceType := serviceTypeToChannelKind(channel.ServiceType)
+		log.Printf("[Snapshot-Debug] sourceTab=%s, channelKind=%s, channelServiceType=%s", sourceTab, channelKind, channelServiceType)
+
+		if sourceTab != "" {
+			// 获取 sourceTab 协议的探测模型
+			probeModels, err := getCapabilityProbeModels(sourceTab)
+			if err == nil {
+				// 检查是否至少有一个模型被重定向
+				hasRedirect := false
+				for _, m := range probeModels {
+					actual := config.RedirectModel(m, channel)
+					if actual != m {
+						hasRedirect = true
+						break
+					}
+				}
+
+				if hasRedirect {
+					virtualProtocol := sourceTab + "->" + channelServiceType
+					// 检查快照中是否已经有这个虚拟协议
+					foundIndex := -1
+					for i, test := range snapshot.Tests {
+						if test.Protocol == virtualProtocol {
+							foundIndex = i
+							break
+						}
+					}
+
+					// 构建模型结果列表（只包含被重定向的模型）
+					buildModelResults := func() []CapabilityModelJobResult {
+						modelResults := make([]CapabilityModelJobResult, 0)
+						for _, m := range probeModels {
+							actual := config.RedirectModel(m, channel)
+							if actual == m {
+								continue // 不重定向的模型不显示
+							}
+							modelResults = append(modelResults, CapabilityModelJobResult{
+								Model:       m,
+								ActualModel: actual,
+								Status:      "idle",
+							})
+						}
+						return modelResults
+					}
+
+					if foundIndex < 0 {
+						// 没有找到，添加一个占位符
+						log.Printf("[Snapshot-Debug] 添加虚拟协议占位符: %s", virtualProtocol)
+						modelResults := buildModelResults()
+						if len(modelResults) > 0 {
+							snapshot.Tests = append([]CapabilityProtocolJobResult{
+								{
+									Protocol:        virtualProtocol,
+									Status:          "idle",
+									Lifecycle:       "pending",
+									Outcome:         "unknown",
+									ModelResults:    modelResults,
+									AttemptedModels: len(modelResults),
+									SuccessCount:    0,
+								},
+							}, snapshot.Tests...)
+						}
+					} else if len(snapshot.Tests[foundIndex].ModelResults) == 0 {
+						// 已存在但没有模型列表，补充模型列表
+						log.Printf("[Snapshot-Debug] 补充虚拟协议模型列表: %s", virtualProtocol)
+						modelResults := buildModelResults()
+						if len(modelResults) > 0 {
+							snapshot.Tests[foundIndex].ModelResults = modelResults
+							snapshot.Tests[foundIndex].AttemptedModels = len(modelResults)
+						}
+					}
+				}
+			}
+
+			// 过滤掉其他非当前 sourceTab 的虚拟协议
+			expectedVirtualProtocol := sourceTab + "->" + channelServiceType
+			filteredTests := make([]CapabilityProtocolJobResult, 0, len(snapshot.Tests))
+			for _, test := range snapshot.Tests {
+				// 保留非虚拟协议（不含 "->" 的）或匹配当前 sourceTab 的虚拟协议
+				if !strings.Contains(test.Protocol, "->") || test.Protocol == expectedVirtualProtocol {
+					filteredTests = append(filteredTests, test)
+				}
+			}
+			snapshot.Tests = filteredTests
+		}
+
 		c.JSON(http.StatusOK, snapshot)
 	}
 }
