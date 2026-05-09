@@ -107,6 +107,24 @@ func buildResponsesProbeBody(probeModel string) []byte {
 	return body
 }
 
+// buildGeminiProbeBody 构造 gemini 协议最小探测请求体。
+func buildGeminiProbeBody(probeModel string) []byte {
+	body, _ := json.Marshal(map[string]interface{}{
+		"contents": []map[string]interface{}{
+			{
+				"role": "user",
+				"parts": []map[string]string{
+					{"text": "What are you best at: code generation, creative writing, or math problem solving?"},
+				},
+			},
+		},
+		"generationConfig": map[string]interface{}{
+			"maxOutputTokens": 100,
+		},
+	})
+	return body
+}
+
 // buildCompositeRequestViaProvider 复用现有 provider 转换链路，将 fromProtocol 入口请求体
 // 经过 provider.ConvertToProviderRequest 转换为 toProtocol 上游请求。
 //

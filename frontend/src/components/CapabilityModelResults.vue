@@ -24,6 +24,9 @@
               @click="shouldRetryModel(modelResult) ? emit('retryModel', test.protocol, modelResult.model) : undefined"
             >
               <span class="model-name">{{ modelResult.model }}</span>
+              <v-icon v-if="isRedirectedModel(modelResult)" size="14" class="redirect-icon">
+                mdi-arrow-right-bold
+              </v-icon>
               <v-icon size="16">
                 {{ getModelStatusIcon(modelResult) }}
               </v-icon>
@@ -195,6 +198,11 @@ const getModelTooltipClasses = (modelResult: CapabilityModelJobResult): string =
 const getModelRetryHintVisible = (modelResult: CapabilityModelJobResult): boolean => canRetryModel(modelResult)
 const shouldRetryModel = (modelResult: CapabilityModelJobResult): boolean => canRetryModel(modelResult)
 const getModelTooltipLatencyText = (modelResult: CapabilityModelJobResult): string => formatLatency(modelResult.latency)
+
+const isRedirectedModel = (modelResult: CapabilityModelJobResult): boolean => {
+  return Boolean(modelResult.actualModel && modelResult.actualModel !== modelResult.model)
+}
+
 </script>
 
 <style scoped>
@@ -338,5 +346,11 @@ const getModelTooltipLatencyText = (modelResult: CapabilityModelJobResult): stri
 .tooltip-retry {
   font-size: 0.75rem;
   font-weight: 700;
+}
+
+.redirect-icon {
+  opacity: 0.7;
+  margin-left: 2px;
+  margin-right: -2px;
 }
 </style>

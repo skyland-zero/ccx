@@ -149,6 +149,16 @@ func unsupportedCompositePathErr(from, to CapabilityBaseProtocol) error {
 }
 
 func init() {
+	// ============== messages -> messages（原生协议重定向测试）==============
+	registerCompositePath(CapabilityProtocolMessages, CapabilityProtocolMessages,
+		func(channel *config.UpstreamConfig, apiKey, probeModel string) (string, []byte, string, error) {
+			// 构造 messages 入口最小请求体
+			messagesBody := buildMessagesProbeBody(probeModel)
+			// 使用 ClaudeProvider 将 messages 请求转换为 messages 上游请求（会应用 ModelMapping）
+			return buildCompositeRequestViaProvider("messages", channel, apiKey, messagesBody, "/v1/messages")
+		},
+	)
+
 	// ============== messages -> responses（首要路径）==============
 	registerCompositePath(CapabilityProtocolMessages, CapabilityProtocolResponses,
 		func(channel *config.UpstreamConfig, apiKey, probeModel string) (string, []byte, string, error) {
@@ -196,6 +206,30 @@ func init() {
 		func(channel *config.UpstreamConfig, apiKey, probeModel string) (string, []byte, string, error) {
 			responsesBody := buildResponsesProbeBody(probeModel)
 			return buildCompositeRequestViaProvider("chat", channel, apiKey, responsesBody, "/v1/responses")
+		},
+	)
+
+	// ============== chat -> chat（原生协议重定向测试）==============
+	registerCompositePath(CapabilityProtocolChat, CapabilityProtocolChat,
+		func(channel *config.UpstreamConfig, apiKey, probeModel string) (string, []byte, string, error) {
+			chatBody := buildChatProbeBody(probeModel)
+			return buildCompositeRequestViaProvider("chat", channel, apiKey, chatBody, "/v1/chat/completions")
+		},
+	)
+
+	// ============== responses -> responses（原生协议重定向测试）==============
+	registerCompositePath(CapabilityProtocolResponses, CapabilityProtocolResponses,
+		func(channel *config.UpstreamConfig, apiKey, probeModel string) (string, []byte, string, error) {
+			responsesBody := buildResponsesProbeBody(probeModel)
+			return buildCompositeRequestViaProvider("responses", channel, apiKey, responsesBody, "/v1/responses")
+		},
+	)
+
+	// ============== gemini -> gemini（原生协议重定向测试）==============
+	registerCompositePath(CapabilityProtocolGemini, CapabilityProtocolGemini,
+		func(channel *config.UpstreamConfig, apiKey, probeModel string) (string, []byte, string, error) {
+			geminiBody := buildGeminiProbeBody(probeModel)
+			return buildCompositeRequestViaProvider("gemini", channel, apiKey, geminiBody, "/v1beta/models/probe:streamGenerateContent?alt=sse")
 		},
 	)
 }
