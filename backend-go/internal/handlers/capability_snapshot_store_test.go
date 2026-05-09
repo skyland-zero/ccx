@@ -172,6 +172,39 @@ func TestCapabilitySnapshotStore_MergesMultipleJobsSameIdentity(t *testing.T) {
 	}
 }
 
+func TestFilterSameSourceVirtualProtocols(t *testing.T) {
+	tests := []CapabilityProtocolJobResult{
+		{Protocol: "responses->responses"},
+		{Protocol: "responses->chat"},
+		{Protocol: "responses"},
+		{Protocol: "messages->messages"},
+		{Protocol: "messages->chat"},
+	}
+
+	filtered := filterSameSourceVirtualProtocols(tests)
+
+	if findProtocolResult(filtered, "responses->responses") != nil {
+		t.Fatal("expected responses->responses to be filtered")
+	}
+	if findProtocolResult(filtered, "messages->messages") != nil {
+		t.Fatal("expected messages->messages to be filtered")
+	}
+	for _, protocol := range []string{"responses->chat", "responses", "messages->chat"} {
+		if findProtocolResult(filtered, protocol) == nil {
+			t.Fatalf("expected %s to be preserved", protocol)
+		}
+	}
+}
+
+func findProtocolResult(tests []CapabilityProtocolJobResult, protocol string) *CapabilityProtocolJobResult {
+	for i := range tests {
+		if tests[i].Protocol == protocol {
+			return &tests[i]
+		}
+	}
+	return nil
+}
+
 func findSnapshotTest(snapshot *CapabilitySnapshot, protocol string) *CapabilityProtocolJobResult {
 	for i := range snapshot.Tests {
 		if snapshot.Tests[i].Protocol == protocol {

@@ -24,6 +24,19 @@ type testItem struct {
 
 // buildRoundRobinQueue 构建交错队列
 // 输出: messages[0], chat[0], gemini[0], responses[0], messages[1], chat[1], ...
+func shouldRunRedirectVerification(protocols []string, sourceTab, channelServiceType string) bool {
+	if sourceTab == "" || sourceTab == channelServiceType {
+		return false
+	}
+	virtualProtocol := sourceTab + "->" + channelServiceType
+	for _, protocol := range protocols {
+		if protocol == sourceTab || protocol == virtualProtocol {
+			return true
+		}
+	}
+	return false
+}
+
 func buildRoundRobinQueue(protocolModels map[string][]string, protocols []string) []testItem {
 	maxModels := 0
 	for _, models := range protocolModels {
@@ -96,15 +109,20 @@ func runCapabilityTestJob(jobID, channelKind string, channelID int, channel conf
 		apiKey = channel.DisabledAPIKeys[0].Key
 	}
 
-	// 并发运行重定向验证（不影响下方 4 协议兼容性测试）
+	channelServiceType := serviceTypeToChannelKind(channel.ServiceType)
+
+	// 并发运行重定向验证（仅在本次目标协议需要 sourceTab 虚拟协议时启动）
 	// 通过 buffered channel 传递结果，避免共享变量在 cancel+超时场景下产生数据竞争：
 	// - goroutine 单向写入 channel（容量 1，即便主协程放弃等待也不会阻塞）
 	// - 主协程仅通过 channel 接收赋值，与 goroutine 无共享内存写入
 	var redirectResults []RedirectModelResult
-	redirectCh := make(chan []RedirectModelResult, 1)
-	go func() {
-		redirectCh <- runRedirectVerification(ctx, &channel, channelKind, sourceTab, timeout, effectiveRPM, jobID, cfgManager, channelID, apiKey, dispatcherKey, channelLogStore, userModels)
-	}()
+	var redirectCh chan []RedirectModelResult
+	if shouldRunRedirectVerification(protocols, sourceTab, channelServiceType) {
+		redirectCh = make(chan []RedirectModelResult, 1)
+		go func() {
+			redirectCh <- runRedirectVerification(ctx, &channel, channelKind, sourceTab, timeout, effectiveRPM, jobID, cfgManager, channelID, apiKey, dispatcherKey, channelLogStore, userModels)
+		}()
+	}
 
 	// 过滤掉虚拟协议（含 "->"），原生协议测试只测基础协议
 	nativeProtocols := make([]string, 0, len(protocols))
@@ -121,13 +139,15 @@ func runCapabilityTestJob(jobID, channelKind string, channelID int, channel conf
 
 	// 等待重定向协程结果：优先直接等待；若任务被取消，给 2s 宽限后立即返回，
 	// 避免阻塞在正在排队的限流槽位或未完成的 HTTP 请求上。超时丢弃则 redirectResults 保持 nil。
-	select {
-	case redirectResults = <-redirectCh:
-	case <-ctx.Done():
+	if redirectCh != nil {
 		select {
 		case redirectResults = <-redirectCh:
-		case <-time.After(2 * time.Second):
-			log.Printf("[RedirectTest-Cancel] 任务取消后 2s 内重定向验证协程未结束，放弃等待以加速退出 (jobID=%s)", jobID)
+		case <-ctx.Done():
+			select {
+			case redirectResults = <-redirectCh:
+			case <-time.After(2 * time.Second):
+				log.Printf("[RedirectTest-Cancel] 任务取消后 2s 内重定向验证协程未结束，放弃等待以加速退出 (jobID=%s)", jobID)
+			}
 		}
 	}
 	totalDuration := time.Since(totalStart).Milliseconds()
@@ -141,8 +161,7 @@ func runCapabilityTestJob(jobID, channelKind string, channelID int, channel conf
 
 	// 将 redirectResults 转换为虚拟协议测试结果
 	var virtualResults []ProtocolTestResult
-	if len(redirectResults) > 0 && sourceTab != "" {
-		channelServiceType := serviceTypeToChannelKind(channel.ServiceType)
+	if len(redirectResults) > 0 && sourceTab != "" && sourceTab != channelServiceType {
 		virtualProtocol := sourceTab + "->" + channelServiceType
 
 		// 构建 actualModel 到测试结果的映射

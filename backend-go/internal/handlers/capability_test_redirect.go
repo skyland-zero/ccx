@@ -27,6 +27,12 @@ func runRedirectVerification(ctx context.Context, channel *config.UpstreamConfig
 		return nil
 	}
 
+	// 同源虚拟协议（sourceTab == channelServiceType）等同于原生协议测试，不需要额外构造
+	channelServiceType := serviceTypeToChannelKind(channel.ServiceType)
+	if sourceTab == channelServiceType {
+		return nil
+	}
+
 	// 只测试用户选择的 sourceTab 对应协议的模型重定向（按探测模型顺序，去重 actualModel）
 	probeModels, err := getCapabilityProbeModels(sourceTab)
 	if err != nil {
@@ -69,7 +75,6 @@ func runRedirectVerification(ctx context.Context, channel *config.UpstreamConfig
 	log.Printf("[RedirectTest-Start] 渠道 %s (类型:%s) 命中重定向模型: %d 个", channel.Name, channelKind, len(redirectedModels))
 
 	// 初始化虚拟协议占位符，用于实时更新模型状态
-	channelServiceType := serviceTypeToChannelKind(channel.ServiceType)
 	virtualProtocol := sourceTab + "->" + channelServiceType
 	capabilityJobs.update(jobID, func(job *CapabilityTestJob) {
 		// 构建虚拟协议的 ModelResults（包含所有探测模型，重定向模型标记 actualModel）

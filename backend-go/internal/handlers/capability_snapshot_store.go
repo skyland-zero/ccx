@@ -392,6 +392,20 @@ func capabilityJobMatchesChannel(job *CapabilityTestJob, channel *config.Upstrea
 	return identityKey != "" && job.IdentityKey == identityKey
 }
 
+func filterSameSourceVirtualProtocols(tests []CapabilityProtocolJobResult) []CapabilityProtocolJobResult {
+	if len(tests) == 0 {
+		return tests
+	}
+	filtered := make([]CapabilityProtocolJobResult, 0, len(tests))
+	for _, test := range tests {
+		if parts := strings.SplitN(test.Protocol, "->", 2); len(parts) == 2 && parts[0] != "" && parts[0] == parts[1] {
+			continue
+		}
+		filtered = append(filtered, test)
+	}
+	return filtered
+}
+
 func GetCapabilitySnapshot(cfgManager *config.ConfigManager, channelKind string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, err := parseCapabilityChannelID(c)
@@ -443,9 +457,9 @@ func GetCapabilitySnapshot(cfgManager *config.ConfigManager, channelKind string)
 					}
 				}
 
-				// 只有当有模型被重定向时才生成虚拟协议占位符
-				// 无论是否需要协议转换，只要有模型重定向就需要虚模型测试
-				if hasRedirect {
+				// 只有当有模型被重定向，且 sourceTab 与渠道协议不同时才生成虚拟协议占位符
+				// 无论是否需要协议转换，只要有模型重定向就需要虚模型测试；同源虚拟协议由原生测试覆盖
+				if hasRedirect && sourceTab != channelServiceType {
 					virtualProtocol := sourceTab + "->" + channelServiceType
 					// 检查快照中是否已经有这个虚拟协议
 					foundIndex := -1
@@ -524,6 +538,9 @@ func GetCapabilitySnapshot(cfgManager *config.ConfigManager, channelKind string)
 			}
 			snapshot.Tests = filteredTests
 		}
+
+		// 无条件剔除形如 "x->x" 的同源虚拟协议（等同于原生协议测试，历史残留或异常写入都在此处统一清理）
+		snapshot.Tests = filterSameSourceVirtualProtocols(snapshot.Tests)
 
 		c.JSON(http.StatusOK, snapshot)
 	}
