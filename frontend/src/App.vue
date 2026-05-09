@@ -1199,7 +1199,7 @@ const testChannelCapability = async (channelId: number) => {
   }
 }
 
-const handleTestCapabilityProtocol = async (protocol: string) => {
+const handleTestCapabilityProtocol = async (protocol: string, models?: string[]) => {
   if (!isCapabilityChannelKind(channelStore.activeTab) || !isCapabilityProtocol(protocol)) {
     return
   }
@@ -1228,7 +1228,8 @@ const handleTestCapabilityProtocol = async (protocol: string) => {
         targetProtocols: [protocol],
         previousJobId,
         rpm: capabilityTestRpm.value,
-        sourceTab: capabilityTestSourceTab.value
+        sourceTab: capabilityTestSourceTab.value,
+        models
       }
     )
     capabilityTestJobId.value = startResp.jobId
@@ -1247,6 +1248,8 @@ const handleTestCapabilityProtocol = async (protocol: string) => {
     capabilityTestDialogRef.value?.setError(t('toast.capabilityFailed', { message }))
   }
 }
+
+const handleTestCapabilityProtocolWithModels = handleTestCapabilityProtocol
 
 const handleCancelCapabilityTest = async () => {
   if (!capabilityTestJob.value) return
@@ -1285,8 +1288,8 @@ const handleRetryCapabilityModel = async (protocol: string, model: string) => {
   if (protocolTest.lifecycle === 'pending' || protocolTest.lifecycle === 'active') return
   const retryJobId = job.protocolJobRefs?.[protocol]?.jobId || job.protocolJobIds?.[protocol]
   if (!retryJobId) {
-    // 没有 jobId（虚拟协议未测试过），触发整个协议的测试
-    handleTestCapabilityProtocol(protocol)
+    // 没有 jobId（虚拟协议未测试过），启动单模型测试
+    handleTestCapabilityProtocolWithModels(protocol, [model])
     return
   }
   try {

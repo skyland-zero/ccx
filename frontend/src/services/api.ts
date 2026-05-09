@@ -194,6 +194,7 @@ export interface StartCapabilityTestOptions {
   previousJobId?: string
   rpm?: number
   sourceTab?: string
+  models?: string[]
 }
 
 export type CapabilityLifecycle = 'pending' | 'active' | 'done' | 'cancelled'
@@ -763,7 +764,7 @@ export class ApiService {
     id: number,
     options: StartCapabilityTestOptions = {}
   ): Promise<CapabilityTestJobStartResponse> {
-    const body: { targetProtocols: string[]; timeout: number; previousJobId?: string; rpm?: number; sourceTab?: string } = {
+    const body: { targetProtocols: string[]; timeout: number; previousJobId?: string; rpm?: number; sourceTab?: string; models?: string[] } = {
       targetProtocols: options.targetProtocols?.length ? options.targetProtocols : ['messages', 'responses', 'chat', 'gemini'],
       timeout: 10000,
       rpm: options.rpm
@@ -773,6 +774,9 @@ export class ApiService {
     }
     if (options.sourceTab) {
       body.sourceTab = options.sourceTab
+    }
+    if (options.models?.length) {
+      body.models = options.models
     }
     return this.request(`/${type}/channels/${id}/capability-test`, {
       method: 'POST',
