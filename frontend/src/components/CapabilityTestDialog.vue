@@ -215,7 +215,7 @@
                         {{ t('capability.startTest') }}
                       </v-btn>
                       <v-btn
-                        v-if="test.success && test.protocol !== currentTab"
+                        v-if="test.success && !isCurrentTabProtocol(test.protocol)"
                         size="x-small"
                         color="primary"
                         variant="tonal"
@@ -225,10 +225,10 @@
                       >
                         {{ t('capability.copyToTab') }}
                       </v-btn>
-                      <v-chip v-else-if="test.protocol === currentTab" size="x-small" color="grey" variant="tonal">
+                      <v-chip v-else-if="isCurrentTabProtocol(test.protocol)" size="x-small" color="grey" variant="tonal">
                         {{ t('capability.currentTab') }}
                       </v-chip>
-                      <div v-else-if="!test.success && test.protocol !== currentTab" class="d-flex flex-wrap ga-1">
+                      <div v-else-if="!test.success && !isCurrentTabProtocol(test.protocol)" class="d-flex flex-wrap ga-1">
                         <v-btn
                           v-for="successProto in getSuccessfulProtocols()"
                           :key="successProto"
@@ -261,6 +261,55 @@
               </template>
             </tbody>
           </v-table>
+
+          <!-- 模型重定向测试结果（已集成到虚拟协议中，不再单独显示） -->
+          <!-- <div v-if="hasRedirectTests" class="redirect-tests-section mt-4">
+            <div class="redirect-tests-header mb-3">
+              <v-icon color="info" size="small">mdi-swap-horizontal</v-icon>
+              <span class="text-subtitle-2 font-weight-bold ml-2">{{ t('capability.redirectTests') }}</span>
+              <span class="text-caption text-medium-emphasis ml-2">
+                ({{ t('capability.redirectTestsDesc') }})
+              </span>
+            </div>
+            <div class="redirect-tests-flow">
+              <v-tooltip
+                v-for="(result, index) in job?.redirectTests"
+                :key="`redirect-${index}`"
+                location="top"
+                :content-class="result.success ? 'success-tooltip' : 'error-tooltip'"
+              >
+                <template #activator="{ props: tooltipProps }">
+                  <div
+                    v-bind="tooltipProps"
+                    :class="['redirect-test-badge', result.success ? 'success-badge' : 'error-badge']"
+                  >
+                    <span class="redirect-probe-model">{{ result.probeModel }}</span>
+                    <v-icon size="14">mdi-arrow-right</v-icon>
+                    <span class="redirect-actual-model">{{ result.actualModel }}</span>
+                    <v-icon size="16">
+                      {{ result.success ? 'mdi-check-circle' : 'mdi-close-circle' }}
+                    </v-icon>
+                  </div>
+                </template>
+                <div class="tooltip-content">
+                  <div class="tooltip-title">{{ result.probeModel }} → {{ result.actualModel }}</div>
+                  <div class="tooltip-row">
+                    <span class="tooltip-label">{{ t('capability.tooltipLatency') }}</span>
+                    <span class="tooltip-value">{{ result.latency >= 0 ? `${result.latency}ms` : '-' }}</span>
+                  </div>
+                  <div v-if="result.success && result.streamingSupported !== undefined" class="tooltip-row">
+                    <span class="tooltip-label">{{ t('capability.tooltipStreaming') }}</span>
+                    <span class="tooltip-value">{{ result.streamingSupported ? t('capability.supported') : t('capability.unsupported') }}</span>
+                  </div>
+                  <div class="tooltip-row">
+                    <span class="tooltip-label">{{ t('capability.modelStatus') }}</span>
+                    <span class="tooltip-value">{{ result.success ? t('capability.modelSuccess') : t('capability.modelFailed') }}</span>
+                  </div>
+                  <div v-if="!result.success && result.error" class="tooltip-error">{{ result.error }}</div>
+                </div>
+              </v-tooltip>
+            </div>
+          </div> -->
 
           <div v-if="state === 'completed'" class="text-caption text-medium-emphasis mt-3 text-right">
             {{ t('capability.totalDuration', { duration: job?.totalDuration }) }}
@@ -344,6 +393,7 @@ const displayOutcome = computed(() => props.capabilityJob?.outcome ?? 'unknown')
 const runMode = computed(() => props.capabilityJob?.runMode ?? 'fresh')
 const isJobActiveLike = computed(() => state.value === 'pending' || state.value === 'running')
 const hasNoCompatibleProtocolsYet = computed(() => (job.value?.compatibleProtocols ?? []).length === 0)
+const hasRedirectTests = computed(() => (job.value?.redirectTests ?? []).length > 0)
 
 // 当状态离开 running 时复位 cancelling（覆盖取消失败、重测恢复等场景）
 watch(state, (newState) => {
@@ -405,6 +455,16 @@ const getProtocolColor = (protocol: string): string => {
     responses: 'teal'
   }
   return map[protocol] || 'grey'
+}
+
+// 检查协议是否与当前 Tab 相关（包括虚拟协议）
+const isCurrentTabProtocol = (protocol: string): boolean => {
+  if (protocol === props.currentTab) return true
+  if (isCompositeProtocol(protocol)) {
+    const from = protocol.split('->')[0]
+    return from === props.currentTab
+  }
+  return false
 }
 
 const getProtocolIcon = (protocol: string): string => {
@@ -757,6 +817,66 @@ defineExpose({ setError })
 .copy-tab-btn :deep(.v-btn__content),
 .convert-btn :deep(.v-btn__content) {
   line-height: 1.4;
+}
+
+.redirect-tests-section {
+  padding: 16px;
+  border-radius: 12px;
+  background: rgba(var(--v-theme-surface-variant), 0.08);
+  border: 1px solid rgba(var(--v-theme-outline), 0.12);
+}
+
+.redirect-tests-header {
+  display: flex;
+  align-items: center;
+}
+
+.redirect-tests-flow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.redirect-test-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+  border: 1px solid transparent;
+  cursor: default;
+}
+
+.redirect-test-badge.success-badge {
+  background: rgba(34, 197, 94, 0.12);
+  color: rgba(21, 128, 61, 0.95);
+  border-color: rgba(34, 197, 94, 0.24);
+}
+
+.redirect-test-badge.error-badge {
+  background: rgba(239, 68, 68, 0.12);
+  color: rgba(185, 28, 28, 0.95);
+  border-color: rgba(239, 68, 68, 0.24);
+}
+
+:global(.v-theme--dark) .redirect-test-badge.success-badge {
+  color: rgba(134, 239, 172, 0.96);
+}
+
+:global(.v-theme--dark) .redirect-test-badge.error-badge {
+  color: rgba(252, 165, 165, 0.96);
+}
+
+.redirect-probe-model {
+  font-weight: 700;
+}
+
+.redirect-actual-model {
+  font-weight: 500;
+  opacity: 0.85;
 }
 
 @media (max-width: 720px) {

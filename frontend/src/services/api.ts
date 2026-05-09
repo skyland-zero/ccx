@@ -193,6 +193,7 @@ export interface StartCapabilityTestOptions {
   targetProtocols?: string[]
   previousJobId?: string
   rpm?: number
+  sourceTab?: string
 }
 
 export type CapabilityLifecycle = 'pending' | 'active' | 'done' | 'cancelled'
@@ -263,6 +264,7 @@ export interface CapabilityTestJob {
   isResumed?: boolean
   hasReusedResults?: boolean
   tests: CapabilityProtocolJobResult[]
+  redirectTests?: RedirectModelResult[]
   compatibleProtocols: string[]
   totalDuration: number
   startedAt?: string
@@ -274,6 +276,18 @@ export interface CapabilityTestJob {
   targetProtocols?: string[]
   timeoutMilliseconds?: number
   snapshotUpdatedAt?: string
+}
+
+// RedirectModelResult 单个探测模型经 ModelMapping 后的测试结果
+export interface RedirectModelResult {
+  probeModel: string      // 原生探测模型名
+  actualModel: string     // ModelMapping 后实际发给上游的模型名
+  success: boolean
+  latency: number
+  streamingSupported?: boolean
+  error?: string
+  startedAt?: string
+  testedAt: string
 }
 
 export interface CapabilitySnapshot {
@@ -292,6 +306,7 @@ export interface CapabilitySnapshot {
 
 export interface ModelTestResult {
   model: string
+  actualModel?: string
   success: boolean
   latency: number
   streamingSupported: boolean
@@ -748,7 +763,7 @@ export class ApiService {
     id: number,
     options: StartCapabilityTestOptions = {}
   ): Promise<CapabilityTestJobStartResponse> {
-    const body: { targetProtocols: string[]; timeout: number; previousJobId?: string; rpm?: number } = {
+    const body: { targetProtocols: string[]; timeout: number; previousJobId?: string; rpm?: number; sourceTab?: string } = {
       targetProtocols: options.targetProtocols?.length ? options.targetProtocols : ['messages', 'responses', 'chat', 'gemini'],
       timeout: 10000,
       rpm: options.rpm
@@ -756,14 +771,20 @@ export class ApiService {
     if (options.previousJobId) {
       body.previousJobId = options.previousJobId
     }
+    if (options.sourceTab) {
+      body.sourceTab = options.sourceTab
+    }
     return this.request(`/${type}/channels/${id}/capability-test`, {
       method: 'POST',
       body: JSON.stringify(body)
     })
   }
 
-  async getChannelCapabilitySnapshot(type: 'messages' | 'chat' | 'gemini' | 'responses', id: number): Promise<CapabilitySnapshot> {
-    return this.request(`/${type}/channels/${id}/capability-snapshot`)
+  async getChannelCapabilitySnapshot(type: 'messages' | 'chat' | 'gemini' | 'responses', id: number, sourceTab?: string): Promise<CapabilitySnapshot> {
+    const url = sourceTab
+      ? `/${type}/channels/${id}/capability-snapshot?sourceTab=${sourceTab}`
+      : `/${type}/channels/${id}/capability-snapshot`
+    return this.request(url)
   }
 
   async getChannelCapabilityTestStatus(type: 'messages' | 'chat' | 'gemini' | 'responses', id: number, jobId: string): Promise<CapabilityTestJob> {

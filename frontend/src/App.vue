@@ -707,6 +707,8 @@ const pingChannel = async (channelId: number) => {
 const showCapabilityTestDialog = ref(false)
 const capabilityTestChannelName = ref('')
 const capabilityTestChannelId = ref(0)
+const capabilityTestChannelType = ref<CapabilityChannelKind>('messages')
+const capabilityTestSourceTab = ref<CapabilityChannelKind>('messages')
 const capabilityTestDialogRef = ref<InstanceType<typeof CapabilityTestDialog> | null>(null)
 const capabilityTestJobId = ref('')
 const capabilityPollers = ref<Record<string, ReturnType<typeof setInterval>>>({})
@@ -719,6 +721,16 @@ type CapabilityChannelKind = 'messages' | 'chat' | 'responses' | 'gemini'
 
 const isCapabilityChannelKind = (tab: string): tab is CapabilityChannelKind => {
   return tab === 'messages' || tab === 'chat' || tab === 'responses' || tab === 'gemini'
+}
+
+const serviceTypeToChannelKind = (serviceType: string): CapabilityChannelKind => {
+  switch (serviceType) {
+    case 'claude': return 'messages'
+    case 'openai': return 'chat'
+    case 'responses': return 'responses'
+    case 'gemini': return 'gemini'
+    default: return 'chat'
+  }
 }
 
 const capabilityPlaceholderModels: Record<string, string[]> = {
@@ -1142,10 +1154,19 @@ const testChannelCapability = async (channelId: number) => {
     return
   }
 
-  const channelType = channelStore.activeTab
   const channel = channelStore.currentChannelsData.channels?.find((ch: Channel) => ch.index === channelId)
-  capabilityTestChannelName.value = channel?.name || t('capability.channelFallback', { id: channelId })
+  if (!channel) {
+    console.error('Channel not found:', channelId)
+    return
+  }
+
+  // 从渠道的实际 serviceType 推导 channelKind，而不是从 activeTab
+  const channelType = channelStore.activeTab  // API 路径由渠道配置位置决定
+  const sourceTab = channelStore.activeTab  // 当前查看的 Tab 协议类型
+  capabilityTestChannelName.value = channel.name || t('capability.channelFallback', { id: channelId })
   capabilityTestChannelId.value = channelId
+  capabilityTestChannelType.value = channelType
+  capabilityTestSourceTab.value = sourceTab
 
   if (dialogStore.showAddChannelModal) {
     dialogStore.closeAddChannelModal()
@@ -1158,8 +1179,9 @@ const testChannelCapability = async (channelId: number) => {
   capabilityTestJob.value = buildCapabilityIdleJob(channelId, capabilityTestChannelName.value, channelType)
 
   try {
-    const snapshot = await api.getChannelCapabilitySnapshot(channelType, channelId)
-    if (capabilityTestChannelId.value !== channelId || channelStore.activeTab !== channelType) return
+    // sourceTab 是渠道的实际协议类型，channelType 是 API 路径
+    const snapshot = await api.getChannelCapabilitySnapshot(channelType, channelId, sourceTab)
+    if (capabilityTestChannelId.value !== channelId || capabilityTestChannelType.value !== channelType) return
     const snapshotJob = buildCapabilityJobFromSnapshot(snapshot, channelId, capabilityTestChannelName.value, channelType)
     capabilityTestJob.value = snapshotJob
     capabilityTestJobId.value = snapshotJob.jobId
@@ -1182,7 +1204,7 @@ const handleTestCapabilityProtocol = async (protocol: string) => {
   }
   if (!capabilityTestChannelId.value) return
 
-  const channelType = channelStore.activeTab
+  const channelType = capabilityTestChannelType.value
   const channelId = capabilityTestChannelId.value
   const previousJobId = getCapabilityPreviousJobId(protocol)
   const currentJob = capabilityTestJob.value ?? buildCapabilityIdleJob(channelId, capabilityTestChannelName.value, channelType)
@@ -1197,13 +1219,15 @@ const handleTestCapabilityProtocol = async (protocol: string) => {
     updatedAt: new Date().toISOString()
   })
   try {
+    console.log('[CapabilityTest] Starting test with sourceTab:', capabilityTestSourceTab.value, 'channelType:', channelType)
     const startResp: CapabilityTestJobStartResponse = await api.startChannelCapabilityTest(
       channelType,
       channelId,
       {
         targetProtocols: [protocol],
         previousJobId,
-        rpm: capabilityTestRpm.value
+        rpm: capabilityTestRpm.value,
+        sourceTab: capabilityTestSourceTab.value
       }
     )
     capabilityTestJobId.value = startResp.jobId
@@ -1225,10 +1249,10 @@ const handleTestCapabilityProtocol = async (protocol: string) => {
 
 const handleCancelCapabilityTest = async () => {
   if (!capabilityTestJob.value) return
-  if (!isCapabilityChannelKind(channelStore.activeTab)) return
+  if (!capabilityTestChannelType.value) return
   try {
     const activeIds = collectActiveJobIds(capabilityTestJob.value)
-    const channelType = channelStore.activeTab
+    const channelType = capabilityTestChannelType.value
     const channelId = capabilityTestChannelId.value
     for (const jId of activeIds) {
       await api.cancelCapabilityTest(channelType, channelId, jId).catch(err =>
@@ -1236,7 +1260,7 @@ const handleCancelCapabilityTest = async () => {
       )
     }
     stopAllCapabilityPolling()
-    const snapshot = await api.getChannelCapabilitySnapshot(channelType, channelId)
+    const snapshot = await api.getChannelCapabilitySnapshot(channelType, channelId, channelStore.activeTab)
     const snapshotJob = buildCapabilityJobFromSnapshot(snapshot, channelId, capabilityTestChannelName.value, channelType)
     capabilityTestJob.value = snapshotJob
     capabilityTestJobId.value = snapshotJob.jobId
@@ -1253,7 +1277,7 @@ const handleCancelCapabilityTest = async () => {
 
 const handleRetryCapabilityModel = async (protocol: string, model: string) => {
   if (!capabilityTestJob.value) return
-  if (!isCapabilityChannelKind(channelStore.activeTab)) return
+  if (!capabilityTestChannelType.value) return
   const job = capabilityTestJob.value
   const protocolTest = job.tests.find(t => t.protocol === protocol)
   if (!protocolTest) return
@@ -1266,8 +1290,8 @@ const handleRetryCapabilityModel = async (protocol: string, model: string) => {
 
     capabilityTestJob.value = markCapabilityModelRetrying(capabilityTestJob.value, protocol, model)
 
-    await api.retryCapabilityTestModel(channelStore.activeTab, capabilityTestChannelId.value, retryJobId, protocol, model)
-    startCapabilityPolling(channelStore.activeTab, capabilityTestChannelId.value, retryJobId)
+    await api.retryCapabilityTestModel(capabilityTestChannelType.value, capabilityTestChannelId.value, retryJobId, protocol, model)
+    startCapabilityPolling(capabilityTestChannelType.value, capabilityTestChannelId.value, retryJobId)
   } catch (error) {
     console.error('Failed to retry capability test model:', error)
   }

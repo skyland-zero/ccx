@@ -100,6 +100,8 @@ export type MessageKey =
   | 'capability.noApiKeyError'
   | 'capability.genericJobError'
   | 'capability.actualModel'
+  | 'capability.redirectTests'
+  | 'capability.redirectTestsDesc'
   | 'orchestration.title'
   | 'orchestration.multiChannel'
   | 'orchestration.singleChannel'
@@ -480,6 +482,8 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'capability.noApiKeyError': 'This channel has no API key configured and cannot run capability tests.',
     'capability.genericJobError': 'Capability test failed: {message}',
     'capability.actualModel': 'Actual model',
+    'capability.redirectTests': 'Model Redirect Tests',
+    'capability.redirectTestsDesc': 'Cross-protocol model mapping verification',
     'orchestration.title': 'Channel orchestration',
     'orchestration.multiChannel': 'Multi-channel mode',
     'orchestration.singleChannel': 'Single-channel mode',
@@ -859,6 +863,8 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'capability.noApiKeyError': 'Channel ini tidak memiliki API key dan tidak dapat menjalankan tes kemampuan.',
     'capability.genericJobError': 'Tes kemampuan gagal: {message}',
     'capability.actualModel': 'Model aktual',
+    'capability.redirectTests': 'Tes Redirect Model',
+    'capability.redirectTestsDesc': 'Verifikasi pemetaan model lintas protokol',
     'orchestration.title': 'Orkestrasi channel',
     'orchestration.multiChannel': 'Mode multi-channel',
     'orchestration.singleChannel': 'Mode single-channel',
@@ -1238,6 +1244,8 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'capability.noApiKeyError': '该渠道未配置 API Key，无法执行能力测试。',
     'capability.genericJobError': '能力测试失败：{message}',
     'capability.actualModel': '实际模型',
+    'capability.redirectTests': '模型重定向测试',
+    'capability.redirectTestsDesc': '跨协议模型映射验证',
     'orchestration.title': '渠道编排',
     'orchestration.multiChannel': '多渠道模式',
     'orchestration.singleChannel': '单渠道模式',
