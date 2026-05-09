@@ -96,6 +96,7 @@ export type MessageKey =
   | 'capability.reasonCancelled'
   | 'capability.reasonTimeout'
   | 'capability.retryModel'
+  | 'capability.testModel'
   | 'capability.snapshotUpdated'
   | 'capability.noApiKeyError'
   | 'capability.genericJobError'
@@ -478,6 +479,7 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'capability.reasonCancelled': 'Cancelled before completion',
     'capability.reasonTimeout': 'Timed out',
     'capability.retryModel': 'Retry this model',
+    'capability.testModel': 'Click to test',
     'capability.snapshotUpdated': 'Updated: {time}',
     'capability.noApiKeyError': 'This channel has no API key configured and cannot run capability tests.',
     'capability.genericJobError': 'Capability test failed: {message}',
@@ -859,6 +861,7 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'capability.reasonCancelled': 'Dibatalkan sebelum selesai',
     'capability.reasonTimeout': 'Waktu habis',
     'capability.retryModel': 'Coba ulang model ini',
+    'capability.testModel': 'Klik untuk menguji',
     'capability.snapshotUpdated': 'Diperbarui: {time}',
     'capability.noApiKeyError': 'Channel ini tidak memiliki API key dan tidak dapat menjalankan tes kemampuan.',
     'capability.genericJobError': 'Tes kemampuan gagal: {message}',
@@ -1240,6 +1243,7 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'capability.reasonCancelled': '完成前已取消',
     'capability.reasonTimeout': '请求超时',
     'capability.retryModel': '重测此模型',
+    'capability.testModel': '点击测试',
     'capability.snapshotUpdated': '更新时间：{time}',
     'capability.noApiKeyError': '该渠道未配置 API Key，无法执行能力测试。',
     'capability.genericJobError': '能力测试失败：{message}',

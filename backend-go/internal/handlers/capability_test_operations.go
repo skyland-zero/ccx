@@ -141,10 +141,12 @@ func RetryCapabilityTestModel(cfgManager *config.ConfigManager, channelLogStore 
 			for _, mr := range test.ModelResults {
 				if mr.Model == req.Model {
 					modelFound = true
+					// 允许重测：失败、跳过、取消、或未测试（idle）
 					if mr.Status == CapabilityModelStatusFailed ||
 						mr.Status == CapabilityModelStatusSkipped ||
 						mr.Outcome == CapabilityOutcomeCancelled ||
-						mr.Lifecycle == CapabilityLifecycleCancelled {
+						mr.Lifecycle == CapabilityLifecycleCancelled ||
+						mr.Status == CapabilityModelStatusIdle {
 						modelRetryable = true
 					}
 					break

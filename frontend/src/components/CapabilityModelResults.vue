@@ -73,7 +73,7 @@
               <span class="tooltip-value">{{ getModelStatusText(modelResult) }}</span>
             </div>
             <div class="tooltip-error">{{ getModelTooltipError(modelResult) }}</div>
-            <div v-if="getModelRetryHintVisible(modelResult)" class="tooltip-retry">{{ t('capability.retryModel') }}</div>
+            <div v-if="getModelRetryHintVisible(modelResult)" class="tooltip-retry">{{ getModelDisplayState(modelResult) === 'idle' ? t('capability.testModel') : t('capability.retryModel') }}</div>
           </div>
         </v-tooltip>
       </div>
@@ -157,7 +157,7 @@ const getModelStatusLabel = (status: string, modelResult?: CapabilityModelJobRes
 
 const isModelRetryable = (modelResult: CapabilityModelJobResult): boolean => {
   const displayState = getModelDisplayState(modelResult)
-  return displayState === 'failed' || displayState === 'cancelled' || displayState === 'skipped'
+  return displayState === 'failed' || displayState === 'cancelled' || displayState === 'skipped' || displayState === 'idle'
 }
 
 const isModelPending = (modelResult: CapabilityModelJobResult): boolean => {

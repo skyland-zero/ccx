@@ -73,6 +73,7 @@ const (
 	CapabilityModelStatusSuccess CapabilityModelStatus = "success"
 	CapabilityModelStatusFailed  CapabilityModelStatus = "failed"
 	CapabilityModelStatusSkipped CapabilityModelStatus = "skipped"
+	CapabilityModelStatusIdle    CapabilityModelStatus = "idle"
 )
 
 type CapabilityTestJobProgress struct {
