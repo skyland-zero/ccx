@@ -131,13 +131,16 @@ func RetryCapabilityTestModel(cfgManager *config.ConfigManager, channelLogStore 
 			return
 		}
 
-		// 检查模型是否存在于 job 中
+		// 检查模型是否存在于 job 中；若协议存在但模型不在（如快照新增的探测模型），
+		// 自动为该协议追加一个 idle 状态的模型结果，使其可被重测
 		modelFound := false
 		modelRetryable := false
+		protocolFound := false
 		for _, test := range job.Tests {
 			if test.Protocol != req.Protocol {
 				continue
 			}
+			protocolFound = true
 			for _, mr := range test.ModelResults {
 				if mr.Model == req.Model {
 					modelFound = true
@@ -152,6 +155,23 @@ func RetryCapabilityTestModel(cfgManager *config.ConfigManager, channelLogStore 
 					break
 				}
 			}
+		}
+		if !modelFound && protocolFound {
+			// 协议存在但模型不在，追加 idle 占位以允许测试
+			capabilityJobs.update(jobID, func(j *CapabilityTestJob) {
+				for i := range j.Tests {
+					if j.Tests[i].Protocol != req.Protocol {
+						continue
+					}
+					j.Tests[i].ModelResults = append(j.Tests[i].ModelResults, CapabilityModelJobResult{
+						Model:  req.Model,
+						Status: CapabilityModelStatusIdle,
+					})
+					break
+				}
+			})
+			modelFound = true
+			modelRetryable = true
 		}
 		if !modelFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Model not found in job"})
