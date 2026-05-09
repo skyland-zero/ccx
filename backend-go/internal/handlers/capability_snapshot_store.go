@@ -482,8 +482,8 @@ func GetCapabilitySnapshot(cfgManager *config.ConfigManager, channelKind string)
 								{
 									Protocol:        virtualProtocol,
 									Status:          "idle",
-									Lifecycle:       "pending",
-									Outcome:         "unknown",
+									Lifecycle:       CapabilityLifecycleDone,
+									Outcome:         CapabilityOutcomeUnknown,
 									ModelResults:    modelResults,
 									AttemptedModels: len(modelResults),
 									SuccessCount:    0,
