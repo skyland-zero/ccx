@@ -188,6 +188,7 @@ const formatStreaming = (modelResult: CapabilityModelJobResult): string => {
 const isModelSuccessful = (modelResult: CapabilityModelJobResult): boolean => getModelDisplayState(modelResult) === 'success'
 const getModelTooltipView = (modelResult: CapabilityModelJobResult): 'success' | 'pending' | 'failed' => {
   if (isModelSuccessful(modelResult)) return 'success'
+  if (getModelDisplayState(modelResult) === 'idle') return 'failed'
   if (isModelPending(modelResult)) return 'pending'
   return 'failed'
 }
