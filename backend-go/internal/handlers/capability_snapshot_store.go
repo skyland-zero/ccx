@@ -456,19 +456,19 @@ func GetCapabilitySnapshot(cfgManager *config.ConfigManager, channelKind string)
 						}
 					}
 
-					// 构建模型结果列表（只包含被重定向的模型）
+					// 构建模型结果列表（包含所有探测模型，被重定向的标记 actualModel）
 					buildModelResults := func() []CapabilityModelJobResult {
-						modelResults := make([]CapabilityModelJobResult, 0)
+						modelResults := make([]CapabilityModelJobResult, 0, len(probeModels))
 						for _, m := range probeModels {
 							actual := config.RedirectModel(m, channel)
-							if actual == m {
-								continue // 不重定向的模型不显示
+							result := CapabilityModelJobResult{
+								Model:  m,
+								Status: "idle",
 							}
-							modelResults = append(modelResults, CapabilityModelJobResult{
-								Model:       m,
-								ActualModel: actual,
-								Status:      "idle",
-							})
+							if actual != m {
+								result.ActualModel = actual
+							}
+							modelResults = append(modelResults, result)
 						}
 						return modelResults
 					}
