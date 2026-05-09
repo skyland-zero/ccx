@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// 能力测试探测模型统一定义（如需切换顶级模型，仅修改这里）
+// ⚠️ 修改此处时必须同步修改前端 frontend/src/App.vue 的 capabilityPlaceholderModels
 // 支持多个候选模型，用逗号分隔，按优先级从高到低排列
 // 测试时会按顺序分批启动，并汇总所有候选模型的结果
 const (
