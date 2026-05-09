@@ -163,6 +163,8 @@ Images 当前没有对应的 capability-test / snapshot 路由。
 
 ### Promotion / Resume
 
+- 普通置顶 / reorder 会持久调整渠道 `priority`，并可覆盖低优先级渠道上的既有 Trace 亲和流量
+- Promotion 是临时强制优先，优先级高于 Trace 亲和，并会在首次选择时绕过健康检查尝试促销渠道
 - 新渠道可设置临时促销期，提升调度优先级
 - `resume` 用于恢复渠道状态与相关运行时保护状态
 - 故障转移、熔断和恢复逻辑由调度器与指标模块共同维护
