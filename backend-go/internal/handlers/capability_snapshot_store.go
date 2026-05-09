@@ -443,6 +443,8 @@ func GetCapabilitySnapshot(cfgManager *config.ConfigManager, channelKind string)
 					}
 				}
 
+				// 只有当有模型被重定向时才生成虚拟协议占位符
+				// 无论是否需要协议转换，只要有模型重定向就需要虚模型测试
 				if hasRedirect {
 					virtualProtocol := sourceTab + "->" + channelServiceType
 					// 检查快照中是否已经有这个虚拟协议

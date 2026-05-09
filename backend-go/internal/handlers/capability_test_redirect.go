@@ -144,6 +144,58 @@ func runRedirectVerification(ctx context.Context, channel *config.UpstreamConfig
 		})
 	}
 
+	// 更新虚拟协议的最终状态
+	// 构建 actualModel -> 测试结果的映射
+	actualModelResults := make(map[string]RedirectModelResult)
+	for _, r := range results {
+		actualModelResults[r.ActualModel] = r
+	}
+
+	capabilityJobs.update(jobID, func(job *CapabilityTestJob) {
+		for i := range job.Tests {
+			if job.Tests[i].Protocol == virtualProtocol {
+				// 更新所有模型的测试结果（共享 actualModel 的模型使用相同结果）
+				successCount := 0
+				for j := range job.Tests[i].ModelResults {
+					actualModel := job.Tests[i].ModelResults[j].ActualModel
+					if result, ok := actualModelResults[actualModel]; ok {
+						modelStatus := CapabilityModelStatusFailed
+						if result.Success {
+							modelStatus = CapabilityModelStatusSuccess
+							successCount++
+						}
+						updateCapabilityJobModelResult(job, virtualProtocol, job.Tests[i].ModelResults[j].Model, modelStatus, ModelTestResult{
+							Model:              job.Tests[i].ModelResults[j].Model,
+							ActualModel:        actualModel,
+							Success:            result.Success,
+							Latency:            result.Latency,
+							StreamingSupported: result.StreamingSupported,
+							Error:              result.Error,
+							StartedAt:          result.StartedAt,
+							TestedAt:           result.TestedAt,
+						})
+					}
+				}
+
+				// 更新协议状态
+				job.Tests[i].Lifecycle = CapabilityLifecycleDone
+				job.Tests[i].Status = CapabilityProtocolStatusCompleted
+				if successCount > 0 {
+					job.Tests[i].Outcome = CapabilityOutcomeSuccess
+					job.Tests[i].Success = true
+					job.Tests[i].SuccessCount = successCount
+				} else {
+					job.Tests[i].Outcome = CapabilityOutcomeFailed
+					job.Tests[i].Success = false
+					errMsg := "all_models_failed"
+					job.Tests[i].Error = &errMsg
+				}
+				job.Tests[i].TestedAt = time.Now().Format(time.RFC3339Nano)
+				break
+			}
+		}
+	})
+
 	log.Printf("[RedirectTest-Done] 渠道 %s 重定向验证完成，成功: %d/%d", channel.Name, countRedirectSuccesses(results), len(results))
 	return results
 }
