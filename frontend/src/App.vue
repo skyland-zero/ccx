@@ -1284,7 +1284,11 @@ const handleRetryCapabilityModel = async (protocol: string, model: string) => {
   if (!protocolTest) return
   if (protocolTest.lifecycle === 'pending' || protocolTest.lifecycle === 'active') return
   const retryJobId = job.protocolJobRefs?.[protocol]?.jobId || job.protocolJobIds?.[protocol]
-  if (!retryJobId) return
+  if (!retryJobId) {
+    // 没有 jobId（虚拟协议未测试过），触发整个协议的测试
+    handleTestCapabilityProtocol(protocol)
+    return
+  }
   try {
     const pendingKey = `${protocol}:${model}`
     capabilityRetryPendingUntil.value[pendingKey] = Date.now() + 1000

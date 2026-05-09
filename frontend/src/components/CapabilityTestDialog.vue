@@ -136,7 +136,7 @@
                 :test="test"
                 :pending-text="getProtocolPendingText(test)"
                 :show-label="false"
-                :retry-enabled="!isProtocolBusy(test) && Boolean(job?.protocolJobIds?.[test.protocol])"
+                :retry-enabled="!isProtocolBusy(test)"
                 @retry-model="handleRetryModel"
               />
             </div>
@@ -252,7 +252,7 @@
                         :test="test"
                         :pending-text="getProtocolPendingText(test)"
                         :show-label="false"
-                        :retry-enabled="!isProtocolBusy(test) && Boolean(job?.protocolJobIds?.[test.protocol])"
+                        :retry-enabled="!isProtocolBusy(test)"
                         @retry-model="handleRetryModel"
                       />
                     </div>
