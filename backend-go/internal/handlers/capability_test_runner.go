@@ -160,9 +160,6 @@ func runCapabilityTestJob(jobID, channelKind string, channelID int, channel conf
 
 		for _, probeModel := range probeModels {
 			actualModel := config.RedirectModel(probeModel, &channel)
-			if actualModel == probeModel {
-				continue
-			}
 
 			rr, tested := actualModelResults[actualModel]
 			if tested {
@@ -594,6 +591,11 @@ func runRoundRobinTests(ctx context.Context, channel *config.UpstreamConfig, pro
 	return orderedResults
 }
 
+func isCapabilityJobCancelled(jobID string) bool {
+	job, ok := capabilityJobs.get(jobID)
+	return ok && job.Lifecycle == CapabilityLifecycleCancelled
+}
+
 // executeModelTest 单模型测试（不调用 AcquireSendSlot，由编排器负责限流）
 // 原生协议测试直接用原始模型名发请求，不走 ModelMapping 重定向
 func executeModelTest(ctx context.Context, channel *config.UpstreamConfig, protocol, model string, timeout time.Duration, jobID string, cfgManager *config.ConfigManager, channelID int, channelKind, apiKey string, channelLogStore *metrics.ChannelLogStore) ModelTestResult {
@@ -629,6 +631,9 @@ func executeModelTest(ctx context.Context, channel *config.UpstreamConfig, proto
 	req = req.WithContext(reqCtx)
 
 	capabilityJobs.update(jobID, func(job *CapabilityTestJob) {
+		if job.Lifecycle == CapabilityLifecycleCancelled {
+			return
+		}
 		updateCapabilityJobModelResult(job, protocol, model, CapabilityModelStatusRunning, modelResult)
 	})
 
@@ -695,6 +700,9 @@ func executeModelTest(ctx context.Context, channel *config.UpstreamConfig, proto
 	modelResult.Error = &errMsg
 	recordCapabilityTestLog(false, statusCode, errMsg)
 	capabilityJobs.update(jobID, func(job *CapabilityTestJob) {
+		if job.Lifecycle == CapabilityLifecycleCancelled {
+			return
+		}
 		updateCapabilityJobModelResult(job, protocol, model, CapabilityModelStatusFailed, modelResult)
 	})
 	log.Printf("[CapabilityTest-Model] 渠道 %s 的 %s 协议测试失败 (模型: %s, 耗时: %dms): %s",
@@ -708,4 +716,3 @@ func truncateCapabilityError(msg string) string {
 	}
 	return msg
 }
-

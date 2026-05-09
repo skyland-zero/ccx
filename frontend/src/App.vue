@@ -944,23 +944,35 @@ const buildCapabilityProgress = (tests: CapabilityProtocolJobResult[]) => {
 // normalizeCapabilityTests 将测试结果归一化：
 // 1. 保留所有已知协议（含复合协议），复合协议排在最前
 // 2. 补齐缺失的基础协议（以 idle 状态占位）
+const mergeCapabilityProtocolResult = (baseTest: CapabilityProtocolJobResult, incomingTest: CapabilityProtocolJobResult): CapabilityProtocolJobResult => {
+  const modelResultsByModel = new Map<string, CapabilityModelJobResult>()
+  for (const modelResult of baseTest.modelResults ?? []) {
+    modelResultsByModel.set(modelResult.model, modelResult)
+  }
+  for (const modelResult of incomingTest.modelResults ?? []) {
+    modelResultsByModel.set(modelResult.model, modelResult)
+  }
+  const modelResults = Array.from(modelResultsByModel.values())
+
+  return {
+    ...baseTest,
+    ...incomingTest,
+    modelResults,
+    attemptedModels: Math.max(baseTest.attemptedModels ?? 0, incomingTest.attemptedModels ?? 0, modelResults.length),
+    successCount: modelResults.filter(modelResult => modelResult.status === 'success' || modelResult.outcome === 'success').length
+  }
+}
+
 const normalizeCapabilityTests = (tests: CapabilityProtocolJobResult[]): CapabilityProtocolJobResult[] => {
   const testsByProtocol = new Map<string, CapabilityProtocolJobResult>()
-  const compositeTests: CapabilityProtocolJobResult[] = []
 
   for (const test of tests) {
-    if (isCapabilityProtocol(test.protocol)) {
-      if (test.protocol.includes('->')) {
-        // 复合协议去重（保留最后出现的）
-        if (!compositeTests.some(t => t.protocol === test.protocol)) {
-          compositeTests.push(test)
-        }
-      }
-      testsByProtocol.set(test.protocol, test)
-    }
+    if (!isCapabilityProtocol(test.protocol)) continue
+    const existingTest = testsByProtocol.get(test.protocol)
+    testsByProtocol.set(test.protocol, existingTest ? mergeCapabilityProtocolResult(existingTest, test) : test)
   }
 
-  // 基础协议补齐
+  const compositeTests = Array.from(testsByProtocol.values()).filter(test => test.protocol.includes('->'))
   const baseTests = capabilityBaseProtocolOrder.map(protocol =>
     testsByProtocol.get(protocol) ?? buildCapabilityProtocolResult(protocol, 'idle')
   )

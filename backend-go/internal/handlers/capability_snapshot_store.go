@@ -457,16 +457,26 @@ func GetCapabilitySnapshot(cfgManager *config.ConfigManager, channelKind string)
 					}
 
 					// 构建模型结果列表（包含所有探测模型，被重定向的标记 actualModel）
-					buildModelResults := func() []CapabilityModelJobResult {
+					buildModelResults := func(existingResults []CapabilityModelJobResult) []CapabilityModelJobResult {
+						existingByModel := make(map[string]CapabilityModelJobResult, len(existingResults))
+						for _, result := range existingResults {
+							existingByModel[result.Model] = result
+						}
+
 						modelResults := make([]CapabilityModelJobResult, 0, len(probeModels))
 						for _, m := range probeModels {
 							actual := config.RedirectModel(m, channel)
-							result := CapabilityModelJobResult{
-								Model:  m,
-								Status: "idle",
+							result, ok := existingByModel[m]
+							if !ok {
+								result = CapabilityModelJobResult{
+									Model:  m,
+									Status: "idle",
+								}
 							}
 							if actual != m {
 								result.ActualModel = actual
+							} else if result.ActualModel == m {
+								result.ActualModel = ""
 							}
 							modelResults = append(modelResults, result)
 						}
@@ -476,7 +486,7 @@ func GetCapabilitySnapshot(cfgManager *config.ConfigManager, channelKind string)
 					if foundIndex < 0 {
 						// 没有找到，添加一个占位符
 						log.Printf("[Snapshot-Debug] 添加虚拟协议占位符: %s", virtualProtocol)
-						modelResults := buildModelResults()
+						modelResults := buildModelResults(nil)
 						if len(modelResults) > 0 {
 							snapshot.Tests = append([]CapabilityProtocolJobResult{
 								{
@@ -494,7 +504,7 @@ func GetCapabilitySnapshot(cfgManager *config.ConfigManager, channelKind string)
 						// 已存在，始终用当前配置刷新模型列表
 						// 这样配置变更（ModelMapping、ServiceType）会自动反映
 						existing := &snapshot.Tests[foundIndex]
-						modelResults := buildModelResults()
+						modelResults := buildModelResults(existing.ModelResults)
 						if len(modelResults) > 0 {
 							existing.ModelResults = modelResults
 							existing.AttemptedModels = len(modelResults)

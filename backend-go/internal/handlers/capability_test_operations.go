@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/BenedictKing/ccx/internal/config"
@@ -156,7 +157,7 @@ func RetryCapabilityTestModel(cfgManager *config.ConfigManager, channelLogStore 
 				}
 			}
 		}
-		if !modelFound && protocolFound {
+		if !modelFound && protocolFound && strings.Contains(req.Protocol, "->") {
 			// 协议存在但模型不在，追加 idle 占位以允许测试
 			capabilityJobs.update(jobID, func(j *CapabilityTestJob) {
 				for i := range j.Tests {
@@ -259,7 +260,7 @@ func RetryCapabilityTestModel(cfgManager *config.ConfigManager, channelLogStore 
 				return
 			}
 
-			modelResult := executeModelTest(retryCtx, channel, req.Protocol, req.Model, timeout, jobID, cfgManager, id, channelKind, apiKey, channelLogStore)
+			modelResult := executeRetryModelTest(retryCtx, channel, req.Protocol, req.Model, timeout, jobID, cfgManager, id, channelKind, apiKey, channelLogStore)
 
 			// 更新协议测试时间戳；协议/任务整体状态由统一重算逻辑维护
 			capabilityJobs.update(jobID, func(j *CapabilityTestJob) {
@@ -280,3 +281,43 @@ func RetryCapabilityTestModel(cfgManager *config.ConfigManager, channelLogStore 
 	}
 }
 
+func executeRetryModelTest(ctx context.Context, channel *config.UpstreamConfig, protocol, model string, timeout time.Duration, jobID string, cfgManager *config.ConfigManager, channelID int, channelKind, apiKey string, channelLogStore *metrics.ChannelLogStore) ModelTestResult {
+	if !strings.Contains(protocol, "->") {
+		return executeModelTest(ctx, channel, protocol, model, timeout, jobID, cfgManager, channelID, channelKind, apiKey, channelLogStore)
+	}
+
+	parts := strings.SplitN(protocol, "->", 2)
+	if len(parts) != 2 || parts[1] == "" {
+		errMsg := fmt.Sprintf("invalid_virtual_protocol: %s", protocol)
+		result := ModelTestResult{
+			Model:    model,
+			Error:    &errMsg,
+			TestedAt: time.Now().Format(time.RFC3339Nano),
+		}
+		capabilityJobs.update(jobID, func(job *CapabilityTestJob) {
+			updateCapabilityJobModelResult(job, protocol, model, CapabilityModelStatusFailed, result)
+		})
+		return result
+	}
+
+	actualModel := config.RedirectModel(model, channel)
+	redirectResult := executeRedirectModelTest(ctx, channel, parts[1], model, actualModel, timeout, jobID, cfgManager, channelID, apiKey, channelLogStore)
+	modelStatus := CapabilityModelStatusFailed
+	if redirectResult.Success {
+		modelStatus = CapabilityModelStatusSuccess
+	}
+	result := ModelTestResult{
+		Model:              model,
+		ActualModel:        redirectResult.ActualModel,
+		Success:            redirectResult.Success,
+		Latency:            redirectResult.Latency,
+		StreamingSupported: redirectResult.StreamingSupported,
+		Error:              redirectResult.Error,
+		StartedAt:          redirectResult.StartedAt,
+		TestedAt:           redirectResult.TestedAt,
+	}
+	capabilityJobs.update(jobID, func(job *CapabilityTestJob) {
+		updateCapabilityJobModelResult(job, protocol, model, modelStatus, result)
+	})
+	return result
+}

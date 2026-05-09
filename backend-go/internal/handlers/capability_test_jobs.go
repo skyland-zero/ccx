@@ -399,6 +399,38 @@ func cloneCapabilityTestJob(job *CapabilityTestJob) *CapabilityTestJob {
 func recomputeCapabilityJob(job *CapabilityTestJob) {
 	progress := CapabilityTestJobProgress{}
 	compatible := make([]string, 0)
+
+	if job.Lifecycle == CapabilityLifecycleCancelled {
+		for _, test := range job.Tests {
+			for _, modelResult := range test.ModelResults {
+				progress.TotalModels++
+				switch modelResult.Status {
+				case CapabilityModelStatusQueued:
+					progress.QueuedModels++
+				case CapabilityModelStatusRunning:
+					progress.RunningModels++
+				case CapabilityModelStatusSuccess:
+					progress.SuccessModels++
+					progress.CompletedModels++
+				case CapabilityModelStatusFailed:
+					progress.FailedModels++
+					progress.CompletedModels++
+				case CapabilityModelStatusSkipped:
+					progress.SkippedModels++
+					progress.CompletedModels++
+				}
+			}
+		}
+		job.Progress = progress
+		job.CompatibleProtocols = compatible
+		job.ActiveOperations = 0
+		job.Outcome = CapabilityOutcomeCancelled
+		job.Status = deriveCapabilityJobStatus(job.Lifecycle, job.Outcome)
+		if job.FinishedAt == "" {
+			job.FinishedAt = job.UpdatedAt
+		}
+		return
+	}
 	allProtocolsTerminal := true
 	anyProtocolActive := false
 	allProtocolsCancelled := len(job.Tests) > 0

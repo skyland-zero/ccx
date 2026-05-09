@@ -481,7 +481,7 @@ const getProtocolIcon = (protocol: string): string => {
 const getSuccessfulProtocols = () => {
   if (!job.value) return []
   return job.value.tests
-    .filter(t => t.success)
+    .filter(t => t.success && !isCompositeProtocol(t.protocol))
     .map(t => t.protocol)
 }
 

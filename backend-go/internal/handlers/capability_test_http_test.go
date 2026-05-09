@@ -592,17 +592,17 @@ func TestResumedCancelledJob_ReturnsUpdatedState(t *testing.T) {
 		t.Fatalf("unmarshal response failed: %v", err)
 	}
 
-	if !resp.Resumed {
-		t.Fatalf("resumed=%v, want true", resp.Resumed)
+	if resp.Resumed {
+		t.Fatalf("resumed=%v, want false", resp.Resumed)
 	}
-	if resp.JobID != job.JobID {
-		t.Fatalf("jobId=%s, want %s", resp.JobID, job.JobID)
+	if resp.JobID == job.JobID {
+		t.Fatalf("jobId=%s, want a new job id", resp.JobID)
 	}
 	if resp.Job.Lifecycle == CapabilityLifecycleCancelled {
 		t.Fatalf("job.lifecycle=%s, want not cancelled (should be pending or active)", resp.Job.Lifecycle)
 	}
-	if resp.Job.RunMode != CapabilityRunModeResumedCancelled {
-		t.Fatalf("job.runMode=%s, want resumed_cancelled", resp.Job.RunMode)
+	if resp.Job.RunMode != CapabilityRunModeFresh {
+		t.Fatalf("job.runMode=%s, want fresh", resp.Job.RunMode)
 	}
 	if resp.Job.FinishedAt != "" {
 		t.Fatalf("job.finishedAt=%s, want empty", resp.Job.FinishedAt)

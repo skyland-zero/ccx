@@ -20,7 +20,7 @@ type CapabilityTestRequest struct {
 	Timeout         int      `json:"timeout"`       // 毫秒
 	PreviousJobID   string   `json:"previousJobId"` // 可选：上次测试的 jobId，用于复用成功结果
 	RPM             int      `json:"rpm"`
-	SourceTab       string   `json:"sourceTab"`     // 可选：当前 Tab 的协议类型（用于跨协议测试）
+	SourceTab       string   `json:"sourceTab"` // 可选：当前 Tab 的协议类型（用于跨协议测试）
 }
 
 type ModelTestResult struct {
@@ -168,6 +168,14 @@ func TestChannelCapability(cfgManager *config.ConfigManager, channelLogStore *me
 			created.ExecutionKey = executionLookupKey
 			return created
 		})
+		if reused && job.Lifecycle == CapabilityLifecycleCancelled {
+			capabilityJobs.clearLookupKey(executionLookupKey)
+			job = newCapabilityTestJob(id, channel.Name, channelKind, channel.ServiceType, protocols, timeout, effectiveRPM)
+			job.IdentityKey = identityKey
+			job.ExecutionKey = executionLookupKey
+			capabilityJobs.create(job)
+			reused = false
+		}
 		capabilityJobs.bindLookupKey(lookupKey, job.JobID)
 		job.ChannelID = id
 		job.ChannelName = channel.Name

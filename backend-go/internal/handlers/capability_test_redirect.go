@@ -50,23 +50,16 @@ func runRedirectVerification(ctx context.Context, channel *config.UpstreamConfig
 	}
 
 	testedActualModels := make(map[string]bool)
-	userRequested := len(userModels) > 0
 	for _, m := range probeModels {
 		actual := config.RedirectModel(m, channel)
-		if actual != m && !testedActualModels[actual] {
-			// 被重定向的模型
-			redirectedModels = append(redirectedModels, RedirectModelResult{
-				ProbeModel:  m,
-				ActualModel: actual,
-			})
-			testedActualModels[actual] = true
-		} else if userRequested && actual == m {
-			// 用户明确请求的非重定向模型：按原模型测试（actualModel = probeModel）
-			redirectedModels = append(redirectedModels, RedirectModelResult{
-				ProbeModel:  m,
-				ActualModel: m,
-			})
+		if testedActualModels[actual] {
+			continue
 		}
+		redirectedModels = append(redirectedModels, RedirectModelResult{
+			ProbeModel:  m,
+			ActualModel: actual,
+		})
+		testedActualModels[actual] = true
 	}
 
 	if len(redirectedModels) == 0 {
@@ -79,27 +72,20 @@ func runRedirectVerification(ctx context.Context, channel *config.UpstreamConfig
 	channelServiceType := serviceTypeToChannelKind(channel.ServiceType)
 	virtualProtocol := sourceTab + "->" + channelServiceType
 	capabilityJobs.update(jobID, func(job *CapabilityTestJob) {
-		// 构建重定向模型的 ModelResults（用于占位符或补充）
-		modelResults := make([]CapabilityModelJobResult, 0)
+		// 构建虚拟协议的 ModelResults（包含所有探测模型，重定向模型标记 actualModel）
+		modelResults := make([]CapabilityModelJobResult, 0, len(probeModels))
 		for _, probeModel := range probeModels {
 			actualModel := config.RedirectModel(probeModel, channel)
-			if actualModel != probeModel {
-				modelResults = append(modelResults, CapabilityModelJobResult{
-					Model:       probeModel,
-					ActualModel: actualModel,
-					Status:      CapabilityModelStatusQueued,
-					Lifecycle:   CapabilityLifecyclePending,
-					Outcome:     CapabilityOutcomeUnknown,
-				})
-			} else if userRequested {
-				// 用户明确请求的非重定向模型
-				modelResults = append(modelResults, CapabilityModelJobResult{
-					Model:     probeModel,
-					Status:    CapabilityModelStatusQueued,
-					Lifecycle: CapabilityLifecyclePending,
-					Outcome:   CapabilityOutcomeUnknown,
-				})
+			result := CapabilityModelJobResult{
+				Model:     probeModel,
+				Status:    CapabilityModelStatusQueued,
+				Lifecycle: CapabilityLifecyclePending,
+				Outcome:   CapabilityOutcomeUnknown,
 			}
+			if actualModel != probeModel {
+				result.ActualModel = actualModel
+			}
+			modelResults = append(modelResults, result)
 		}
 
 		// 检查虚拟协议是否已存在
