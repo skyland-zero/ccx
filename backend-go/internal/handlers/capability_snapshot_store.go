@@ -490,13 +490,14 @@ func GetCapabilitySnapshot(cfgManager *config.ConfigManager, channelKind string)
 								},
 							}, snapshot.Tests...)
 						}
-					} else if len(snapshot.Tests[foundIndex].ModelResults) == 0 {
-						// 已存在但没有模型列表，补充模型列表
-						log.Printf("[Snapshot-Debug] 补充虚拟协议模型列表: %s", virtualProtocol)
+					} else {
+						// 已存在，始终用当前配置刷新模型列表
+						// 这样配置变更（ModelMapping、ServiceType）会自动反映
+						existing := &snapshot.Tests[foundIndex]
 						modelResults := buildModelResults()
 						if len(modelResults) > 0 {
-							snapshot.Tests[foundIndex].ModelResults = modelResults
-							snapshot.Tests[foundIndex].AttemptedModels = len(modelResults)
+							existing.ModelResults = modelResults
+							existing.AttemptedModels = len(modelResults)
 						}
 					}
 				}
