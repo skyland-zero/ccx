@@ -72,7 +72,7 @@
               <span class="tooltip-label">{{ t('capability.modelStatus') }}</span>
               <span class="tooltip-value">{{ getModelStatusText(modelResult) }}</span>
             </div>
-            <div class="tooltip-error">{{ getModelTooltipError(modelResult) }}</div>
+            <div v-if="getModelDisplayState(modelResult) !== 'idle'" class="tooltip-error">{{ getModelTooltipError(modelResult) }}</div>
             <div v-if="getModelRetryHintVisible(modelResult)" class="tooltip-retry">{{ getModelDisplayState(modelResult) === 'idle' ? t('capability.testModel') : t('capability.retryModel') }}</div>
           </div>
         </v-tooltip>
