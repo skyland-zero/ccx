@@ -753,6 +753,27 @@ func TestCapabilityRunningJobReuse_ByIdentityAcrossChannels(t *testing.T) {
 	}
 }
 
+func TestBuildTestRequestWithModel_ChatReasoningEffortUsesProviderCompatibleValue(t *testing.T) {
+	channel := &config.UpstreamConfig{
+		BaseURL: "https://example.com",
+		APIKeys: []string{"test-key"},
+	}
+
+	req, err := buildTestRequestWithModel("chat", channel, "test-model")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer req.Body.Close()
+
+	var body map[string]interface{}
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		t.Fatalf("decode request body failed: %v", err)
+	}
+	if body["reasoning_effort"] != "low" {
+		t.Fatalf("reasoning_effort=%v, want low", body["reasoning_effort"])
+	}
+}
+
 func TestBuildTestRequestWithModel_NoAPIKey(t *testing.T) {
 	channel := &config.UpstreamConfig{
 		BaseURL: "https://example.com",

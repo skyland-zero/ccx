@@ -237,10 +237,10 @@ func buildTestRequestWithModel(protocol string, channel *config.UpstreamConfig, 
 			},
 			"max_tokens":       100,
 			"stream":           true,
-			"reasoning_effort": "none",
+			"reasoning_effort": "low",
 		})
 
-// PLACEHOLDER_REQUEST_BUILD_2
+		// PLACEHOLDER_REQUEST_BUILD_2
 
 	case "gemini":
 		requestURL = buildCapabilityTestURL(baseURL, "/v1beta", "/models/"+model+":streamGenerateContent?alt=sse")

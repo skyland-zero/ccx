@@ -84,7 +84,7 @@ func buildChatProbeBody(probeModel string) []byte {
 		},
 		"max_tokens":       100,
 		"stream":           true,
-		"reasoning_effort": "none",
+		"reasoning_effort": "low",
 	})
 	return body
 }
