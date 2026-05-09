@@ -103,7 +103,7 @@ func runCapabilityTestJob(jobID, channelKind string, channelID int, channel conf
 	var redirectResults []RedirectModelResult
 	redirectCh := make(chan []RedirectModelResult, 1)
 	go func() {
-		redirectCh <- runRedirectVerification(ctx, &channel, channelKind, sourceTab, timeout, effectiveRPM, jobID, cfgManager, channelID, apiKey, dispatcherKey, channelLogStore)
+		redirectCh <- runRedirectVerification(ctx, &channel, channelKind, sourceTab, timeout, effectiveRPM, jobID, cfgManager, channelID, apiKey, dispatcherKey, channelLogStore, userModels)
 	}()
 
 	// 过滤掉虚拟协议（含 "->"），原生协议测试只测基础协议

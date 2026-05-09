@@ -17,7 +17,7 @@ import (
 // runRedirectVerification 测试模型重定向：
 // 1. 测试当前渠道类型原生探测模型经 ModelMapping 重定向后是否在上游可用
 // 2. 如果提供了 sourceTab，测试该协议的所有探测模型在当前渠道上的可用性（跨协议转换）
-func runRedirectVerification(ctx context.Context, channel *config.UpstreamConfig, channelKind, sourceTab string, perModelTimeout time.Duration, effectiveRPM int, jobID string, cfgManager *config.ConfigManager, channelID int, apiKey, dispatcherKey string, channelLogStore *metrics.ChannelLogStore) []RedirectModelResult {
+func runRedirectVerification(ctx context.Context, channel *config.UpstreamConfig, channelKind, sourceTab string, perModelTimeout time.Duration, effectiveRPM int, jobID string, cfgManager *config.ConfigManager, channelID int, apiKey, dispatcherKey string, channelLogStore *metrics.ChannelLogStore, userModels []string) []RedirectModelResult {
 	var redirectedModels []RedirectModelResult
 
 	log.Printf("[RedirectTest-Debug] 渠道 %s (类型:%s), sourceTab=%s", channel.Name, channelKind, sourceTab)
@@ -32,6 +32,21 @@ func runRedirectVerification(ctx context.Context, channel *config.UpstreamConfig
 	if err != nil {
 		log.Printf("[RedirectTest-Skip] 获取源协议 %s 的探测模型列表失败: %v", sourceTab, err)
 		return nil
+	}
+
+	// 如果指定了 userModels，过滤 probeModels 只保留用户请求的
+	if len(userModels) > 0 {
+		userSet := make(map[string]bool, len(userModels))
+		for _, m := range userModels {
+			userSet[m] = true
+		}
+		filtered := make([]string, 0, len(userModels))
+		for _, m := range probeModels {
+			if userSet[m] {
+				filtered = append(filtered, m)
+			}
+		}
+		probeModels = filtered
 	}
 
 	testedActualModels := make(map[string]bool)
