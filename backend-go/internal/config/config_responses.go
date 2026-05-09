@@ -96,6 +96,9 @@ func (cm *ConfigManager) UpdateResponsesUpstream(index int, updates UpstreamUpda
 		return false, fmt.Errorf("无效的 Responses 上游索引: %d", index)
 	}
 
+	// 保存修改前的配置快照用于变更检测
+	originalConfig := cm.config.deepCopy()
+
 	upstream := &cm.config.ResponsesUpstream[index]
 	upstream.ServiceType = normalizeUpstreamServiceType(upstream.ServiceType, "responses")
 	serviceType := upstream.ServiceType
@@ -214,6 +217,12 @@ func (cm *ConfigManager) UpdateResponsesUpstream(index int, updates UpstreamUpda
 	}
 	if updates.RoutePrefix != nil {
 		upstream.RoutePrefix = *updates.RoutePrefix
+	}
+
+	// 检测配置是否真的发生了变化
+	if !cm.hasConfigChanged(originalConfig, cm.config) {
+		log.Printf("[Config-Upstream] Responses 渠道 [%d] %s 配置未发生实质性变化，跳过保存", index, upstream.Name)
+		return shouldResetMetrics, nil
 	}
 
 	if err := cm.saveConfigLocked(cm.config); err != nil {

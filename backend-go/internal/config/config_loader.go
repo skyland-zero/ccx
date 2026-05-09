@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -447,4 +448,36 @@ func (cm *ConfigManager) Close() error {
 		}
 	})
 	return closeErr
+}
+
+// deepCopy 创建配置的深拷贝
+func (c Config) deepCopy() Config {
+	data, err := json.Marshal(c)
+	if err != nil {
+		return c
+	}
+	var copy Config
+	if err := json.Unmarshal(data, &copy); err != nil {
+		return c
+	}
+	return copy
+}
+
+// hasConfigChanged 检测配置是否发生了实质性变化
+func (cm *ConfigManager) hasConfigChanged(old, new Config) bool {
+	// 清理废弃字段以确保比较准确
+	old.CurrentUpstream = 0
+	old.CurrentResponsesUpstream = 0
+	new.CurrentUpstream = 0
+	new.CurrentResponsesUpstream = 0
+
+	oldData, err := json.Marshal(old)
+	if err != nil {
+		return true
+	}
+	newData, err := json.Marshal(new)
+	if err != nil {
+		return true
+	}
+	return !bytes.Equal(oldData, newData)
 }
