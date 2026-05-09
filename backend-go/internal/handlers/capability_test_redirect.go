@@ -72,29 +72,31 @@ func runRedirectVerification(ctx context.Context, channel *config.UpstreamConfig
 	channelServiceType := serviceTypeToChannelKind(channel.ServiceType)
 	virtualProtocol := sourceTab + "->" + channelServiceType
 	capabilityJobs.update(jobID, func(job *CapabilityTestJob) {
+		// 构建重定向模型的 ModelResults（用于占位符或补充）
+		modelResults := make([]CapabilityModelJobResult, 0)
+		for _, probeModel := range probeModels {
+			actualModel := config.RedirectModel(probeModel, channel)
+			if actualModel != probeModel {
+				modelResults = append(modelResults, CapabilityModelJobResult{
+					Model:       probeModel,
+					ActualModel: actualModel,
+					Status:      CapabilityModelStatusQueued,
+					Lifecycle:   CapabilityLifecyclePending,
+					Outcome:     CapabilityOutcomeUnknown,
+				})
+			}
+		}
+
 		// 检查虚拟协议是否已存在
-		found := false
+		foundIdx := -1
 		for i := range job.Tests {
 			if job.Tests[i].Protocol == virtualProtocol {
-				found = true
+				foundIdx = i
 				break
 			}
 		}
-		if !found {
-			// 创建虚拟协议占位符，包含所有被重定向的探测模型
-			modelResults := make([]CapabilityModelJobResult, 0)
-			for _, probeModel := range probeModels {
-				actualModel := config.RedirectModel(probeModel, channel)
-				if actualModel != probeModel {
-					modelResults = append(modelResults, CapabilityModelJobResult{
-						Model:       probeModel,
-						ActualModel: actualModel,
-						Status:      CapabilityModelStatusQueued,
-						Lifecycle:   CapabilityLifecyclePending,
-						Outcome:     CapabilityOutcomeUnknown,
-					})
-				}
-			}
+		if foundIdx < 0 {
+			// 不存在则创建
 			job.Tests = append([]CapabilityProtocolJobResult{{
 				Protocol:        virtualProtocol,
 				Status:          CapabilityProtocolStatusQueued,
@@ -104,6 +106,12 @@ func runRedirectVerification(ctx context.Context, channel *config.UpstreamConfig
 				ModelResults:    modelResults,
 				TestedAt:        time.Now().Format(time.RFC3339Nano),
 			}}, job.Tests...)
+		} else {
+			// 已存在但 ModelResults 为空（如 handler 初始化的占位），补充它
+			if len(job.Tests[foundIdx].ModelResults) == 0 {
+				job.Tests[foundIdx].ModelResults = modelResults
+				job.Tests[foundIdx].AttemptedModels = len(modelResults)
+			}
 		}
 	})
 
