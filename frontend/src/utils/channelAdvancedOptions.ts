@@ -1,5 +1,5 @@
 export type ChannelServiceType = 'openai' | 'gemini' | 'claude' | 'responses' | ''
-export type ReasoningEffort = 'none' | 'low' | 'medium' | 'high' | 'xhigh'
+export type ReasoningEffort = 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 export type TextVerbosity = 'low' | 'medium' | 'high' | ''
 
 export interface AdvancedChannelOptions {

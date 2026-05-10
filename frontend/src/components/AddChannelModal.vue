@@ -1343,7 +1343,8 @@ const reasoningEffortOptions = [
   { title: 'Low', value: 'low' },
   { title: 'Medium', value: 'medium' },
   { title: 'High', value: 'high' },
-  { title: 'XHigh', value: 'xhigh' }
+  { title: 'XHigh', value: 'xhigh' },
+  { title: 'Max', value: 'max' }
 ]
 
 const textVerbosityOptions = [
@@ -1367,7 +1368,7 @@ const modelMappingPresets: Record<
   'gpt-5.5' | 'gpt-5.4' | 'gpt-5.3-codex' | 'gpt-5.2-codex',
   {
     modelMapping: Record<string, string>
-    reasoningMapping: Record<string, 'none' | 'low' | 'medium' | 'high' | 'xhigh'>
+    reasoningMapping: Record<string, 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'>
     fastMode: boolean
     textVerbosity: 'low' | 'medium' | 'high'
   }
@@ -1498,7 +1499,7 @@ const form = reactive({
   description: '',
   apiKeys: [] as string[],
   modelMapping: {} as Record<string, string>,
-  reasoningMapping: {} as Record<string, 'none' | 'low' | 'medium' | 'high' | 'xhigh'>,
+  reasoningMapping: {} as Record<string, 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'>,
   textVerbosity: '' as 'low' | 'medium' | 'high' | '',
   fastMode: false,
   customHeaders: {} as Record<string, string>,
@@ -1549,7 +1550,7 @@ const copiedKeyIndex = ref<number | null>(null)
 const newMapping = reactive({
   source: '',
   target: '',
-  reasoningEffort: '' as 'none' | 'low' | 'medium' | 'high' | 'xhigh' | ''
+  reasoningEffort: '' as 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | ''
 })
 
 // 自定义请求头输入

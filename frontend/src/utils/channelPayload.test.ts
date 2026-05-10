@@ -16,7 +16,7 @@ describe('buildChannelPayload', () => {
       description: '  desc  ',
       apiKeys: ['sk-1', '  ', 'sk-2'],
       modelMapping: { 'gpt-5': 'gpt-5.2' },
-      reasoningMapping: { 'gpt-5': 'high' },
+      reasoningMapping: { 'gpt-5': 'max' },
       textVerbosity: 'medium',
       fastMode: true,
       customHeaders: { 'x-test': '1' },
@@ -33,7 +33,7 @@ describe('buildChannelPayload', () => {
     expect(result.description).toBe('desc')
     expect(result.apiKeys).toEqual(['sk-1', 'sk-2'])
     expect(result.modelMapping).toEqual({ 'gpt-5': 'gpt-5.2' })
-    expect(result.reasoningMapping).toEqual({ 'gpt-5': 'high' })
+    expect(result.reasoningMapping).toEqual({ 'gpt-5': 'max' })
     expect(result.textVerbosity).toBe('medium')
     expect(result.fastMode).toBe(true)
     expect(result.proxyUrl).toBe('http://127.0.0.1:7890')

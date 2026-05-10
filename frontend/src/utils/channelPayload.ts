@@ -15,7 +15,7 @@ export interface ChannelFormLike {
   description: string
   apiKeys: string[]
   modelMapping: Record<string, string>
-  reasoningMapping: Record<string, 'none' | 'low' | 'medium' | 'high' | 'xhigh'>
+  reasoningMapping: Record<string, 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'>
   textVerbosity: 'low' | 'medium' | 'high' | ''
   fastMode: boolean
   customHeaders: Record<string, string>
