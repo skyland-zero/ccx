@@ -8,7 +8,6 @@ import (
 
 	"github.com/BenedictKing/ccx/internal/config"
 	"github.com/BenedictKing/ccx/internal/handlers/common"
-	"github.com/BenedictKing/ccx/internal/httpclient"
 	"github.com/BenedictKing/ccx/internal/metrics"
 )
 
@@ -20,15 +19,16 @@ import (
 func runRedirectVerification(ctx context.Context, channel *config.UpstreamConfig, channelKind, sourceTab string, perModelTimeout time.Duration, effectiveRPM int, jobID string, cfgManager *config.ConfigManager, channelID int, apiKey, dispatcherKey string, channelLogStore *metrics.ChannelLogStore, userModels []string) []RedirectModelResult {
 	var redirectedModels []RedirectModelResult
 
-	log.Printf("[RedirectTest-Debug] 渠道 %s (类型:%s), sourceTab=%s", channel.Name, channelKind, sourceTab)
+	// 同源虚拟协议（sourceTab == channelServiceType）等同于原生协议测试，不需要额外构造
+	channelServiceType := serviceTypeToChannelKind(channel.ServiceType)
+
+	log.Printf("[RedirectTest-Debug] 渠道 %s (入口类型:%s, 上游类型:%s), sourceTab=%s", channel.Name, channelKind, channelServiceType, sourceTab)
 
 	// 如果没有 sourceTab，不进行重定向测试
 	if sourceTab == "" {
 		return nil
 	}
 
-	// 同源虚拟协议（sourceTab == channelServiceType）等同于原生协议测试，不需要额外构造
-	channelServiceType := serviceTypeToChannelKind(channel.ServiceType)
 	if sourceTab == channelServiceType {
 		return nil
 	}
@@ -152,7 +152,7 @@ func runRedirectVerification(ctx context.Context, channel *config.UpstreamConfig
 				}
 			}
 		})
-		result := executeRedirectModelTest(ctx, channel, channelKind, rt.ProbeModel, rt.ActualModel, perModelTimeout, jobID, cfgManager, channelID, apiKey, channelLogStore)
+		result := executeRedirectModelTest(ctx, channel, channelServiceType, rt.ProbeModel, rt.ActualModel, perModelTimeout, jobID, cfgManager, channelID, apiKey, channelLogStore)
 		results = append(results, result)
 		// 实时更新模型状态为 success/failed
 		modelStatus := CapabilityModelStatusFailed
@@ -261,11 +261,10 @@ func executeRedirectModelTest(ctx context.Context, channel *config.UpstreamConfi
 	defer cancel()
 	req = req.WithContext(reqCtx)
 
-	client := httpclient.GetManager().GetStandardClient(timeout, channel.InsecureSkipVerify, channel.ProxyURL)
 	startTime := time.Now()
 	log.Printf("[RedirectTest-Model] 渠道 %s 启动重定向测试 (探测: %s → 实际: %s)", channel.Name, probeModel, actualModel)
 
-	success, streamingSupported, statusCode, respBody, sendErr := sendAndCheckStream(reqCtx, client, req, protocol)
+	success, streamingSupported, statusCode, respBody, sendErr := sendAndCheckStream(reqCtx, channel, req, protocol)
 	result.Latency = time.Since(startTime).Milliseconds()
 	result.TestedAt = time.Now().Format(time.RFC3339Nano)
 

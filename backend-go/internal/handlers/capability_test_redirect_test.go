@@ -1,22 +1,92 @@
 package handlers
 
 import (
+	"context"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/BenedictKing/ccx/internal/config"
 )
 
-// TestRunRedirectVerification_SharedActualModel 测试多个探测模型重定向到同一个 actualModel 的场景
+// TestRunRedirectVerification_UsesChannelServiceTypeForVirtualProtocol 确保跨协议测试按上游真实类型发请求
+func TestRunRedirectVerification_UsesChannelServiceTypeForVirtualProtocol(t *testing.T) {
+	resetCapabilityTestState()
+
+	var requestCount atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount.Add(1)
+		if r.URL.Path != "/v1/responses" {
+			http.Error(w, "unexpected path: "+r.URL.Path, http.StatusBadRequest)
+			return
+		}
+		if r.Header.Get("Originator") != "codex_cli_rs" {
+			http.Error(w, "unexpected originator: "+r.Header.Get("Originator"), http.StatusBadRequest)
+			return
+		}
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "read body failed", http.StatusBadRequest)
+			return
+		}
+		var payload map[string]interface{}
+		if err := json.Unmarshal(body, &payload); err != nil {
+			http.Error(w, "invalid json body", http.StatusBadRequest)
+			return
+		}
+		if _, ok := payload["input"]; !ok {
+			http.Error(w, "missing responses input field: "+string(body), http.StatusBadRequest)
+			return
+		}
+		if _, ok := payload["messages"]; ok {
+			http.Error(w, "unexpected messages field: "+string(body), http.StatusBadRequest)
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"hello\"}\n\n"))
+		_, _ = w.Write([]byte("event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}}\n\n"))
+	}))
+	defer server.Close()
+
+	channel := &config.UpstreamConfig{
+		Name:        "responses-channel",
+		ServiceType: "responses",
+		BaseURL:     server.URL,
+		APIKeys:     []string{"test-key"},
+		ModelMapping: map[string]string{
+			"claude-opus-4-7": "gpt-5.5",
+		},
+	}
+	job := newCapabilityTestJob(1, channel.Name, "messages", channel.ServiceType, []string{"messages->responses"}, 5*time.Second, 600)
+	capabilityJobs.create(job)
+
+	results := runRedirectVerification(context.Background(), channel, "messages", "messages", 5*time.Second, 600, job.JobID, nil, 1, "test-key", "test-dispatcher", nil, []string{"claude-opus-4-7"})
+	if len(results) != 1 {
+		t.Fatalf("results length=%d, want 1", len(results))
+	}
+	if !results[0].Success {
+		t.Fatalf("redirect result success=false, error=%v", results[0].Error)
+	}
+	if got := requestCount.Load(); got != 1 {
+		t.Fatalf("request count=%d, want 1", got)
+	}
+}
+
 func TestRunRedirectVerification_SharedActualModel(t *testing.T) {
 	// 准备测试数据
 	channel := &config.UpstreamConfig{
 		Name:        "test-channel",
 		ServiceType: "claude",
 		ModelMapping: map[string]string{
-			"claude-sonnet-4-6":           "glm-5.1-pro",
-			"claude-sonnet-4-5-20250929":  "glm-5.1-pro", // 重定向到同一个模型
-			"claude-haiku-4-5-20251001":   "glm-5.1",
+			"claude-sonnet-4-6":          "glm-5.1-pro",
+			"claude-sonnet-4-5-20250929": "glm-5.1-pro", // 重定向到同一个模型
+			"claude-haiku-4-5-20251001":  "glm-5.1",
 		},
 	}
 
@@ -227,7 +297,7 @@ func TestVirtualProtocolSnapshot_InitialState(t *testing.T) {
 		Name:        "test-channel",
 		ServiceType: "openai",
 		ModelMapping: map[string]string{
-			"claude-sonnet-4-6": "gpt-5.5",
+			"claude-sonnet-4-6":         "gpt-5.5",
 			"claude-haiku-4-5-20251001": "gpt-5.3-codex",
 		},
 		APIKeys: []string{"test-key"},

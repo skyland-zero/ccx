@@ -343,8 +343,10 @@ func getCapabilityStreamProvider(protocol string) providers.Provider {
 
 // ============== 流式响应检测 ==============
 
-func sendAndCheckStream(ctx context.Context, client *http.Client, req *http.Request, protocol string) (bool, bool, int, []byte, error) {
-	resp, err := client.Do(req)
+func sendAndCheckStream(ctx context.Context, channel *config.UpstreamConfig, req *http.Request, protocol string) (bool, bool, int, []byte, error) {
+	envCfg := config.NewEnvConfig()
+	apiType := channelKindToApiType(protocol)
+	resp, err := common.SendRequest(req, channel, envCfg, true, apiType)
 	if err != nil {
 		return false, false, 0, nil, err
 	}
@@ -352,16 +354,25 @@ func sendAndCheckStream(ctx context.Context, client *http.Client, req *http.Requ
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		bodyBytes, _ := io.ReadAll(resp.Body)
+		common.LogUpstreamResponse(resp, bodyBytes, envCfg, apiType)
 		return false, false, resp.StatusCode, bodyBytes, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
+
+	common.LogUpstreamResponseHeaders(resp, envCfg, apiType)
 
 	provider := getCapabilityStreamProvider(protocol)
 	if provider == nil {
 		return false, false, resp.StatusCode, nil, fmt.Errorf("unsupported protocol provider: %s", protocol)
 	}
 
-	eventChan, errChan, err := provider.HandleStreamResponse(resp.Body)
+	responseLogBuffer := common.NewLimitedLogBuffer(common.MaxUpstreamResponseLogBytes)
+	bodyReader := io.Reader(resp.Body)
+	if envCfg.EnableResponseLogs && envCfg.IsDevelopment() {
+		bodyReader = io.TeeReader(resp.Body, responseLogBuffer)
+	}
+	eventChan, errChan, err := provider.HandleStreamResponse(io.NopCloser(bodyReader))
 	if err != nil {
+		common.LogUpstreamResponseBody(responseLogBuffer.Bytes(), envCfg, apiType)
 		return false, false, resp.StatusCode, nil, err
 	}
 
@@ -387,8 +398,11 @@ func sendAndCheckStream(ctx context.Context, client *http.Client, req *http.Requ
 	select {
 	case result = <-doneCh:
 	case <-readCtx.Done():
+		common.LogUpstreamResponseBody(responseLogBuffer.Bytes(), envCfg, apiType)
 		return false, false, resp.StatusCode, nil, fmt.Errorf("流式响应读取超时")
 	}
+
+	common.LogUpstreamResponseBody(responseLogBuffer.Bytes(), envCfg, apiType)
 
 	if result.err != nil {
 		return false, false, resp.StatusCode, nil, result.err

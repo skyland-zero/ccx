@@ -346,6 +346,62 @@ func TestExecuteModelTest_RecordsCapabilityLogOnSuccess(t *testing.T) {
 	}
 }
 
+func TestExecuteModelTest_NativeProtocolDoesNotExposeActualModel(t *testing.T) {
+	resetCapabilityTestState()
+	gin.SetMode(gin.TestMode)
+
+	job := newCapabilityTestJob(0, "channel", "messages", "claude", []string{"messages"}, 10*time.Second, 10)
+	job.Tests[0].ModelResults = []CapabilityModelJobResult{{Model: "claude-test", Status: CapabilityModelStatusQueued, Lifecycle: CapabilityLifecyclePending, Outcome: CapabilityOutcomeUnknown}}
+	capabilityJobs.create(job)
+
+	tmpDir := t.TempDir()
+	configFile := filepath.Join(tmpDir, "config.json")
+	initialConfig := `{
+		"upstream": [{
+			"name": "channel",
+			"baseUrl": "REPLACE_ME",
+			"apiKeys": ["test-key"],
+			"serviceType": "claude",
+			"modelMapping": {"claude-test": "claude-redirected"}
+		}]
+	}`
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"delta\":{\"text\":\"hello\"}}\n\n"))
+	}))
+	defer server.Close()
+
+	initialConfig = strings.Replace(initialConfig, "REPLACE_ME", server.URL, 1)
+	if err := os.WriteFile(configFile, []byte(initialConfig), 0644); err != nil {
+		t.Fatalf("write config failed: %v", err)
+	}
+
+	cfgManager, err := config.NewConfigManager(configFile)
+	if err != nil {
+		t.Fatalf("create config manager failed: %v", err)
+	}
+	defer cfgManager.Close()
+
+	cfg := cfgManager.GetConfig()
+	result := executeModelTest(context.Background(), &cfg.Upstream[0], "messages", "claude-test", 5*time.Second, job.JobID, cfgManager, 0, "messages", "test-key", nil)
+	if !result.Success {
+		t.Fatalf("result.Success=false, want true")
+	}
+	if result.ActualModel != "" {
+		t.Fatalf("result.ActualModel=%q, want empty for native protocol", result.ActualModel)
+	}
+
+	stored, ok := capabilityJobs.get(job.JobID)
+	if !ok {
+		t.Fatal("job not found")
+	}
+	if got := stored.Tests[0].ModelResults[0].ActualModel; got != "" {
+		t.Fatalf("job model ActualModel=%q, want empty for native protocol", got)
+	}
+}
+
 func TestExecuteModelTest_RecordsCapabilityLogOnFailure(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

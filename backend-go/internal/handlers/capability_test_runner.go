@@ -9,7 +9,6 @@ import (
 
 	"github.com/BenedictKing/ccx/internal/config"
 	"github.com/BenedictKing/ccx/internal/handlers/common"
-	"github.com/BenedictKing/ccx/internal/httpclient"
 	"github.com/BenedictKing/ccx/internal/metrics"
 )
 
@@ -620,17 +619,9 @@ func isCapabilityJobCancelled(jobID string) bool {
 func executeModelTest(ctx context.Context, channel *config.UpstreamConfig, protocol, model string, timeout time.Duration, jobID string, cfgManager *config.ConfigManager, channelID int, channelKind, apiKey string, channelLogStore *metrics.ChannelLogStore) ModelTestResult {
 	startedAt := time.Now()
 
-	// 仅记录 actualModel 用于前端展示，不影响实际测试请求
-	actualModel := config.RedirectModel(model, channel)
-	displayActualModel := ""
-	if actualModel != model {
-		displayActualModel = actualModel
-	}
-
 	modelResult := ModelTestResult{
-		Model:       model,
-		ActualModel: displayActualModel,
-		StartedAt:   startedAt.Format(time.RFC3339Nano),
+		Model:     model,
+		StartedAt: startedAt.Format(time.RFC3339Nano),
 	}
 
 	req, err := buildTestRequestWithModel(protocol, channel, model)
@@ -656,12 +647,10 @@ func executeModelTest(ctx context.Context, channel *config.UpstreamConfig, proto
 		updateCapabilityJobModelResult(job, protocol, model, CapabilityModelStatusRunning, modelResult)
 	})
 
-	client := httpclient.GetManager().GetStandardClient(timeout, channel.InsecureSkipVerify, channel.ProxyURL)
-
 	startTime := time.Now()
 	log.Printf("[CapabilityTest-Model] 渠道 %s 启动 %s 协议模型测试 (模型: %s, startedAt: %s)",
 		channel.Name, protocol, model, modelResult.StartedAt)
-	success, streamingSupported, statusCode, respBody, sendErr := sendAndCheckStream(reqCtx, client, req, protocol)
+	success, streamingSupported, statusCode, respBody, sendErr := sendAndCheckStream(reqCtx, channel, req, protocol)
 	modelResult.Latency = time.Since(startTime).Milliseconds()
 	modelResult.TestedAt = time.Now().Format(time.RFC3339Nano)
 	baseURL := req.URL.String()
