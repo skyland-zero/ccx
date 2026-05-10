@@ -311,6 +311,93 @@ func TestRunRedirectVerification_SharedActualModel(t *testing.T) {
 	}
 }
 
+func TestFilterCapabilityProbeModels(t *testing.T) {
+	probeModels := []string{"claude-opus-4-7", "claude-opus-4-6", "claude-sonnet-4-6"}
+	filtered := filterCapabilityProbeModels(probeModels, []string{"claude-opus-4-7"})
+
+	if len(filtered) != 1 {
+		t.Fatalf("filtered len = %d, want 1: %#v", len(filtered), filtered)
+	}
+	if filtered[0] != "claude-opus-4-7" {
+		t.Fatalf("filtered[0] = %q, want claude-opus-4-7", filtered[0])
+	}
+
+	unfiltered := filterCapabilityProbeModels(probeModels, nil)
+	if len(unfiltered) != len(probeModels) {
+		t.Fatalf("unfiltered len = %d, want %d", len(unfiltered), len(probeModels))
+	}
+}
+
+func TestUpdateCapabilityJobModelResultsByActualModel_UpdatesSharedModelsImmediately(t *testing.T) {
+	now := time.Now().Format(time.RFC3339Nano)
+	job := &CapabilityTestJob{
+		JobID:       "cap-test-shared-actual",
+		ChannelID:   1,
+		ChannelName: "test-channel",
+		ChannelKind: "messages",
+		SourceType:  "openai",
+		Tests: []CapabilityProtocolJobResult{
+			{
+				Protocol:  "messages->chat",
+				Status:    CapabilityProtocolStatusQueued,
+				Lifecycle: CapabilityLifecyclePending,
+				Outcome:   CapabilityOutcomeUnknown,
+				ModelResults: []CapabilityModelJobResult{
+					{Model: "claude-opus-4-7", ActualModel: "gpt-5.5", Status: CapabilityModelStatusQueued, Lifecycle: CapabilityLifecyclePending, Outcome: CapabilityOutcomeUnknown},
+					{Model: "claude-opus-4-6", ActualModel: "gpt-5.5", Status: CapabilityModelStatusQueued, Lifecycle: CapabilityLifecyclePending, Outcome: CapabilityOutcomeUnknown},
+					{Model: "claude-sonnet-4-6", ActualModel: "gpt-5.4", Status: CapabilityModelStatusQueued, Lifecycle: CapabilityLifecyclePending, Outcome: CapabilityOutcomeUnknown},
+				},
+				TestedAt: now,
+			},
+		},
+		UpdatedAt: now,
+	}
+
+	updated := updateCapabilityJobModelResultsByActualModel(job, "messages->chat", "gpt-5.5", CapabilityModelStatusRunning, ModelTestResult{
+		ActualModel: "gpt-5.5",
+		StartedAt:   now,
+	})
+	if updated != 2 {
+		t.Fatalf("updated running models=%d, want 2", updated)
+	}
+
+	for _, mr := range job.Tests[0].ModelResults[:2] {
+		if mr.Status != CapabilityModelStatusRunning {
+			t.Fatalf("model %s status=%s, want running", mr.Model, mr.Status)
+		}
+		if mr.Lifecycle != CapabilityLifecycleActive {
+			t.Fatalf("model %s lifecycle=%s, want active", mr.Model, mr.Lifecycle)
+		}
+	}
+	if job.Tests[0].ModelResults[2].Status != CapabilityModelStatusQueued {
+		t.Fatalf("unrelated model status=%s, want queued", job.Tests[0].ModelResults[2].Status)
+	}
+
+	updated = updateCapabilityJobModelResultsByActualModel(job, "messages->chat", "gpt-5.5", CapabilityModelStatusSuccess, ModelTestResult{
+		ActualModel:        "gpt-5.5",
+		Success:            true,
+		Latency:            1234,
+		StreamingSupported: true,
+		StartedAt:          now,
+		TestedAt:           now,
+	})
+	if updated != 2 {
+		t.Fatalf("updated success models=%d, want 2", updated)
+	}
+
+	for _, mr := range job.Tests[0].ModelResults[:2] {
+		if mr.Status != CapabilityModelStatusSuccess {
+			t.Fatalf("model %s status=%s, want success", mr.Model, mr.Status)
+		}
+		if mr.Outcome != CapabilityOutcomeSuccess {
+			t.Fatalf("model %s outcome=%s, want success", mr.Model, mr.Outcome)
+		}
+		if mr.Latency != 1234 {
+			t.Fatalf("model %s latency=%d, want 1234", mr.Model, mr.Latency)
+		}
+	}
+}
+
 // TestVirtualProtocolSnapshot_InitialState 测试虚拟协议快照的初始状态
 func TestVirtualProtocolSnapshot_InitialState(t *testing.T) {
 	channel := &config.UpstreamConfig{

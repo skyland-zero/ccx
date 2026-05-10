@@ -767,10 +767,12 @@ const isCapabilityProtocol = (protocol: string): boolean => {
 
 const buildCapabilityModels = (
   protocol: string,
-  status: CapabilityModelJobResult['status']
+  status: CapabilityModelJobResult['status'],
+  models?: string[]
 ): CapabilityModelJobResult[] => {
   const now = new Date().toISOString()
-  return getPlaceholderModelsForProtocol(protocol).map(model => ({
+  const targetModels = models?.length ? models : getPlaceholderModelsForProtocol(protocol)
+  return targetModels.map(model => ({
     model,
     status,
     lifecycle: status === 'running' ? 'active' : 'pending',
@@ -784,11 +786,12 @@ const buildCapabilityModels = (
 
 const buildCapabilityProtocolResult = (
   protocol: string,
-  status: CapabilityProtocolJobResult['status']
+  status: CapabilityProtocolJobResult['status'],
+  models?: string[]
 ): CapabilityProtocolJobResult => {
   const now = new Date().toISOString()
   const modelStatus: CapabilityModelJobResult['status'] = status === 'running' ? 'running' : status === 'queued' ? 'queued' : 'idle'
-  const modelResults = buildCapabilityModels(protocol, modelStatus)
+  const modelResults = buildCapabilityModels(protocol, modelStatus, models)
   return {
     protocol,
     status,
@@ -954,11 +957,13 @@ const mergeCapabilityProtocolResult = (baseTest: CapabilityProtocolJobResult, in
   }
   const modelResults = Array.from(modelResultsByModel.values())
 
+  const attemptedModels = modelResults.filter(modelResult => (modelResult.status as string) !== 'idle').length
+
   return {
     ...baseTest,
     ...incomingTest,
     modelResults,
-    attemptedModels: Math.max(baseTest.attemptedModels ?? 0, incomingTest.attemptedModels ?? 0, modelResults.length),
+    attemptedModels,
     successCount: modelResults.filter(modelResult => modelResult.status === 'success' || modelResult.outcome === 'success').length
   }
 }
@@ -1227,7 +1232,7 @@ const handleTestCapabilityProtocol = async (protocol: string, models?: string[])
     status: 'queued',
     lifecycle: 'pending',
     outcome: 'unknown',
-    tests: [buildCapabilityProtocolResult(protocol, 'queued')],
+    tests: [buildCapabilityProtocolResult(protocol, 'queued', models)],
     targetProtocols: [protocol],
     updatedAt: new Date().toISOString()
   })

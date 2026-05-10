@@ -215,6 +215,10 @@ func newCapabilityJobID() string {
 }
 
 func newCapabilityTestJob(channelID int, channelName, channelKind, sourceType string, protocols []string, timeout time.Duration, effectiveRPM int) *CapabilityTestJob {
+	return newCapabilityTestJobWithModels(channelID, channelName, channelKind, sourceType, protocols, timeout, effectiveRPM, nil)
+}
+
+func newCapabilityTestJobWithModels(channelID int, channelName, channelKind, sourceType string, protocols []string, timeout time.Duration, effectiveRPM int, requestedModels []string) *CapabilityTestJob {
 	now := time.Now().Format(time.RFC3339Nano)
 	job := &CapabilityTestJob{
 		JobID:               newCapabilityJobID(),
@@ -237,16 +241,14 @@ func newCapabilityTestJob(channelID int, channelName, channelKind, sourceType st
 	}
 
 	for _, protocol := range protocols {
-		var modelResults []CapabilityModelJobResult
-		if models, err := getCapabilityProbeModels(protocol); err == nil {
-			modelResults = make([]CapabilityModelJobResult, len(models))
-			for i, model := range models {
-				modelResults[i] = CapabilityModelJobResult{
-					Model:     model,
-					Status:    CapabilityModelStatusQueued,
-					Lifecycle: CapabilityLifecyclePending,
-					Outcome:   CapabilityOutcomeUnknown,
-				}
+		models := capabilityJobInitialModels(protocol, requestedModels)
+		modelResults := make([]CapabilityModelJobResult, len(models))
+		for i, model := range models {
+			modelResults[i] = CapabilityModelJobResult{
+				Model:     model,
+				Status:    CapabilityModelStatusQueued,
+				Lifecycle: CapabilityLifecyclePending,
+				Outcome:   CapabilityOutcomeUnknown,
 			}
 		}
 		job.Tests = append(job.Tests, CapabilityProtocolJobResult{
@@ -261,6 +263,17 @@ func newCapabilityTestJob(channelID int, channelName, channelKind, sourceType st
 	}
 
 	return job
+}
+
+func capabilityJobInitialModels(protocol string, requestedModels []string) []string {
+	if len(requestedModels) > 0 {
+		return append([]string(nil), requestedModels...)
+	}
+	models, err := getCapabilityProbeModels(protocol)
+	if err != nil {
+		return nil
+	}
+	return models
 }
 
 func buildCapabilityJobLookupKey(cacheKey, channelKind string, channelID int) string {

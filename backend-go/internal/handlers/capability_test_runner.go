@@ -169,8 +169,9 @@ func runCapabilityTestJob(jobID, channelKind string, channelID int, channel conf
 			actualModelResults[rr.ActualModel] = rr
 		}
 
-		// 获取所有探测模型，按顺序生成模型结果
+		// 获取本次探测模型，按顺序生成模型结果
 		probeModels, _ := getCapabilityProbeModels(sourceTab)
+		probeModels = filterCapabilityProbeModels(probeModels, userModels)
 		var modelResults []ModelTestResult
 		successCount := 0
 		totalLatency := int64(0)

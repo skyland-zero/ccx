@@ -7,6 +7,38 @@ import (
 	"time"
 )
 
+func TestNewCapabilityTestJobWithModels_UsesRequestedModelsOnly(t *testing.T) {
+	job := newCapabilityTestJobWithModels(1, "channel", "messages", "claude", []string{"messages"}, 10*time.Second, 10, []string{"claude-opus-4-7"})
+
+	if len(job.Tests) != 1 {
+		t.Fatalf("tests len = %d, want 1", len(job.Tests))
+	}
+	modelResults := job.Tests[0].ModelResults
+	if len(modelResults) != 1 {
+		t.Fatalf("model results len = %d, want 1: %#v", len(modelResults), modelResults)
+	}
+	if modelResults[0].Model != "claude-opus-4-7" {
+		t.Fatalf("model = %q, want claude-opus-4-7", modelResults[0].Model)
+	}
+	if modelResults[0].Status != CapabilityModelStatusQueued {
+		t.Fatalf("status = %s, want queued", modelResults[0].Status)
+	}
+	if job.Tests[0].AttemptedModels != 1 {
+		t.Fatalf("attempted models = %d, want 1", job.Tests[0].AttemptedModels)
+	}
+}
+
+func TestNewCapabilityTestJobWithModels_FallsBackToProbeModels(t *testing.T) {
+	job := newCapabilityTestJobWithModels(1, "channel", "messages", "claude", []string{"messages"}, 10*time.Second, 10, nil)
+
+	if len(job.Tests) != 1 {
+		t.Fatalf("tests len = %d, want 1", len(job.Tests))
+	}
+	if len(job.Tests[0].ModelResults) <= 1 {
+		t.Fatalf("expected full probe model placeholders, got %#v", job.Tests[0].ModelResults)
+	}
+}
+
 func TestCapabilityJobStore_GetOrCreateByLookupKey_Concurrent(t *testing.T) {
 	store := &capabilityTestJobStore{
 		jobs:      make(map[string]*CapabilityTestJob),

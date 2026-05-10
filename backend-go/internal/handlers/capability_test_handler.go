@@ -163,14 +163,14 @@ func TestChannelCapability(cfgManager *config.ConfigManager, channelLogStore *me
 		}
 
 		job, reused := capabilityJobs.getOrCreateByLookupKey(executionLookupKey, func() *CapabilityTestJob {
-			created := newCapabilityTestJob(id, channel.Name, channelKind, channel.ServiceType, protocols, timeout, effectiveRPM)
+			created := newCapabilityTestJobWithModels(id, channel.Name, channelKind, channel.ServiceType, protocols, timeout, effectiveRPM, normalizedModels)
 			created.IdentityKey = identityKey
 			created.ExecutionKey = executionLookupKey
 			return created
 		})
 		if reused && job.Lifecycle == CapabilityLifecycleCancelled {
 			capabilityJobs.clearLookupKey(executionLookupKey)
-			job = newCapabilityTestJob(id, channel.Name, channelKind, channel.ServiceType, protocols, timeout, effectiveRPM)
+			job = newCapabilityTestJobWithModels(id, channel.Name, channelKind, channel.ServiceType, protocols, timeout, effectiveRPM, normalizedModels)
 			job.IdentityKey = identityKey
 			job.ExecutionKey = executionLookupKey
 			capabilityJobs.create(job)

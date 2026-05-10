@@ -35,20 +35,7 @@ func runRedirectVerification(ctx context.Context, channel *config.UpstreamConfig
 		return nil
 	}
 
-	// 如果指定了 userModels，过滤 probeModels 只保留用户请求的
-	if len(userModels) > 0 {
-		userSet := make(map[string]bool, len(userModels))
-		for _, m := range userModels {
-			userSet[m] = true
-		}
-		filtered := make([]string, 0, len(userModels))
-		for _, m := range probeModels {
-			if userSet[m] {
-				filtered = append(filtered, m)
-			}
-		}
-		probeModels = filtered
-	}
+	probeModels = filterCapabilityProbeModels(probeModels, userModels)
 
 	testedActualModels := make(map[string]bool)
 	for _, m := range probeModels {
@@ -108,8 +95,7 @@ func runRedirectVerification(ctx context.Context, channel *config.UpstreamConfig
 				TestedAt:        time.Now().Format(time.RFC3339Nano),
 			}}, job.Tests...)
 		} else {
-			// 已存在但 ModelResults 为空（如 handler 初始化的占位），补充它
-			if len(job.Tests[foundIdx].ModelResults) == 0 {
+			if len(job.Tests[foundIdx].ModelResults) == 0 || len(userModels) > 0 {
 				job.Tests[foundIdx].ModelResults = modelResults
 				job.Tests[foundIdx].AttemptedModels = len(modelResults)
 			}
@@ -131,12 +117,12 @@ func runRedirectVerification(ctx context.Context, channel *config.UpstreamConfig
 			log.Printf("[RedirectTest-Dispatcher] 获取发送槽位失败: %v", err)
 			break
 		}
-		// 实时更新模型状态为 running
+		// 实时更新同一 actualModel 对应的所有探测模型状态为 running
+		startedAt := time.Now().Format(time.RFC3339Nano)
 		capabilityJobs.update(jobID, func(job *CapabilityTestJob) {
-			updateCapabilityJobModelResult(job, virtualProtocol, rt.ProbeModel, CapabilityModelStatusRunning, ModelTestResult{
-				Model:       rt.ProbeModel,
+			updateCapabilityJobModelResultsByActualModel(job, virtualProtocol, rt.ActualModel, CapabilityModelStatusRunning, ModelTestResult{
 				ActualModel: rt.ActualModel,
-				StartedAt:   time.Now().Format(time.RFC3339Nano),
+				StartedAt:   startedAt,
 			})
 			// 标记协议为 active
 			for i := range job.Tests {
@@ -155,8 +141,7 @@ func runRedirectVerification(ctx context.Context, channel *config.UpstreamConfig
 			modelStatus = CapabilityModelStatusSuccess
 		}
 		capabilityJobs.update(jobID, func(job *CapabilityTestJob) {
-			updateCapabilityJobModelResult(job, virtualProtocol, rt.ProbeModel, modelStatus, ModelTestResult{
-				Model:              rt.ProbeModel,
+			updateCapabilityJobModelResultsByActualModel(job, virtualProtocol, rt.ActualModel, modelStatus, ModelTestResult{
 				ActualModel:        rt.ActualModel,
 				Success:            result.Success,
 				Latency:            result.Latency,
@@ -235,6 +220,23 @@ func countRedirectSuccesses(results []RedirectModelResult) int {
 		}
 	}
 	return n
+}
+
+func filterCapabilityProbeModels(probeModels []string, userModels []string) []string {
+	if len(userModels) == 0 {
+		return probeModels
+	}
+	userSet := make(map[string]bool, len(userModels))
+	for _, model := range userModels {
+		userSet[model] = true
+	}
+	filtered := make([]string, 0, len(userModels))
+	for _, model := range probeModels {
+		if userSet[model] {
+			filtered = append(filtered, model)
+		}
+	}
+	return filtered
 }
 
 // executeRedirectModelTest 单个重定向模型测试：用 actualModel 构建请求，probeModel 记录到结果
@@ -342,6 +344,34 @@ func testSingleProtocol(ctx context.Context, channel *config.UpstreamConfig, pro
 func testSingleModel(ctx context.Context, channel *config.UpstreamConfig, protocol, model string, timeout time.Duration, jobID string) ModelTestResult {
 	// 已废弃，直接调用 executeModelTest
 	return executeModelTest(ctx, channel, protocol, model, timeout, jobID, nil, 0, "", "", nil)
+}
+
+func updateCapabilityJobModelResultsByActualModel(job *CapabilityTestJob, protocol, actualModel string, status CapabilityModelStatus, result ModelTestResult) int {
+	if actualModel == "" {
+		return 0
+	}
+	updated := 0
+	for i := range job.Tests {
+		if job.Tests[i].Protocol != protocol {
+			continue
+		}
+		for _, modelResult := range job.Tests[i].ModelResults {
+			modelActual := modelResult.ActualModel
+			if modelActual == "" {
+				modelActual = modelResult.Model
+			}
+			if modelActual != actualModel {
+				continue
+			}
+			perModelResult := result
+			perModelResult.Model = modelResult.Model
+			perModelResult.ActualModel = actualModel
+			updateCapabilityJobModelResult(job, protocol, modelResult.Model, status, perModelResult)
+			updated++
+		}
+		return updated
+	}
+	return 0
 }
 
 func updateCapabilityJobModelResult(job *CapabilityTestJob, protocol, model string, status CapabilityModelStatus, result ModelTestResult) {
