@@ -863,6 +863,10 @@ const isActiveCapabilityTest = (test: CapabilityProtocolJobResult): boolean => {
   return test.lifecycle === 'active' || test.status === 'running'
 }
 
+const isBusyCapabilityTest = (test: CapabilityProtocolJobResult): boolean => {
+  return !isIdleCapabilityTest(test) && (test.lifecycle === 'pending' || test.lifecycle === 'active' || test.status === 'queued' || test.status === 'running')
+}
+
 const isPendingCapabilityTest = (test: CapabilityProtocolJobResult): boolean => {
   return !isIdleCapabilityTest(test) && test.lifecycle === 'pending'
 }
@@ -1302,7 +1306,7 @@ const handleRetryCapabilityModel = async (protocol: string, model: string) => {
   const job = capabilityTestJob.value
   const protocolTest = job.tests.find(t => t.protocol === protocol)
   if (!protocolTest) return
-  if (protocolTest.lifecycle === 'pending' || protocolTest.lifecycle === 'active') return
+  if (isBusyCapabilityTest(protocolTest)) return
   const retryJobId = job.protocolJobRefs?.[protocol]?.jobId || job.protocolJobIds?.[protocol]
   if (!retryJobId) {
     // 没有 jobId（虚拟协议未测试过），启动单模型测试
@@ -1318,6 +1322,10 @@ const handleRetryCapabilityModel = async (protocol: string, model: string) => {
     await api.retryCapabilityTestModel(capabilityTestChannelType.value, capabilityTestChannelId.value, retryJobId, protocol, model)
     startCapabilityPolling(capabilityTestChannelType.value, capabilityTestChannelId.value, retryJobId)
   } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      await handleTestCapabilityProtocolWithModels(protocol, [model])
+      return
+    }
     console.error('Failed to retry capability test model:', error)
   }
 }

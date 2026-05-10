@@ -29,7 +29,7 @@ func shouldRunRedirectVerification(protocols []string, sourceTab, channelService
 	}
 	virtualProtocol := sourceTab + "->" + channelServiceType
 	for _, protocol := range protocols {
-		if protocol == sourceTab || protocol == virtualProtocol {
+		if protocol == virtualProtocol {
 			return true
 		}
 	}

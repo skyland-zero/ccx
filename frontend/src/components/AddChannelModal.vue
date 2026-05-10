@@ -2310,12 +2310,7 @@ const handleTestCapability = async () => {
     return
   }
 
-  const savedChannelId = await ensureLatestSavedChannel()
-  if (savedChannelId === null) {
-    return
-  }
-
-  emit('testCapability', savedChannelId)
+  emit('testCapability', props.channel.index)
 }
 
 // 监听props变化
