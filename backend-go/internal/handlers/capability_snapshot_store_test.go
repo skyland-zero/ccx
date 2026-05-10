@@ -1,8 +1,16 @@
 package handlers
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/BenedictKing/ccx/internal/config"
+	"github.com/gin-gonic/gin"
 )
 
 func TestCapabilitySnapshotStore_ReplaceFromJob(t *testing.T) {
@@ -172,6 +180,73 @@ func TestCapabilitySnapshotStore_MergesMultipleJobsSameIdentity(t *testing.T) {
 	}
 }
 
+func TestGetCapabilitySnapshot_PreservesSameSourceRedirectProtocol(t *testing.T) {
+	resetCapabilityTestState()
+	gin.SetMode(gin.TestMode)
+
+	cfg := config.Config{
+		Upstream: []config.UpstreamConfig{
+			{
+				Name:        "claude-redirect-channel",
+				BaseURL:     "https://example.test",
+				APIKeys:     []string{"sk-test"},
+				ServiceType: "claude",
+				ModelMapping: map[string]string{
+					"claude-sonnet-4-6": "claude-sonnet-4-6-upstream",
+				},
+			},
+		},
+	}
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatalf("marshal config failed: %v", err)
+	}
+
+	configFile := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(configFile, data, 0644); err != nil {
+		t.Fatalf("write config failed: %v", err)
+	}
+	cfgManager, err := config.NewConfigManager(configFile)
+	if err != nil {
+		t.Fatalf("create config manager failed: %v", err)
+	}
+	t.Cleanup(func() { cfgManager.Close() })
+
+	r := gin.New()
+	r.GET("/messages/channels/:id/capability-snapshot", GetCapabilitySnapshot(cfgManager, "messages"))
+
+	req := httptest.NewRequest(http.MethodGet, "/messages/channels/0/capability-snapshot?sourceTab=messages", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", w.Code, w.Body.String())
+	}
+
+	var snapshot CapabilitySnapshot
+	if err := json.Unmarshal(w.Body.Bytes(), &snapshot); err != nil {
+		t.Fatalf("unmarshal snapshot failed: %v", err)
+	}
+
+	test := findSnapshotTest(&snapshot, "messages->messages")
+	if test == nil {
+		t.Fatalf("expected messages->messages in snapshot tests: %#v", snapshot.Tests)
+	}
+	if test.AttemptedModels == 0 || len(test.ModelResults) == 0 {
+		t.Fatalf("expected model results for messages->messages, got attempted=%d len=%d", test.AttemptedModels, len(test.ModelResults))
+	}
+	mapped := false
+	for _, result := range test.ModelResults {
+		if result.Model == "claude-sonnet-4-6" && result.ActualModel == "claude-sonnet-4-6-upstream" {
+			mapped = true
+			break
+		}
+	}
+	if !mapped {
+		t.Fatalf("expected mapped claude-sonnet-4-6 model in messages->messages results: %#v", test.ModelResults)
+	}
+}
+
 func TestFilterSameSourceVirtualProtocols(t *testing.T) {
 	tests := []CapabilityProtocolJobResult{
 		{Protocol: "responses->responses"},
@@ -181,7 +256,7 @@ func TestFilterSameSourceVirtualProtocols(t *testing.T) {
 		{Protocol: "messages->chat"},
 	}
 
-	filtered := filterSameSourceVirtualProtocols(tests)
+	filtered := filterSameSourceVirtualProtocols(tests, "responses->chat")
 
 	if findProtocolResult(filtered, "responses->responses") != nil {
 		t.Fatal("expected responses->responses to be filtered")
@@ -193,6 +268,34 @@ func TestFilterSameSourceVirtualProtocols(t *testing.T) {
 		if findProtocolResult(filtered, protocol) == nil {
 			t.Fatalf("expected %s to be preserved", protocol)
 		}
+	}
+}
+
+func TestFilterSameSourceVirtualProtocols_PreservesCurrentProtocol(t *testing.T) {
+	tests := []CapabilityProtocolJobResult{
+		{Protocol: "messages->messages"},
+		{Protocol: "chat->chat"},
+		{Protocol: "responses->responses"},
+		{Protocol: "gemini->gemini"},
+		{Protocol: "messages->chat"},
+	}
+
+	for _, preserveProtocol := range []string{"messages->messages", "chat->chat", "responses->responses", "gemini->gemini"} {
+		t.Run(preserveProtocol, func(t *testing.T) {
+			filtered := filterSameSourceVirtualProtocols(tests, preserveProtocol)
+
+			if findProtocolResult(filtered, preserveProtocol) == nil {
+				t.Fatalf("expected %s to be preserved", preserveProtocol)
+			}
+			for _, protocol := range []string{"messages->messages", "chat->chat", "responses->responses", "gemini->gemini"} {
+				if protocol != preserveProtocol && findProtocolResult(filtered, protocol) != nil {
+					t.Fatalf("expected %s to be filtered", protocol)
+				}
+			}
+			if findProtocolResult(filtered, "messages->chat") == nil {
+				t.Fatal("expected messages->chat to be preserved")
+			}
+		})
 	}
 }
 

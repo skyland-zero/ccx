@@ -19,17 +19,12 @@ import (
 func runRedirectVerification(ctx context.Context, channel *config.UpstreamConfig, channelKind, sourceTab string, perModelTimeout time.Duration, effectiveRPM int, jobID string, cfgManager *config.ConfigManager, channelID int, apiKey, dispatcherKey string, channelLogStore *metrics.ChannelLogStore, userModels []string) []RedirectModelResult {
 	var redirectedModels []RedirectModelResult
 
-	// 同源虚拟协议（sourceTab == channelServiceType）等同于原生协议测试，不需要额外构造
 	channelServiceType := serviceTypeToChannelKind(channel.ServiceType)
 
 	log.Printf("[RedirectTest-Debug] 渠道 %s (入口类型:%s, 上游类型:%s), sourceTab=%s", channel.Name, channelKind, channelServiceType, sourceTab)
 
 	// 如果没有 sourceTab，不进行重定向测试
 	if sourceTab == "" {
-		return nil
-	}
-
-	if sourceTab == channelServiceType {
 		return nil
 	}
 
@@ -187,6 +182,9 @@ func runRedirectVerification(ctx context.Context, channel *config.UpstreamConfig
 				successCount := 0
 				for j := range job.Tests[i].ModelResults {
 					actualModel := job.Tests[i].ModelResults[j].ActualModel
+					if actualModel == "" {
+						actualModel = job.Tests[i].ModelResults[j].Model
+					}
 					if result, ok := actualModelResults[actualModel]; ok {
 						modelStatus := CapabilityModelStatusFailed
 						if result.Success {

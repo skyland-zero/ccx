@@ -24,7 +24,7 @@ type testItem struct {
 // buildRoundRobinQueue 构建交错队列
 // 输出: messages[0], chat[0], gemini[0], responses[0], messages[1], chat[1], ...
 func shouldRunRedirectVerification(protocols []string, sourceTab, channelServiceType string) bool {
-	if sourceTab == "" || sourceTab == channelServiceType {
+	if sourceTab == "" {
 		return false
 	}
 	virtualProtocol := sourceTab + "->" + channelServiceType
@@ -160,7 +160,7 @@ func runCapabilityTestJob(jobID, channelKind string, channelID int, channel conf
 
 	// 将 redirectResults 转换为虚拟协议测试结果
 	var virtualResults []ProtocolTestResult
-	if len(redirectResults) > 0 && sourceTab != "" && sourceTab != channelServiceType {
+	if len(redirectResults) > 0 && sourceTab != "" {
 		virtualProtocol := sourceTab + "->" + channelServiceType
 
 		// 构建 actualModel 到测试结果的映射

@@ -46,11 +46,11 @@ func TestShouldRunRedirectVerification(t *testing.T) {
 			want:               true,
 		},
 		{
-			name:               "same source and channel protocol never creates same-source virtual protocol",
+			name:               "same source and channel protocol runs redirect verification for model mapping",
 			protocols:          []string{"responses"},
 			sourceTab:          "responses",
 			channelServiceType: "responses",
-			want:               false,
+			want:               true,
 		},
 		{
 			name:               "empty source tab does not run redirect verification",

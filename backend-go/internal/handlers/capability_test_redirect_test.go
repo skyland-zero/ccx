@@ -14,6 +14,26 @@ import (
 )
 
 // TestRunRedirectVerification_UsesChannelServiceTypeForVirtualProtocol 确保跨协议测试按上游真实类型发请求
+func TestExpandCapabilityProtocolsForChannel_IncludesSameProtocolWhenModelMappingExists(t *testing.T) {
+	channel := &config.UpstreamConfig{
+		ServiceType: "claude",
+		ModelMapping: map[string]string{
+			"claude-sonnet-4-6": "glm-5.1-pro",
+		},
+	}
+
+	got := expandCapabilityProtocolsForChannel("messages", channel, []string{"messages"})
+	want := []string{"messages->messages", "messages"}
+	if len(got) != len(want) {
+		t.Fatalf("protocols length=%d, want %d: %v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("protocols[%d]=%q, want %q: %v", i, got[i], want[i], got)
+		}
+	}
+}
+
 func TestRunRedirectVerification_UsesChannelServiceTypeForVirtualProtocol(t *testing.T) {
 	resetCapabilityTestState()
 
