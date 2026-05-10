@@ -1,5 +1,15 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+
+interface AuthState {
+  apiKey: string | null
+  authError: string
+  authAttempts: number
+  authLockoutTime: number | null
+  isAutoAuthenticating: boolean
+  isInitialized: boolean
+  authLoading: boolean
+  authKeyInput: string
+}
 
 /**
  * 认证状态管理 Store
@@ -11,140 +21,93 @@ import { ref, computed } from 'vue'
  * - 提供响应式的认证状态
  * - 自动持久化到 localStorage
  */
-// @ts-expect-error Pinia 3.x + TS 6.x persist plugin 深层类型推断溢出（运行时正常）
-export const useAuthStore = defineStore('auth', () => {
-  // ===== 状态 =====
+export const useAuthStore = defineStore('auth', {
+  state: (): AuthState => ({
+    apiKey: null,
+    authError: '',
+    authAttempts: 0,
+    authLockoutTime: null,
+    isAutoAuthenticating: true,
+    isInitialized: false,
+    authLoading: false,
+    authKeyInput: '',
+  }),
 
-  // API Key
-  const apiKey = ref<string | null>(null)
+  getters: {
+    isAuthenticated: (state): boolean => !!state.apiKey,
 
-  // 认证错误消息
-  const authError = ref('')
+    isAuthLocked: (state): boolean => {
+      if (!state.authLockoutTime) return false
+      return Date.now() < state.authLockoutTime
+    },
+  },
 
-  // 认证失败次数
-  const authAttempts = ref(0)
+  actions: {
+    setApiKey(key: string | null) {
+      this.apiKey = key
+      // 同时保存到旧的 localStorage key 以保持兼容性
+      if (key) {
+        localStorage.setItem('proxyAccessKey', key)
+      } else {
+        localStorage.removeItem('proxyAccessKey')
+      }
+    },
 
-  // 认证锁定时间（存储时间戳）
-  const authLockoutTime = ref<number | null>(null)
-
-  // 自动认证进行中
-  const isAutoAuthenticating = ref(true) // 初始化为true，防止登录框闪现
-
-  // 初始化完成标志
-  const isInitialized = ref(false)
-
-  // 认证加载状态
-  const authLoading = ref(false)
-
-  // 认证输入框值
-  const authKeyInput = ref('')
-
-  // ===== 计算属性 =====
-
-  const isAuthenticated = computed(() => !!apiKey.value)
-
-  // 检查是否被锁定
-  const isAuthLocked = computed(() => {
-    if (!authLockoutTime.value) return false
-    return Date.now() < authLockoutTime.value
-  })
-
-  // ===== 操作方法 =====
-
-  function setApiKey(key: string | null) {
-    apiKey.value = key
-    // 同时保存到旧的 localStorage key 以保持兼容性
-    if (key) {
-      localStorage.setItem('proxyAccessKey', key)
-    } else {
+    clearAuth() {
+      this.apiKey = null
+      // 清除旧的 localStorage key
       localStorage.removeItem('proxyAccessKey')
-    }
-  }
+    },
 
-  function clearAuth() {
-    apiKey.value = null
-    // 清除旧的 localStorage key
-    localStorage.removeItem('proxyAccessKey')
-  }
+    initializeAuth() {
+      // 优先从旧的 localStorage key 读取（兼容性）
+      const oldKey = localStorage.getItem('proxyAccessKey')
+      if (oldKey) {
+        this.apiKey = oldKey
+      }
 
-  function initializeAuth() {
-    // 优先从旧的 localStorage key 读取（兼容性）
-    const oldKey = localStorage.getItem('proxyAccessKey')
-    if (oldKey) {
-      apiKey.value = oldKey
-      return
-    }
+      // 如果没有旧 key，尝试从 Pinia 持久化恢复
+      // （由 persistedstate 插件自动处理）
+    },
 
-    // 如果没有旧 key，尝试从 Pinia 持久化恢复
-    // （由 persistedstate 插件自动处理）
-  }
+    setAuthError(error: string) {
+      this.authError = error
+    },
 
-  function setAuthError(error: string) {
-    authError.value = error
-  }
+    incrementAuthAttempts() {
+      this.authAttempts++
+    },
 
-  function incrementAuthAttempts() {
-    authAttempts.value++
-  }
+    resetAuthAttempts() {
+      this.authAttempts = 0
+    },
 
-  function resetAuthAttempts() {
-    authAttempts.value = 0
-  }
+    setAuthLockout(lockoutTime: Date | null) {
+      this.authLockoutTime = lockoutTime ? lockoutTime.getTime() : null
+    },
 
-  function setAuthLockout(lockoutTime: Date | null) {
-    authLockoutTime.value = lockoutTime ? lockoutTime.getTime() : null
-  }
+    setAutoAuthenticating(value: boolean) {
+      this.isAutoAuthenticating = value
+    },
 
-  function setAutoAuthenticating(value: boolean) {
-    isAutoAuthenticating.value = value
-  }
+    setInitialized(value: boolean) {
+      this.isInitialized = value
+    },
 
-  function setInitialized(value: boolean) {
-    isInitialized.value = value
-  }
+    setAuthLoading(value: boolean) {
+      this.authLoading = value
+    },
 
-  function setAuthLoading(value: boolean) {
-    authLoading.value = value
-  }
+    setAuthKeyInput(value: string) {
+      this.authKeyInput = value
+    },
+  },
 
-  function setAuthKeyInput(value: string) {
-    authKeyInput.value = value
-  }
-
-  return {
-    // 状态
-    apiKey,
-    authError,
-    authAttempts,
-    authLockoutTime,
-    isAutoAuthenticating,
-    isInitialized,
-    authLoading,
-    authKeyInput,
-
-    // 计算属性
-    isAuthenticated,
-    isAuthLocked,
-
-    // 方法
-    setApiKey,
-    clearAuth,
-    initializeAuth,
-    setAuthError,
-    incrementAuthAttempts,
-    resetAuthAttempts,
-    setAuthLockout,
-    setAutoAuthenticating,
-    setInitialized,
-    setAuthLoading,
-    setAuthKeyInput,
-  }
-}, {
   // 持久化配置
   persist: {
     key: 'ccx-auth',
     storage: localStorage,
     // 仅持久化必要字段，排除瞬态 UI 状态和敏感输入
-    pick: ['apiKey', 'authAttempts', 'authLockoutTime'] as string[],
+    pick: ['apiKey', 'authAttempts', 'authLockoutTime'],
   },
 })
