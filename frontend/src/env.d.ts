@@ -1,16 +1,19 @@
 /// <reference types="vite/client" />
 /// <reference types="vuetify" />
 
-declare module 'vuetify/styles' {}
+declare module '*.vue' {
+  import type { DefineComponent } from 'vue'
 
-declare global {
-  var __APP_UI_LANGUAGE__: string
-
-  interface Window {
-    __CCX_RUNTIME_CONFIG__?: {
-      uiLanguage?: string
-    }
-  }
+  const component: DefineComponent<object, object, any>
+  export default component
 }
 
-export {}
+declare module 'vuetify/styles' {}
+
+declare var __APP_UI_LANGUAGE__: string
+
+interface Window {
+  __CCX_RUNTIME_CONFIG__?: {
+    uiLanguage?: string
+  }
+}
