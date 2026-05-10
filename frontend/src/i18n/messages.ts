@@ -74,7 +74,6 @@ export type MessageKey =
   | 'capability.copyToTab'
   | 'capability.currentTab'
   | 'capability.convert'
-  | 'capability.totalDuration'
   | 'capability.channelFallback'
   | 'capability.progressSummary'
   | 'capability.protocolRunning'
@@ -457,7 +456,6 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'capability.copyToTab': 'Copy to this tab',
     'capability.currentTab': 'Current tab',
     'capability.convert': '{protocol} convert',
-    'capability.totalDuration': 'Total duration: {duration}ms',
     'capability.channelFallback': 'Channel #{id}',
     'capability.progressSummary': '{done}/{total} models finished',
     'capability.protocolRunning': 'Running',
@@ -839,7 +837,6 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'capability.copyToTab': 'Salin ke tab ini',
     'capability.currentTab': 'Tab saat ini',
     'capability.convert': 'Konversi {protocol}',
-    'capability.totalDuration': 'Total durasi: {duration}ms',
     'capability.channelFallback': 'Channel #{id}',
     'capability.progressSummary': '{done}/{total} model selesai',
     'capability.protocolRunning': 'Berjalan',
@@ -1221,7 +1218,6 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'capability.copyToTab': '复制到此 Tab',
     'capability.currentTab': '当前 Tab',
     'capability.convert': '{protocol} 转换',
-    'capability.totalDuration': '总耗时: {duration}ms',
     'capability.channelFallback': '渠道 #{id}',
     'capability.progressSummary': '{done}/{total} 已完成',
     'capability.protocolRunning': '测试中',

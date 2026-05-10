@@ -311,9 +311,7 @@
             </div>
           </div> -->
 
-          <div v-if="state === 'completed'" class="text-caption text-medium-emphasis mt-3 text-right">
-            {{ t('capability.totalDuration', { duration: job?.totalDuration }) }}
-          </div>
+
         </div>
       </v-card-text>
     </v-card>
