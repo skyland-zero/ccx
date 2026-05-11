@@ -77,6 +77,8 @@ APP_UI_LANGUAGE=zh-CN
 
 3. 启动后访问 `http://localhost:3000`
 
+需要后台运行或开机自启动时，参考 [非 Docker 自启动](docs/service/README.md)。
+
 ### 方式二：Docker
 
 ```bash
@@ -87,6 +89,25 @@ docker run -d \
   -e APP_UI_LANGUAGE=zh-CN \
   -v $(pwd)/.config:/app/.config \
   crpi-i19l8zl0ugidq97v.cn-hangzhou.personal.cr.aliyuncs.com/bene/ccx:latest
+```
+
+使用 Docker Compose 后台运行：
+
+```bash
+docker compose up -d
+```
+
+启用 Watchtower 自动更新：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.watchtower.yml up -d
+```
+
+首次部署后如需立即拉取最新镜像：
+
+```bash
+docker compose pull ccx
+docker compose up -d ccx
 ```
 
 ### 方式三：源码构建
@@ -162,6 +183,7 @@ make dev
 - [ARCHITECTURE.md](ARCHITECTURE.md)
 - [DEVELOPMENT.md](DEVELOPMENT.md)
 - [ENVIRONMENT.md](ENVIRONMENT.md)
+- [docs/service/README.md](docs/service/README.md) - 非 Docker 自启动
 - [RELEASE.md](RELEASE.md)
 
 ## 社区交流

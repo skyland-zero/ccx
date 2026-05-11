@@ -77,6 +77,8 @@ APP_UI_LANGUAGE=en
 
 3. Run the binary and open `http://localhost:3000`
 
+For background startup without Docker, see [Service Startup](docs/service/README.md).
+
 ### Option 2: Docker
 
 ```bash
@@ -87,6 +89,25 @@ docker run -d \
   -e APP_UI_LANGUAGE=en \
   -v $(pwd)/.config:/app/.config \
   crpi-i19l8zl0ugidq97v.cn-hangzhou.personal.cr.aliyuncs.com/bene/ccx:latest
+```
+
+Run in the background with Docker Compose:
+
+```bash
+docker compose up -d
+```
+
+Enable Watchtower auto-update:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.watchtower.yml up -d
+```
+
+Pull the latest image immediately after setup if needed:
+
+```bash
+docker compose pull ccx
+docker compose up -d ccx
 ```
 
 ### Option 3: Build From Source
@@ -162,6 +183,7 @@ make dev
 - [ARCHITECTURE.md](ARCHITECTURE.md)
 - [DEVELOPMENT.md](DEVELOPMENT.md)
 - [ENVIRONMENT.md](ENVIRONMENT.md)
+- [docs/service/README.md](docs/service/README.md) - non-Docker service startup
 - [RELEASE.md](RELEASE.md)
 
 ## Community

@@ -1,0 +1,17 @@
+[Unit]
+Description=CCX API Gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/ccx
+ExecStart=/opt/ccx/ccx-linux-amd64
+EnvironmentFile=/opt/ccx/.env
+Restart=always
+RestartSec=5
+User=ccx
+Group=ccx
+
+[Install]
+WantedBy=multi-user.target
