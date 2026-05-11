@@ -183,10 +183,7 @@ func responsesItemToClaudeMessage(item types.ResponsesItem) (*types.ClaudeMessag
 	case "custom_tool_call":
 		callID := item.CallID
 		name := item.Name
-		input := ""
-		if s, ok := item.Output.(string); ok {
-			input = s
-		}
+		input := customToolInputFromItem(item)
 		if callID == "" {
 			callID = name
 		}
@@ -604,10 +601,7 @@ func responsesItemToOpenAIMessage(item types.ResponsesItem) map[string]interface
 	case "custom_tool_call":
 		callID := item.CallID
 		name := item.Name
-		input := ""
-		if s, ok := item.Output.(string); ok {
-			input = s
-		}
+		input := customToolInputFromItem(item)
 		if callID == "" {
 			callID = name
 		}

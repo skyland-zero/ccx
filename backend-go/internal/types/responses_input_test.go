@@ -43,6 +43,26 @@ func TestParseResponsesInput_NormalizesLegacyResponsesItemsSlice(t *testing.T) {
 	}
 }
 
+func TestParseResponsesInput_PreservesCustomToolCallInput(t *testing.T) {
+	items, err := ParseResponsesInput([]interface{}{
+		map[string]interface{}{
+			"type":    "custom_tool_call",
+			"call_id": "call_1",
+			"name":    "apply_patch",
+			"input":   "*** Begin Patch\n*** End Patch",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("items len = %d", len(items))
+	}
+	if items[0].Input != "*** Begin Patch\n*** End Patch" {
+		t.Fatalf("input = %q", items[0].Input)
+	}
+}
+
 func TestNormalizeResponsesItem_IsIdempotent(t *testing.T) {
 	original := ResponsesItem{
 		Type:      "function_call",

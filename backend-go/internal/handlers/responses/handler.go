@@ -292,12 +292,9 @@ func handleSuccess(
 	}
 
 	// Remap Codex custom tool proxy function calls to custom_tool_call items.
-	if originalReq != nil && originalReq.TransformerMetadata != nil {
-		if rawCtx, ok := originalReq.TransformerMetadata["codex_tool_context"]; ok {
-			if codexCtx, ok := rawCtx.(converters.CodexToolContext); ok {
-				codexCtx.RemapCustomToolCallsInResponse(responsesResp)
-			}
-		}
+	if originalReq != nil {
+		codexCtx := converters.BuildCodexToolContext(originalReq.Tools)
+		codexCtx.RemapCustomToolCallsInResponse(responsesResp)
 	}
 
 	// Token 补全逻辑

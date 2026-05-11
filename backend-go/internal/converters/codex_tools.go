@@ -393,11 +393,7 @@ func BuildApplyPatchInput(ops []ApplyPatchOperation) string {
 			sb.WriteString("*** Add File: ")
 			sb.WriteString(op.Path)
 			sb.WriteString("\n")
-			for _, line := range strings.Split(op.Content, "\n") {
-				sb.WriteString("+")
-				sb.WriteString(line)
-				sb.WriteString("\n")
-			}
+			writeApplyPatchAddedContent(&sb, op.Content)
 		case "delete_file":
 			sb.WriteString("*** Delete File: ")
 			sb.WriteString(op.Path)
@@ -432,15 +428,23 @@ func BuildApplyPatchInput(ops []ApplyPatchOperation) string {
 			sb.WriteString("*** Add File: ")
 			sb.WriteString(op.Path)
 			sb.WriteString("\n")
-			for _, line := range strings.Split(op.Content, "\n") {
-				sb.WriteString("+")
-				sb.WriteString(line)
-				sb.WriteString("\n")
-			}
+			writeApplyPatchAddedContent(&sb, op.Content)
 		}
 	}
 	sb.WriteString("*** End Patch")
 	return sb.String()
+}
+
+func writeApplyPatchAddedContent(sb *strings.Builder, content string) {
+	if content == "" {
+		return
+	}
+	content = strings.TrimSuffix(content, "\n")
+	for _, line := range strings.Split(content, "\n") {
+		sb.WriteString("+")
+		sb.WriteString(line)
+		sb.WriteString("\n")
+	}
 }
 
 // ApplyPatchInputFromProxyArguments converts upstream proxy tool arguments
@@ -879,7 +883,7 @@ func WrapOpenAIChatResponseToResponsesWithContext(
 				CallID: item.CallID,
 				Name:   spec.OpenAIName,
 				Status: "completed",
-				Output: customInput,
+				Input:  customInput,
 			}
 		}
 	}
@@ -910,11 +914,25 @@ func (ctx *CodexToolContext) RemapCustomToolCallsInResponse(resp *types.Response
 				CallID: item.CallID,
 				Name:   spec.OpenAIName,
 				Status: "completed",
-				Output: customInput,
+				Input:  customInput,
 			}
 		}
 	}
 }
+
+func customToolInputFromItem(item types.ResponsesItem) string {
+	if item.Input != "" {
+		return item.Input
+	}
+	if item.Arguments != "" {
+		return item.Arguments
+	}
+	if s, ok := item.Output.(string); ok {
+		return s
+	}
+	return ""
+}
+
 // replayCustomToolCall converts a custom_tool_call input for history replay without CodexToolContext.
 // It detects apply_patch by name and content, and returns (upstreamName, argsJSON).
 func replayCustomToolCall(name, input string) (string, string) {
