@@ -180,6 +180,44 @@ func responsesItemToClaudeMessage(item types.ResponsesItem) (*types.ClaudeMessag
 			},
 		}, nil
 
+	case "custom_tool_call":
+		callID := item.CallID
+		name := item.Name
+		input := ""
+		if s, ok := item.Output.(string); ok {
+			input = s
+		}
+		if callID == "" {
+			callID = name
+		}
+		if name == "" {
+			return nil, nil
+		}
+		return &types.ClaudeMessage{
+			Role: "assistant",
+			Content: []types.ClaudeContent{{
+				Type:  "tool_use",
+				ID:    callID,
+				Name:  name,
+				Input: input,
+			}},
+		}, nil
+
+	case "custom_tool_call_output":
+		callID := item.CallID
+		output := item.Output
+		if callID == "" {
+			callID = item.Name
+		}
+		return &types.ClaudeMessage{
+			Role: "user",
+			Content: []types.ClaudeContent{{
+				Type:      "tool_result",
+				ToolUseID: callID,
+				Content:   output,
+			}},
+		}, nil
+
 	case "function_call":
 		callID, name, arguments, err := resolveFunctionCallItem(item)
 		if err != nil {
@@ -561,6 +599,57 @@ func responsesItemToOpenAIMessage(item types.ResponsesItem) map[string]interface
 		return map[string]interface{}{
 			"role":    role,
 			"content": content,
+		}
+
+	case "custom_tool_call":
+		callID := item.CallID
+		name := item.Name
+		input := ""
+		if s, ok := item.Output.(string); ok {
+			input = s
+		}
+		if callID == "" {
+			callID = name
+		}
+		if name == "" {
+			return nil
+		}
+		upstreamName, argsJSON := replayCustomToolCall(name, input)
+		return map[string]interface{}{
+			"role": "assistant",
+			"tool_calls": []map[string]interface{}{{
+				"id":   callID,
+				"type": "function",
+				"function": map[string]interface{}{
+					"name":      upstreamName,
+					"arguments": argsJSON,
+				},
+			}},
+		}
+
+	case "custom_tool_call_output":
+		callID := item.CallID
+		output := item.Output
+		if callID == "" {
+			callID = item.Name
+		}
+		contentStr := ""
+		switch v := output.(type) {
+		case string:
+			contentStr = v
+		case nil:
+			contentStr = ""
+		default:
+			b, err := JSONMarshal(v)
+			if err != nil {
+				return nil
+			}
+			contentStr = string(b)
+		}
+		return map[string]interface{}{
+			"role":         "tool",
+			"tool_call_id": callID,
+			"content":      contentStr,
 		}
 
 	case "function_call":

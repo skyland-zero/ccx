@@ -46,7 +46,18 @@ type chatToResponsesState struct {
 	HasClaudeCacheFields  bool
 	HasCacheDetails       bool
 	// 首次消息标记
-	FirstChunk bool
+	FirstChunk          bool
+	CodexCtx            CodexToolContext
+	CodexCtxInitialized bool
+}
+
+// isCustomProxy returns true if the tool call at the given index is a Codex custom tool proxy.
+func (st *chatToResponsesState) isCustomProxy(idx int) bool {
+	name := st.FuncNames[idx]
+	if name == "" || !st.CodexCtxInitialized {
+		return false
+	}
+	return st.CodexCtx.IsCustomToolProxy(name)
 }
 
 var chatDataTag = []byte("data:")
@@ -147,6 +158,8 @@ func ConvertOpenAIChatToResponses(ctx context.Context, modelName string, origina
 		st.CacheCreation1hTokens = 0
 		st.CacheTTL = ""
 		st.UsageSeen = false
+
+		st.ensureCodexToolContext(originalRequestRawJSON)
 
 		// 发送 response.created
 		created := `{"type":"response.created","sequence_number":0,"response":{"id":"","object":"response","created_at":0,"status":"in_progress","background":false,"error":null,"instructions":""}}`
@@ -317,6 +330,10 @@ func ConvertOpenAIChatToResponses(ctx context.Context, modelName string, origina
 					// 处理参数
 					if args := function.Get("arguments"); args.Exists() && args.String() != "" {
 						st.FuncArgsBuf[idx].WriteString(args.String())
+
+						if st.isCustomProxy(idx) {
+							continue
+						}
 
 						// 计算 output_index
 						outputIndex := idx
@@ -547,12 +564,30 @@ func (st *chatToResponsesState) closeFuncBlocks(nextSeq func() int) []string {
 		name := st.FuncNames[idx]
 
 		// 计算 output_index
-		outputIndex := idx
-		if st.ReasoningPartAdded {
-			outputIndex += 1
-		}
-		if st.CurrentMsgID != "" {
-			outputIndex += 1
+		outputIndex := st.customToolOutputIndex(idx)
+
+		if st.isCustomProxy(idx) {
+			customInput := ReconstructCustomToolCallInput(st.CodexCtx, name, args)
+			originalName := st.CodexCtx.OriginalCustomToolName(name)
+			itemID := fmt.Sprintf("ctc_%s", callID)
+
+			ctcDelta := `{"type":"response.custom_tool_call_input.delta","sequence_number":0,"item_id":"","call_id":"","output_index":0,"delta":""}`
+			ctcDelta, _ = sjson.Set(ctcDelta, "sequence_number", nextSeq())
+			ctcDelta, _ = sjson.Set(ctcDelta, "item_id", itemID)
+			ctcDelta, _ = sjson.Set(ctcDelta, "call_id", callID)
+			ctcDelta, _ = sjson.Set(ctcDelta, "output_index", outputIndex)
+			ctcDelta, _ = sjson.Set(ctcDelta, "delta", customInput)
+			out = append(out, emitResponsesEvent("response.custom_tool_call_input.delta", ctcDelta))
+
+			itemDone := `{"type":"response.output_item.done","sequence_number":0,"output_index":0,"item":{"id":"","type":"custom_tool_call","status":"completed","call_id":"","name":"","input":""}}`
+			itemDone, _ = sjson.Set(itemDone, "sequence_number", nextSeq())
+			itemDone, _ = sjson.Set(itemDone, "output_index", outputIndex)
+			itemDone, _ = sjson.Set(itemDone, "item.id", itemID)
+			itemDone, _ = sjson.Set(itemDone, "item.call_id", callID)
+			itemDone, _ = sjson.Set(itemDone, "item.name", originalName)
+			itemDone, _ = sjson.Set(itemDone, "item.input", customInput)
+			out = append(out, emitResponsesEvent("response.output_item.done", itemDone))
+			continue
 		}
 
 		// response.function_call_arguments.done
@@ -695,6 +730,20 @@ func (st *chatToResponsesState) generateCompletedEvents(originalRequestRawJSON [
 			}
 			callID := st.FuncCallIDs[idx]
 			name := st.FuncNames[idx]
+			if st.isCustomProxy(idx) {
+				customInput := ReconstructCustomToolCallInput(st.CodexCtx, name, args)
+				originalName := st.CodexCtx.OriginalCustomToolName(name)
+				item := map[string]interface{}{
+					"id":      fmt.Sprintf("ctc_%s", callID),
+					"type":    "custom_tool_call",
+					"status":  "completed",
+					"call_id": callID,
+					"name":    originalName,
+					"input":   customInput,
+				}
+				outputs = append(outputs, item)
+				continue
+			}
 			item := map[string]interface{}{
 				"id":        fmt.Sprintf("fc_%s", callID),
 				"type":      "function_call",
@@ -842,6 +891,7 @@ func ConvertOpenAIChatToResponsesNonStream(_ context.Context, _ string, original
 		return out
 	}
 
+	codexCtx := buildCodexToolContextFromRequest(originalRequestRawJSON)
 	var outputs []interface{}
 	var textBuf strings.Builder
 	var reasoningBuf strings.Builder
@@ -871,6 +921,21 @@ func ConvertOpenAIChatToResponsesNonStream(_ context.Context, _ string, original
 				funcArgs := tc.Get("function.arguments").String()
 				if funcArgs == "" {
 					funcArgs = "{}"
+				}
+
+				if codexCtx.IsCustomToolProxy(funcName) {
+					customInput := ReconstructCustomToolCallInput(codexCtx, funcName, funcArgs)
+					originalName := codexCtx.OriginalCustomToolName(funcName)
+					item := map[string]interface{}{
+						"id":      fmt.Sprintf("ctc_%s", callID),
+						"type":    "custom_tool_call",
+						"status":  "completed",
+						"call_id": callID,
+						"name":    originalName,
+						"input":   customInput,
+					}
+					outputs = append(outputs, item)
+					continue
 				}
 
 				item := map[string]interface{}{

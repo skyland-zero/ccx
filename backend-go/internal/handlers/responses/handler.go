@@ -291,6 +291,15 @@ func handleSuccess(
 		return nil, fmt.Errorf("%w: %v", common.ErrInvalidResponseBody, err)
 	}
 
+	// Remap Codex custom tool proxy function calls to custom_tool_call items.
+	if originalReq != nil && originalReq.TransformerMetadata != nil {
+		if rawCtx, ok := originalReq.TransformerMetadata["codex_tool_context"]; ok {
+			if codexCtx, ok := rawCtx.(converters.CodexToolContext); ok {
+				codexCtx.RemapCustomToolCallsInResponse(responsesResp)
+			}
+		}
+	}
+
 	// Token 补全逻辑
 	originalUsage := responsesResp.Usage
 

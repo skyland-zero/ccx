@@ -1,0 +1,41 @@
+package converters
+
+import "github.com/tidwall/gjson"
+
+func buildCodexToolContextFromRequest(originalRequestRawJSON []byte) CodexToolContext {
+	if originalRequestRawJSON == nil {
+		return CodexToolContext{}
+	}
+
+	req := gjson.ParseBytes(originalRequestRawJSON)
+	if tools := req.Get("tools"); tools.Exists() && tools.IsArray() {
+		var toolsList []map[string]interface{}
+		for _, t := range tools.Array() {
+			if tm, ok := t.Value().(map[string]interface{}); ok {
+				toolsList = append(toolsList, tm)
+			}
+		}
+		return BuildCodexToolContext(toolsList)
+	}
+
+	return CodexToolContext{}
+}
+
+func (st *chatToResponsesState) ensureCodexToolContext(originalRequestRawJSON []byte) {
+	if st.CodexCtxInitialized {
+		return
+	}
+	st.CodexCtx = buildCodexToolContextFromRequest(originalRequestRawJSON)
+	st.CodexCtxInitialized = true
+}
+
+func (st *chatToResponsesState) customToolOutputIndex(idx int) int {
+	outputIndex := idx
+	if st.ReasoningPartAdded {
+		outputIndex++
+	}
+	if st.CurrentMsgID != "" {
+		outputIndex++
+	}
+	return outputIndex
+}
