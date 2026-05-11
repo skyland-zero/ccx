@@ -256,7 +256,7 @@ PORT=3000
 ENV=production
 
 # 访问控制 (必须修改!)
-PROXY_ACCESS_KEY=your-super-strong-secret-key
+PROXY_ACCESS_KEY=your-proxy-access-key
 
 # Web UI
 ENABLE_WEB_UI=true

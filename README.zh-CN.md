@@ -69,7 +69,7 @@ CCX 对外提供一个统一后端入口：
 2. 在可执行文件同目录创建 `.env`：
 
 ```bash
-PROXY_ACCESS_KEY=your-super-strong-secret-key
+PROXY_ACCESS_KEY=your-proxy-access-key
 PORT=3000
 ENABLE_WEB_UI=true
 APP_UI_LANGUAGE=zh-CN
@@ -83,7 +83,7 @@ APP_UI_LANGUAGE=zh-CN
 docker run -d \
   --name ccx \
   -p 3000:3000 \
-  -e PROXY_ACCESS_KEY=your-super-strong-secret-key \
+  -e PROXY_ACCESS_KEY=your-proxy-access-key \
   -e APP_UI_LANGUAGE=zh-CN \
   -v $(pwd)/.config:/app/.config \
   crpi-i19l8zl0ugidq97v.cn-hangzhou.personal.cr.aliyuncs.com/bene/ccx:latest
@@ -113,7 +113,7 @@ make frontend-dev
 PORT=3000
 ENV=production
 ENABLE_WEB_UI=true
-PROXY_ACCESS_KEY=your-super-strong-secret-key
+PROXY_ACCESS_KEY=your-proxy-access-key
 ADMIN_ACCESS_KEY=your-admin-secret-key
 APP_UI_LANGUAGE=zh-CN
 LOG_LEVEL=info
