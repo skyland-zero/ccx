@@ -43,8 +43,8 @@ type UpstreamConfig struct {
 	AutoBlacklistBalance *bool `json:"autoBlacklistBalance,omitempty"` // 余额不足时自动拉黑 Key（默认 true）
 	// metadata.user_id 规范化开关
 	NormalizeMetadataUserID *bool `json:"normalizeMetadataUserId,omitempty"` // 规范化 metadata.user_id（默认 true）
-	// Codex 自定义工具兼容开关（默认 true）
-	CodexToolCompat *bool `json:"codexToolCompat,omitempty"` // 将 Codex apply_patch 等自定义工具转换为 OpenAI function 工具格式（默认 true）
+	// Codex 自定义工具兼容开关（默认 false）
+	CodexToolCompat *bool `json:"codexToolCompat,omitempty"` // 将 Codex apply_patch 等自定义工具转换为 OpenAI function 工具格式（默认 false）
 	// Gemini 特定配置
 	InjectDummyThoughtSignature bool `json:"injectDummyThoughtSignature,omitempty"` // 给空 thought_signature 注入 dummy 值（兼容 x666.me 等要求必须有该字段的 API）
 	StripThoughtSignature       bool `json:"stripThoughtSignature,omitempty"`       // 移除 thought_signature 字段（兼容旧版 Gemini API）
@@ -94,10 +94,10 @@ func (u *UpstreamConfig) IsNormalizeMetadataUserIDEnabled() bool {
 	return *u.NormalizeMetadataUserID
 }
 
-// IsCodexToolCompatEnabled 检查 Codex 自定义工具兼容是否启用（默认 true）
+// IsCodexToolCompatEnabled 检查 Codex 自定义工具兼容是否启用（默认 false）
 func (u *UpstreamConfig) IsCodexToolCompatEnabled() bool {
 	if u.CodexToolCompat == nil {
-		return true
+		return false
 	}
 	return *u.CodexToolCompat
 }

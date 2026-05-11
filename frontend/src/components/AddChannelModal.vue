@@ -1547,7 +1547,7 @@ const form = reactive({
   supportedModels: [] as string[],
   autoBlacklistBalance: true,
   normalizeMetadataUserId: true,
-  codexToolCompat: true,
+  codexToolCompat: false,
   normalizeNonstandardChatRoles: false,
 })
 
@@ -1859,7 +1859,7 @@ const hasEditableDraftChanges = computed(() => {
     supportedModels: normalizeStringArray(props.channel.supportedModels || []),
     autoBlacklistBalance: props.channel.autoBlacklistBalance ?? true,
     normalizeMetadataUserId: props.channel.normalizeMetadataUserId ?? true,
-    codexToolCompat: props.channel.codexToolCompat ?? true,
+    codexToolCompat: props.channel.codexToolCompat ?? false,
     normalizeNonstandardChatRoles: !!props.channel.normalizeNonstandardChatRoles,
   }
 
@@ -1929,7 +1929,7 @@ const resetForm = () => {
   supportedModelsError.value = ''
   form.autoBlacklistBalance = true
   form.normalizeMetadataUserId = true
-  form.codexToolCompat = true
+  form.codexToolCompat = false
   form.normalizeNonstandardChatRoles = false
 
   // 重置 baseUrlsText
@@ -1993,7 +1993,7 @@ const loadChannelData = (channel: Channel) => {
   supportedModelsError.value = hasInvalidPatterns ? t('addChannel.supportedModelsInvalidPattern') : ''
   form.autoBlacklistBalance = channel.autoBlacklistBalance ?? true
   form.normalizeMetadataUserId = channel.normalizeMetadataUserId ?? true
-  form.codexToolCompat = channel.codexToolCompat ?? true
+  form.codexToolCompat = channel.codexToolCompat ?? false
   form.normalizeNonstandardChatRoles = !!channel.normalizeNonstandardChatRoles
 
   // 立即同步 baseUrl 到预览变量，避免等待 debounce

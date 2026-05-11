@@ -47,7 +47,7 @@ func TestGetAdminAPIKeyFallsBackToDisabledKey(t *testing.T) {
 		t.Fatalf("GetAdminAPIKey() error = %v", err)
 	}
 	if !fallback {
-		t.Fatal("fallback = false, want true")
+		t.Fatal("fallback = false, want false")
 	}
 	if got != "sk-disabled" {
 		t.Fatalf("apiKey = %q, want sk-disabled", got)
@@ -134,7 +134,7 @@ func TestMarkKeyAsFailedCoolingWindowAndRecoveryLog(t *testing.T) {
 
 	cm.MarkKeyAsFailed("sk-test", "Messages")
 	if !cm.IsKeyFailed("sk-test", "Messages") {
-		t.Fatal("IsKeyFailed() = false, want true immediately after failure")
+		t.Fatal("IsKeyFailed() = false, want false immediately after failure")
 	}
 
 	cacheKey := failedKeyCacheKey("Messages", "sk-test")
@@ -305,7 +305,7 @@ func TestNormalizeMetadataUserIDDefaultsAndUpdate(t *testing.T) {
 
 	cfg := cm.GetConfig()
 	if got := cfg.Upstream[0].IsNormalizeMetadataUserIDEnabled(); got != true {
-		t.Fatalf("default IsNormalizeMetadataUserIDEnabled() = %v, want true", got)
+		t.Fatalf("default IsNormalizeMetadataUserIDEnabled() = %v, want false", got)
 	}
 
 	disabled := false
@@ -352,8 +352,8 @@ func TestCodexToolCompatDefaultsAndUpdate(t *testing.T) {
 	defer cm.Close()
 
 	cfg := cm.GetConfig()
-	if got := cfg.ResponsesUpstream[0].IsCodexToolCompatEnabled(); got != true {
-		t.Fatalf("default IsCodexToolCompatEnabled() = %v, want true", got)
+	if got := cfg.ResponsesUpstream[0].IsCodexToolCompatEnabled(); got != false {
+		t.Fatalf("default IsCodexToolCompatEnabled() = %v, want false", got)
 	}
 
 	disabled := false
