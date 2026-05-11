@@ -3,10 +3,13 @@
 ### 新增
 
 - **新增 Responses Codex 工具兼容开关** - Responses 渠道新增 `stripCodexClientTools` 配置与前端开关，用于显式兼容不支持 Codex CLI 0.130+ 工具结构的旧版上游；默认保持原样透传，避免影响原生支持新版协议的上游；该开关同时覆盖原生 Responses 透传与 Responses 转 Chat/Claude/Gemini 路径
+- **扩充模型优先级排序规则** - 前端 `AddChannelModal.vue` 的 `modelPriorityPatterns` 覆盖 2026-05 主流模型：Claude 4.7/4.6/4.5、GPT-5.5/5.4/5.3-codex/5.2/5.1/5、Gemini 3.1/3/2.5、Grok 4.3/4.2/4.1、GLM-5.1/5/4.7/4.6、Qwen 3.6/3.5/3-Max/3-Coder、DeepSeek V4/V3.2、Kimi K2.6/K2.5、MiniMax M2.7/M2.5；保持「pro/codex/max > 主版本 > mini/nano」与「新 > 旧」顺序
+- **上游错误日志使用 4KB 长摘要** - `backend-go/internal/handlers/common/failover.go` 新增 `truncateErrorSummary`（4KB 上限并附 `...(truncated)`），`upstream_failover.go` 的上游错误详情摘要日志改用该函数，便于排查协议/schema 类问题；指标/原因字段仍走 200 字符的 `truncateMessage`
 
 ### 修复
 
 - **允许 Responses 工具协议错误跨渠道重试** - 对 `tools[n].tools`、工具参数 schema 等上游工具结构兼容错误放行 failover，避免第三方镜像 400 直接阻断后续渠道
+- **修正模型映射匹配方向** - `config_utils.go` 的 `GetMappedModel` / `GetReasoningEffort` 不再做反向包含匹配（移除 `strings.Contains(m.source, model)`），仅保留 `model contains source`，避免短别名（如 `gpt`）误匹配到长目标键导致映射错配
 
 ## [v2.6.83] - 2026-05-11
 
