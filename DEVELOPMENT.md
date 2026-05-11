@@ -131,6 +131,28 @@ cd "backend-go" && make lint
 - 健康检查：`http://localhost:3000/health`
 - 前端开发服务器：默认 `http://localhost:5173`
 
+### Windows / WSL / Docker 访问建议
+
+Windows 下 cmd、PowerShell、WSL 与 Docker 可能处在不同网络环境中，`localhost` / `127.0.0.1` 不一定指向运行 CCX 的进程。跨环境调用时建议使用 Windows 主机的局域网 IPv4 地址，例如：
+
+```text
+http://192.168.1.23:3000/v1
+```
+
+获取地址：
+
+```powershell
+ipconfig
+```
+
+验证连通性：
+
+```powershell
+curl.exe -i http://192.168.1.23:3000/health
+```
+
+CCX 后端默认监听 `:PORT`，等价于监听所有网卡地址；通常不需要额外修改为 `0.0.0.0`。如果局域网 IP 无法访问，优先检查 Windows 防火墙是否允许对应端口入站。
+
 ## 常见开发任务
 
 ### 只调试后端
