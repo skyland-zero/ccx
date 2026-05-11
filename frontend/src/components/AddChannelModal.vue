@@ -705,6 +705,19 @@
               </div>
             </v-col>
 
+            <v-col v-if="props.channelType === 'responses'" cols="12">
+              <div class="d-flex align-center justify-space-between">
+                <div class="d-flex align-center ga-2">
+                  <v-icon color="primary">mdi-cog</v-icon>
+                  <div>
+                    <div class="section-title section-title--soft">{{ t('addChannel.codexToolCompatLabel') }}</div>
+                    <div class="text-caption text-medium-emphasis">{{ t('addChannel.codexToolCompatHint') }}</div>
+                  </div>
+                </div>
+                <v-switch v-model="form.codexToolCompat" inset color="primary" hide-details />
+              </div>
+            </v-col>
+
             <v-col v-if="props.channelType === 'messages' || props.channelType === 'responses'" cols="12">
               <div class="d-flex align-center justify-space-between">
                 <div class="d-flex align-center ga-2">
@@ -1534,6 +1547,7 @@ const form = reactive({
   supportedModels: [] as string[],
   autoBlacklistBalance: true,
   normalizeMetadataUserId: true,
+  codexToolCompat: true,
   normalizeNonstandardChatRoles: false,
 })
 
@@ -1845,6 +1859,7 @@ const hasEditableDraftChanges = computed(() => {
     supportedModels: normalizeStringArray(props.channel.supportedModels || []),
     autoBlacklistBalance: props.channel.autoBlacklistBalance ?? true,
     normalizeMetadataUserId: props.channel.normalizeMetadataUserId ?? true,
+    codexToolCompat: props.channel.codexToolCompat ?? true,
     normalizeNonstandardChatRoles: !!props.channel.normalizeNonstandardChatRoles,
   }
 
@@ -1914,6 +1929,7 @@ const resetForm = () => {
   supportedModelsError.value = ''
   form.autoBlacklistBalance = true
   form.normalizeMetadataUserId = true
+  form.codexToolCompat = true
   form.normalizeNonstandardChatRoles = false
 
   // 重置 baseUrlsText
@@ -1977,6 +1993,7 @@ const loadChannelData = (channel: Channel) => {
   supportedModelsError.value = hasInvalidPatterns ? t('addChannel.supportedModelsInvalidPattern') : ''
   form.autoBlacklistBalance = channel.autoBlacklistBalance ?? true
   form.normalizeMetadataUserId = channel.normalizeMetadataUserId ?? true
+  form.codexToolCompat = channel.codexToolCompat ?? true
   form.normalizeNonstandardChatRoles = !!channel.normalizeNonstandardChatRoles
 
   // 立即同步 baseUrl 到预览变量，避免等待 debounce

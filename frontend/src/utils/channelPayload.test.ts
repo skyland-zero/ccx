@@ -25,7 +25,8 @@ describe('buildChannelPayload', () => {
       routePrefix: '',
       supportedModels: ['gpt-5'],
       autoBlacklistBalance: true,
-      normalizeMetadataUserId: true
+      normalizeMetadataUserId: true,
+      codexToolCompat: true
     })
 
     expect(result.name).toBe('test-channel')
@@ -64,7 +65,8 @@ describe('buildChannelPayload', () => {
       routePrefix: '',
       supportedModels: [],
       autoBlacklistBalance: true,
-      normalizeMetadataUserId: true
+      normalizeMetadataUserId: true,
+      codexToolCompat: true
     })
 
     expect(result.baseUrl).toBe('https://api.example.com')
@@ -98,7 +100,8 @@ describe('buildChannelPayload', () => {
       routePrefix: '',
       supportedModels: [],
       autoBlacklistBalance: true,
-      normalizeMetadataUserId: true
+      normalizeMetadataUserId: true,
+      codexToolCompat: true
     })
 
     expect(result.baseUrl).toBe('https://new.timefiles.online')
@@ -128,7 +131,8 @@ describe('buildChannelPayload', () => {
       routePrefix: '',
       supportedModels: [],
       autoBlacklistBalance: true,
-      normalizeMetadataUserId: true
+      normalizeMetadataUserId: true,
+      codexToolCompat: true
     })
 
     expect(result.baseUrl).toBe('https://new.timefiles.online')
@@ -158,7 +162,8 @@ describe('buildChannelPayload', () => {
       routePrefix: '',
       supportedModels: ['opus'],
       autoBlacklistBalance: true,
-      normalizeMetadataUserId: true
+      normalizeMetadataUserId: true,
+      codexToolCompat: true
     })
 
     expect(result.modelMapping).toEqual({ opus: 'claude-3-7-sonnet' })
@@ -191,7 +196,8 @@ describe('buildChannelPayload', () => {
       routePrefix: '',
       supportedModels: [],
       autoBlacklistBalance: false,
-      normalizeMetadataUserId: true
+      normalizeMetadataUserId: true,
+      codexToolCompat: true
     })
 
     expect(result.autoBlacklistBalance).toBe(false)
@@ -220,7 +226,8 @@ describe('buildChannelPayload', () => {
       routePrefix: '',
       supportedModels: [],
       autoBlacklistBalance: true,
-      normalizeMetadataUserId: false
+      normalizeMetadataUserId: false,
+      codexToolCompat: true
     })
 
     expect(result.normalizeMetadataUserId).toBe(false)
@@ -250,6 +257,7 @@ describe('buildChannelPayload', () => {
       supportedModels: [],
       autoBlacklistBalance: true,
       normalizeMetadataUserId: true,
+      codexToolCompat: true,
       normalizeNonstandardChatRoles: true
     })
 

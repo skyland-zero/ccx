@@ -58,3 +58,26 @@ func TestRemapCustomToolCallsInResponseWritesInputField(t *testing.T) {
 		t.Fatalf("marshaled item = %s", b)
 	}
 }
+
+func TestRemapCustomToolCallsInResponseSkipsWhenHasCustomToolsFalse(t *testing.T) {
+	// Empty CodexToolContext (HasCustomTools=false) should skip remapping entirely.
+	ctx := CodexToolContext{}
+	resp := &types.ResponsesResponse{
+		Output: []types.ResponsesItem{{
+			Type:      "function_call",
+			CallID:    "call_1",
+			Name:      "apply_patch_add_file",
+			Arguments: `{"path":"docs/test.md","content":"# Test
+"}`,
+		}},
+	}
+	ctx.RemapCustomToolCallsInResponse(resp)
+
+	// Output should be unchanged when HasCustomTools is false
+	if len(resp.Output) != 1 {
+		t.Fatalf("output len = %d, want 1", len(resp.Output))
+	}
+	if resp.Output[0].Type != "function_call" {
+		t.Fatalf("item type = %s, want function_call", resp.Output[0].Type)
+	}
+}

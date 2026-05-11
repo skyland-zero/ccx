@@ -138,6 +138,11 @@ func handleMultiChannel(
 					channelScheduler.MarkURLSuccess(scheduler.ChannelKindResponses, channelIndex, url)
 				},
 				func(c *gin.Context, resp *http.Response, upstreamCopy *config.UpstreamConfig, apiKey string, actualRequestBody []byte) (*types.Usage, error) {
+					// Inject codex_tool_compat_enabled for response remapping
+					if responsesReq.TransformerMetadata == nil {
+						responsesReq.TransformerMetadata = make(map[string]interface{})
+					}
+					responsesReq.TransformerMetadata["codex_tool_compat_enabled"] = upstreamCopy.IsCodexToolCompatEnabled()
 					return handleSuccess(c, resp, provider, upstream.ServiceType, envCfg, sessionManager, startTime, &responsesReq, actualRequestBody)
 				},
 				responsesReq.Model,
@@ -225,6 +230,11 @@ func handleSingleChannel(
 		nil,
 		nil,
 		func(c *gin.Context, resp *http.Response, upstreamCopy *config.UpstreamConfig, apiKey string, actualRequestBody []byte) (*types.Usage, error) {
+			// Inject codex_tool_compat_enabled for response remapping
+			if responsesReq.TransformerMetadata == nil {
+				responsesReq.TransformerMetadata = make(map[string]interface{})
+			}
+			responsesReq.TransformerMetadata["codex_tool_compat_enabled"] = upstreamCopy.IsCodexToolCompatEnabled()
 			return handleSuccess(c, resp, provider, upstream.ServiceType, envCfg, sessionManager, startTime, &responsesReq, actualRequestBody)
 		},
 		responsesReq.Model,
@@ -293,8 +303,16 @@ func handleSuccess(
 
 	// Remap Codex custom tool proxy function calls to custom_tool_call items.
 	if originalReq != nil {
-		codexCtx := converters.BuildCodexToolContext(originalReq.Tools)
-		codexCtx.RemapCustomToolCallsInResponse(responsesResp)
+		codexEnabled := true
+		if originalReq.TransformerMetadata != nil {
+			if v, ok := originalReq.TransformerMetadata["codex_tool_compat_enabled"].(bool); ok {
+				codexEnabled = v
+			}
+		}
+		if codexEnabled {
+			codexCtx := converters.BuildCodexToolContext(originalReq.Tools)
+			codexCtx.RemapCustomToolCallsInResponse(responsesResp)
+		}
 	}
 
 	// Token 补全逻辑

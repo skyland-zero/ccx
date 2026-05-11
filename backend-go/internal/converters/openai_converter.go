@@ -52,7 +52,16 @@ func (c *OpenAIChatConverter) ToProviderRequest(sess *session.Session, req *type
 	}
 
 	// Tools conversion with Codex custom tool support.
-	codexToolCtx := BuildCodexToolContext(req.Tools)
+	codexEnabled := true
+	if req.TransformerMetadata != nil {
+		if v, ok := req.TransformerMetadata["codex_tool_compat_enabled"].(bool); ok {
+			codexEnabled = v
+		}
+	}
+	var codexToolCtx CodexToolContext
+	if codexEnabled {
+		codexToolCtx = BuildCodexToolContext(req.Tools)
+	}
 	if len(req.Tools) > 0 {
 		if tools := responsesToolsToOpenAIWithContext(req.Tools, codexToolCtx); len(tools) > 0 {
 			openaiReq["tools"] = tools

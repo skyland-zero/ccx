@@ -329,3 +329,51 @@ func TestNormalizeMetadataUserIDDefaultsAndUpdate(t *testing.T) {
 		t.Fatal("NormalizeMetadataUserID pointer should be deep-copied")
 	}
 }
+
+func TestCodexToolCompatDefaultsAndUpdate(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.json")
+	initialConfig := `{
+		"responsesUpstream": [{
+			"name": "test-channel",
+			"baseUrl": "https://example.com",
+			"apiKeys": ["sk-active"],
+			"serviceType": "openai"
+		}]
+	}`
+	if err := os.WriteFile(configPath, []byte(initialConfig), 0644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cm, err := NewConfigManager(configPath)
+	if err != nil {
+		t.Fatalf("NewConfigManager() error = %v", err)
+	}
+	defer cm.Close()
+
+	cfg := cm.GetConfig()
+	if got := cfg.ResponsesUpstream[0].IsCodexToolCompatEnabled(); got != true {
+		t.Fatalf("default IsCodexToolCompatEnabled() = %v, want true", got)
+	}
+
+	disabled := false
+	if _, err := cm.UpdateResponsesUpstream(0, UpstreamUpdate{CodexToolCompat: &disabled}); err != nil {
+		t.Fatalf("UpdateResponsesUpstream() error = %v", err)
+	}
+
+	cfg = cm.GetConfig()
+	if cfg.ResponsesUpstream[0].CodexToolCompat == nil || *cfg.ResponsesUpstream[0].CodexToolCompat != false {
+		t.Fatalf("CodexToolCompat = %v, want false", cfg.ResponsesUpstream[0].CodexToolCompat)
+	}
+	if got := cfg.ResponsesUpstream[0].IsCodexToolCompatEnabled(); got != false {
+		t.Fatalf("IsCodexToolCompatEnabled() = %v, want false", got)
+	}
+
+	cloned := cfg.ResponsesUpstream[0].Clone()
+	if cloned.CodexToolCompat == nil || *cloned.CodexToolCompat != false {
+		t.Fatalf("cloned CodexToolCompat = %v, want false", cloned.CodexToolCompat)
+	}
+	if cloned.CodexToolCompat == cfg.ResponsesUpstream[0].CodexToolCompat {
+		t.Fatal("CodexToolCompat pointer should be deep-copied")
+	}
+}
