@@ -17,6 +17,7 @@ describe('buildChannelPayload', () => {
       apiKeys: ['sk-1', '  ', 'sk-2'],
       modelMapping: { 'gpt-5': 'gpt-5.2' },
       reasoningMapping: { 'gpt-5': 'max' },
+      reasoningParamStyle: 'reasoning_effort',
       textVerbosity: 'medium',
       fastMode: true,
       customHeaders: { 'x-test': '1' },
@@ -34,6 +35,7 @@ describe('buildChannelPayload', () => {
     expect(result.apiKeys).toEqual(['sk-1', 'sk-2'])
     expect(result.modelMapping).toEqual({ 'gpt-5': 'gpt-5.2' })
     expect(result.reasoningMapping).toEqual({ 'gpt-5': 'max' })
+    expect(result.reasoningParamStyle).toBe('reasoning_effort')
     expect(result.textVerbosity).toBe('medium')
     expect(result.fastMode).toBe(true)
     expect(result.proxyUrl).toBe('http://127.0.0.1:7890')
@@ -54,6 +56,7 @@ describe('buildChannelPayload', () => {
       apiKeys: ['sk-1'],
       modelMapping: {},
       reasoningMapping: {},
+      reasoningParamStyle: 'reasoning',
       textVerbosity: '',
       fastMode: false,
       customHeaders: {},
@@ -87,6 +90,7 @@ describe('buildChannelPayload', () => {
       apiKeys: ['sk-1'],
       modelMapping: {},
       reasoningMapping: {},
+      reasoningParamStyle: 'reasoning',
       textVerbosity: '',
       fastMode: false,
       customHeaders: {},
@@ -116,6 +120,7 @@ describe('buildChannelPayload', () => {
       apiKeys: ['sk-1'],
       modelMapping: {},
       reasoningMapping: {},
+      reasoningParamStyle: 'reasoning',
       textVerbosity: '',
       fastMode: false,
       customHeaders: {},
@@ -145,6 +150,7 @@ describe('buildChannelPayload', () => {
       apiKeys: ['sk-ant'],
       modelMapping: { opus: 'claude-3-7-sonnet' },
       reasoningMapping: { opus: 'high' },
+      reasoningParamStyle: 'reasoning_effort',
       textVerbosity: 'high',
       fastMode: true,
       customHeaders: {},
@@ -157,6 +163,7 @@ describe('buildChannelPayload', () => {
 
     expect(result.modelMapping).toEqual({ opus: 'claude-3-7-sonnet' })
     expect(result.reasoningMapping).toEqual({})
+    expect(result.reasoningParamStyle).toBe('reasoning')
     expect(result.textVerbosity).toBe('')
     expect(result.fastMode).toBe(false)
   })
@@ -176,6 +183,7 @@ describe('buildChannelPayload', () => {
       apiKeys: ['sk-1'],
       modelMapping: {},
       reasoningMapping: {},
+      reasoningParamStyle: 'reasoning',
       textVerbosity: '',
       fastMode: false,
       customHeaders: {},
@@ -204,6 +212,7 @@ describe('buildChannelPayload', () => {
       apiKeys: ['sk-1'],
       modelMapping: {},
       reasoningMapping: {},
+      reasoningParamStyle: 'reasoning',
       textVerbosity: '',
       fastMode: false,
       customHeaders: {},
@@ -232,6 +241,7 @@ describe('buildChannelPayload', () => {
       apiKeys: ['sk-1'],
       modelMapping: {},
       reasoningMapping: {},
+      reasoningParamStyle: 'reasoning',
       textVerbosity: '',
       fastMode: false,
       customHeaders: {},

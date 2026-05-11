@@ -110,6 +110,7 @@ export interface Channel {
   insecureSkipVerify?: boolean
   modelMapping?: Record<string, string>
   reasoningMapping?: Record<string, 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'>
+  reasoningParamStyle?: 'reasoning' | 'reasoning_effort'
   textVerbosity?: 'low' | 'medium' | 'high' | ''
   fastMode?: boolean
   customHeaders?: Record<string, string>  // 自定义请求头

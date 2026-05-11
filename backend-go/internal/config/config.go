@@ -17,20 +17,21 @@ import (
 
 // UpstreamConfig 上游配置
 type UpstreamConfig struct {
-	BaseURL            string            `json:"baseUrl"`
-	BaseURLs           []string          `json:"baseUrls,omitempty"` // 多 BaseURL 支持（failover 模式）
-	APIKeys            []string          `json:"apiKeys"`
-	HistoricalAPIKeys  []string          `json:"historicalApiKeys,omitempty"` // 历史 API Key（用于统计聚合，换 Key 后保留旧 Key 的统计数据）
-	DisabledAPIKeys    []DisabledKeyInfo `json:"disabledApiKeys,omitempty"`   // 被拉黑的 API Key（持久化，需手动恢复）
-	ServiceType        string            `json:"serviceType"`                 // gemini, openai, claude
-	Name               string            `json:"name,omitempty"`
-	Description        string            `json:"description,omitempty"`
-	Website            string            `json:"website,omitempty"`
-	InsecureSkipVerify bool              `json:"insecureSkipVerify,omitempty"`
-	ModelMapping       map[string]string `json:"modelMapping,omitempty"`
-	ReasoningMapping   map[string]string `json:"reasoningMapping,omitempty"`
-	TextVerbosity      string            `json:"textVerbosity,omitempty"`
-	FastMode           bool              `json:"fastMode,omitempty"`
+	BaseURL             string            `json:"baseUrl"`
+	BaseURLs            []string          `json:"baseUrls,omitempty"` // 多 BaseURL 支持（failover 模式）
+	APIKeys             []string          `json:"apiKeys"`
+	HistoricalAPIKeys   []string          `json:"historicalApiKeys,omitempty"` // 历史 API Key（用于统计聚合，换 Key 后保留旧 Key 的统计数据）
+	DisabledAPIKeys     []DisabledKeyInfo `json:"disabledApiKeys,omitempty"`   // 被拉黑的 API Key（持久化，需手动恢复）
+	ServiceType         string            `json:"serviceType"`                 // gemini, openai, claude
+	Name                string            `json:"name,omitempty"`
+	Description         string            `json:"description,omitempty"`
+	Website             string            `json:"website,omitempty"`
+	InsecureSkipVerify  bool              `json:"insecureSkipVerify,omitempty"`
+	ModelMapping        map[string]string `json:"modelMapping,omitempty"`
+	ReasoningMapping    map[string]string `json:"reasoningMapping,omitempty"`
+	ReasoningParamStyle string            `json:"reasoningParamStyle,omitempty"`
+	TextVerbosity       string            `json:"textVerbosity,omitempty"`
+	FastMode            bool              `json:"fastMode,omitempty"`
 	// OpenAI Chat 上游配置：启用后将非标准 Chat role 改写为 user（默认 false）
 	NormalizeNonstandardChatRoles bool `json:"normalizeNonstandardChatRoles,omitempty"`
 	// 多渠道调度相关字段
@@ -103,6 +104,7 @@ type UpstreamUpdate struct {
 	InsecureSkipVerify            *bool             `json:"insecureSkipVerify"`
 	ModelMapping                  map[string]string `json:"modelMapping"`
 	ReasoningMapping              map[string]string `json:"reasoningMapping"`
+	ReasoningParamStyle           *string           `json:"reasoningParamStyle"`
 	TextVerbosity                 *string           `json:"textVerbosity"`
 	FastMode                      *bool             `json:"fastMode"`
 	NormalizeNonstandardChatRoles *bool             `json:"normalizeNonstandardChatRoles"`

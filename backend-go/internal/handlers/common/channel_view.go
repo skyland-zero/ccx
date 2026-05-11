@@ -20,6 +20,7 @@ func BuildChannelView(up config.UpstreamConfig, index int) gin.H {
 		"insecureSkipVerify":            up.InsecureSkipVerify,
 		"modelMapping":                  up.ModelMapping,
 		"reasoningMapping":              up.ReasoningMapping,
+		"reasoningParamStyle":           up.ReasoningParamStyle,
 		"textVerbosity":                 up.TextVerbosity,
 		"fastMode":                      up.FastMode,
 		"normalizeNonstandardChatRoles": up.NormalizeNonstandardChatRoles,

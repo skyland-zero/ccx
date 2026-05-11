@@ -59,6 +59,39 @@ func TestBuildProviderRequest_InjectsReasoningBeforeModelRedirect(t *testing.T) 
 	}
 }
 
+func TestBuildProviderRequest_InjectsReasoningEffortStyle(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil).WithContext(context.Background())
+
+	bodyBytes := []byte(`{"model":"gpt-5.1-codex","messages":[{"role":"user","content":"hi"}]}`)
+	upstream := &config.UpstreamConfig{
+		ServiceType:         "openai",
+		ReasoningParamStyle: "reasoning_effort",
+		ReasoningMapping: map[string]string{
+			"gpt-5.1-codex": "xhigh",
+		},
+	}
+
+	req, err := buildProviderRequest(c, upstream, "https://api.example.com", "sk-test", bodyBytes, "gpt-5.1-codex", false)
+	if err != nil {
+		t.Fatalf("buildProviderRequest() err = %v", err)
+	}
+
+	var got map[string]interface{}
+	if err := json.NewDecoder(req.Body).Decode(&got); err != nil {
+		t.Fatalf("decode request body: %v", err)
+	}
+
+	if got["reasoning_effort"] != "xhigh" {
+		t.Fatalf("reasoning_effort = %v, want xhigh", got["reasoning_effort"])
+	}
+	if _, ok := got["reasoning"]; ok {
+		t.Fatalf("reasoning should not be set when reasoningParamStyle=reasoning_effort: %#v", got["reasoning"])
+	}
+}
+
 func TestBuildProviderRequest_NormalizeNonstandardChatRolesDefaultOff(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()

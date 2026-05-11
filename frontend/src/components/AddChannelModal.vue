@@ -367,6 +367,16 @@
                     </v-col>
                     <v-col cols="12" md="6">
                       <v-select
+                        v-model="form.reasoningParamStyle"
+                        :label="t('addChannel.reasoningParamStyleLabel')"
+                        :items="reasoningParamStyleOptions"
+                        variant="outlined"
+                        density="comfortable"
+                        hide-details
+                      />
+                    </v-col>
+                    <v-col cols="12" md="6">
+                      <v-select
                         v-model="form.textVerbosity"
                         :label="t('addChannel.textVerbosityLabel')"
                         :items="textVerbosityOptions"
@@ -1347,6 +1357,11 @@ const reasoningEffortOptions = [
   { title: 'Max', value: 'max' }
 ]
 
+const reasoningParamStyleOptions = [
+  { title: 'reasoning.effort', value: 'reasoning' },
+  { title: 'reasoning_effort', value: 'reasoning_effort' }
+]
+
 const textVerbosityOptions = [
   { title: 'Low', value: 'low' },
   { title: 'Medium', value: 'medium' },
@@ -1500,6 +1515,7 @@ const form = reactive({
   apiKeys: [] as string[],
   modelMapping: {} as Record<string, string>,
   reasoningMapping: {} as Record<string, 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'>,
+  reasoningParamStyle: 'reasoning' as 'reasoning' | 'reasoning_effort',
   textVerbosity: '' as 'low' | 'medium' | 'high' | '',
   fastMode: false,
   customHeaders: {} as Record<string, string>,
@@ -1788,7 +1804,8 @@ const buildComparablePayload = () => {
     supportedModels: normalizeStringArray(payload.supportedModels || []),
     customHeaders: normalizeStringRecord(payload.customHeaders || {}),
     modelMapping: Object.fromEntries(Object.entries(payload.modelMapping || {}).sort(([a], [b]) => a.localeCompare(b))),
-    reasoningMapping: Object.fromEntries(Object.entries(payload.reasoningMapping || {}).sort(([a], [b]) => a.localeCompare(b)))
+    reasoningMapping: Object.fromEntries(Object.entries(payload.reasoningMapping || {}).sort(([a], [b]) => a.localeCompare(b))),
+    reasoningParamStyle: payload.reasoningParamStyle || 'reasoning'
   }
 }
 
@@ -1809,6 +1826,7 @@ const hasEditableDraftChanges = computed(() => {
     apiKeys: normalizeStringArray(props.channel.apiKeys || []),
     modelMapping: Object.fromEntries(Object.entries(props.channel.modelMapping || {}).sort(([a], [b]) => a.localeCompare(b))),
     reasoningMapping: Object.fromEntries(Object.entries(props.channel.reasoningMapping || {}).sort(([a], [b]) => a.localeCompare(b))),
+    reasoningParamStyle: props.channel.reasoningParamStyle || 'reasoning',
     textVerbosity: props.channel.textVerbosity || '',
     fastMode: !!props.channel.fastMode,
     customHeaders: normalizeStringRecord(props.channel.customHeaders || {}),
@@ -1876,6 +1894,7 @@ const resetForm = () => {
   form.apiKeys = []
   form.modelMapping = {}
   form.reasoningMapping = {}
+  form.reasoningParamStyle = 'reasoning'
   form.textVerbosity = ''
   form.fastMode = false
   form.customHeaders = {}
@@ -1937,6 +1956,7 @@ const loadChannelData = (channel: Channel) => {
 
   form.modelMapping = { ...(channel.modelMapping || {}) }
   form.reasoningMapping = { ...(channel.reasoningMapping || {}) }
+  form.reasoningParamStyle = channel.reasoningParamStyle || 'reasoning'
   form.textVerbosity = channel.textVerbosity || ''
   form.fastMode = !!channel.fastMode
   form.customHeaders = { ...(channel.customHeaders || {}) }

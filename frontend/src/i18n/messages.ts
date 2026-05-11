@@ -183,6 +183,7 @@ export type MessageKey =
   | 'addChannel.sourceModelPlaceholder'
   | 'addChannel.targetModelLabel'
   | 'addChannel.reasoningEffortLabel'
+  | 'addChannel.reasoningParamStyleLabel'
   | 'addChannel.fastMode'
   | 'addChannel.fastModeHint'
   | 'addChannel.textVerbosityLabel'
@@ -567,6 +568,7 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'addChannel.reasoningEffortLabel': 'Reasoning effort',
     'addChannel.fastMode': 'Fast mode',
     'addChannel.fastModeHint': 'When enabled, requests send service_tier=priority.',
+    'addChannel.reasoningParamStyleLabel': 'Reasoning parameter style',
     'addChannel.textVerbosityLabel': 'Output verbosity',
     'addChannel.supportedModelsLabel': 'Supported models (optional)',
     'addChannel.supportedModelsPlaceholder': 'Press Enter after each rule, for example gpt-4*, *image*, or !*image*',
@@ -948,6 +950,7 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'addChannel.reasoningEffortLabel': 'Kedalaman reasoning',
     'addChannel.fastMode': 'Mode cepat',
     'addChannel.fastModeHint': 'Jika aktif, request akan mengirim service_tier=priority.',
+    'addChannel.reasoningParamStyleLabel': 'Gaya parameter reasoning',
     'addChannel.textVerbosityLabel': 'Kepadatan output',
     'addChannel.supportedModelsLabel': 'Model yang didukung (opsional)',
     'addChannel.supportedModelsPlaceholder': 'Masukkan rule lalu tekan Enter, misalnya gpt-4*、*image*、atau !*image*',
@@ -1329,6 +1332,7 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'addChannel.reasoningEffortLabel': '思考深度',
     'addChannel.fastMode': 'Fast 模式',
     'addChannel.fastModeHint': '开启后下发 service_tier=priority',
+    'addChannel.reasoningParamStyleLabel': '思考参数风格',
     'addChannel.textVerbosityLabel': '输出冗长度',
     'addChannel.supportedModelsLabel': '支持的模型 (可选)',
     'addChannel.supportedModelsPlaceholder': '输入规则后按回车添加，如 gpt-4*、*image*、!*image*',

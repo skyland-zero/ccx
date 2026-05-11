@@ -1351,6 +1351,7 @@ const handleCopyToTab = async (targetProtocol: string) => {
     insecureSkipVerify: sourceChannel.insecureSkipVerify,
     modelMapping: sourceChannel.modelMapping,
     reasoningMapping: sourceChannel.reasoningMapping,
+    reasoningParamStyle: sourceChannel.reasoningParamStyle,
     textVerbosity: sourceChannel.textVerbosity,
     fastMode: sourceChannel.fastMode,
     customHeaders: sourceChannel.customHeaders,

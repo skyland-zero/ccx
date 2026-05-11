@@ -264,7 +264,11 @@ func buildChatCompletionRequestBody(
 
 	if includeAdvancedOptions {
 		if effort := config.ResolveReasoningEffort(model, upstream); effort != "" {
-			reqMap["reasoning"] = map[string]interface{}{"effort": effort}
+			if upstream.ReasoningParamStyle == "reasoning_effort" {
+				reqMap["reasoning_effort"] = effort
+			} else {
+				reqMap["reasoning"] = map[string]interface{}{"effort": effort}
+			}
 		}
 		if upstream.TextVerbosity != "" {
 			reqMap["text"] = map[string]interface{}{"verbosity": upstream.TextVerbosity}

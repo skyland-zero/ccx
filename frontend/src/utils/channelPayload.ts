@@ -16,6 +16,7 @@ export interface ChannelFormLike {
   apiKeys: string[]
   modelMapping: Record<string, string>
   reasoningMapping: Record<string, 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'>
+  reasoningParamStyle: 'reasoning' | 'reasoning_effort'
   textVerbosity: 'low' | 'medium' | 'high' | ''
   fastMode: boolean
   customHeaders: Record<string, string>
@@ -32,6 +33,7 @@ export function buildChannelPayload(form: ChannelFormLike): Omit<Channel, 'index
   const processedApiKeys = form.apiKeys.filter(key => key.trim())
   const advancedOptions = normalizeAdvancedChannelOptions(form.serviceType, {
     reasoningMapping: form.reasoningMapping,
+    reasoningParamStyle: form.reasoningParamStyle,
     textVerbosity: form.textVerbosity,
     fastMode: form.fastMode
   })
@@ -52,6 +54,7 @@ export function buildChannelPayload(form: ChannelFormLike): Omit<Channel, 'index
     apiKeys: processedApiKeys,
     modelMapping: form.modelMapping,
     reasoningMapping: advancedOptions.reasoningMapping,
+    reasoningParamStyle: advancedOptions.reasoningParamStyle,
     textVerbosity: advancedOptions.textVerbosity,
     fastMode: advancedOptions.fastMode,
     customHeaders: form.customHeaders,
