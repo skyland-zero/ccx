@@ -367,16 +367,6 @@
                     </v-col>
                     <v-col cols="12" md="6">
                       <v-select
-                        v-model="form.reasoningParamStyle"
-                        :label="t('addChannel.reasoningParamStyleLabel')"
-                        :items="reasoningParamStyleOptions"
-                        variant="outlined"
-                        density="comfortable"
-                        hide-details
-                      />
-                    </v-col>
-                    <v-col cols="12" md="6">
-                      <v-select
                         v-model="form.textVerbosity"
                         :label="t('addChannel.textVerbosityLabel')"
                         :items="textVerbosityOptions"
@@ -738,6 +728,26 @@
                   </div>
                 </div>
                 <v-switch v-model="form.normalizeNonstandardChatRoles" inset color="primary" hide-details />
+              </div>
+            </v-col>
+
+            <v-col v-if="supportsOpenAIAdvancedOptions" cols="12">
+              <div class="d-flex align-center justify-space-between ga-4">
+                <div class="d-flex align-center ga-2">
+                  <v-icon color="primary">mdi-tune</v-icon>
+                  <div>
+                    <div class="section-title section-title--soft">{{ t('addChannel.reasoningParamStyleLabel') }}</div>
+                    <div class="text-caption text-medium-emphasis">{{ t('addChannel.reasoningParamStyleHint') }}</div>
+                  </div>
+                </div>
+                <v-select
+                  v-model="form.reasoningParamStyle"
+                  :items="reasoningParamStyleOptions"
+                  variant="outlined"
+                  density="comfortable"
+                  hide-details
+                  class="channel-config-select"
+                />
               </div>
             </v-col>
 
@@ -2575,6 +2585,16 @@ onUnmounted(() => {
 .advanced-switch-row :deep(.v-selection-control) {
   justify-content: flex-end;
   margin-inline-start: 16px;
+}
+
+.channel-config-select {
+  flex: 0 0 220px;
+}
+
+@media (max-width: 600px) {
+  .channel-config-select {
+    flex-basis: 100%;
+  }
 }
 
 </style>
