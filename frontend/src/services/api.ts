@@ -119,6 +119,7 @@ export interface Channel {
   autoBlacklistBalance?: boolean           // 余额不足自动拉黑（默认 true）
   normalizeMetadataUserId?: boolean        // 规范化 metadata.user_id（默认 true）
   normalizeNonstandardChatRoles?: boolean  // OpenAI Chat 上游：将非标准 role 改写为 user（默认 false）
+  stripCodexClientTools?: boolean          // Responses 上游：透传前剥离 Codex CLI 0.130+ 客户端专属工具条目（默认 false）
   latency?: number
   status?: ChannelStatus | 'healthy' | 'error' | 'unknown' | ''
   index: number

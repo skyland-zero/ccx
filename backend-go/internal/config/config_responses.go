@@ -183,6 +183,9 @@ func (cm *ConfigManager) UpdateResponsesUpstream(index int, updates UpstreamUpda
 	if updates.NormalizeNonstandardChatRoles != nil {
 		upstream.NormalizeNonstandardChatRoles = *updates.NormalizeNonstandardChatRoles
 	}
+	if updates.StripCodexClientTools != nil {
+		upstream.StripCodexClientTools = *updates.StripCodexClientTools
+	}
 	if updates.InsecureSkipVerify != nil {
 		upstream.InsecureSkipVerify = *updates.InsecureSkipVerify
 	}

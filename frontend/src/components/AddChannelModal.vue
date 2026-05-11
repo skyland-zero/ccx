@@ -731,6 +731,19 @@
               </div>
             </v-col>
 
+            <v-col v-if="props.channelType === 'responses'" cols="12">
+              <div class="d-flex align-center justify-space-between">
+                <div class="d-flex align-center ga-2">
+                  <v-icon color="warning">mdi-tune</v-icon>
+                  <div>
+                    <div class="section-title section-title--soft">{{ t('addChannel.stripCodexClientToolsLabel') }}</div>
+                    <div class="text-caption text-medium-emphasis">{{ t('addChannel.stripCodexClientToolsHint') }}</div>
+                  </div>
+                </div>
+                <v-switch v-model="form.stripCodexClientTools" inset color="warning" hide-details />
+              </div>
+            </v-col>
+
             <v-col v-if="supportsOpenAIAdvancedOptions" cols="12">
               <div class="d-flex align-center justify-space-between ga-4">
                 <div class="d-flex align-center ga-2">
@@ -1535,6 +1548,7 @@ const form = reactive({
   autoBlacklistBalance: true,
   normalizeMetadataUserId: true,
   normalizeNonstandardChatRoles: false,
+  stripCodexClientTools: false,
 })
 
 // 多 BaseURL 文本输入（独立变量，保留用户输入的换行）
@@ -1846,6 +1860,7 @@ const hasEditableDraftChanges = computed(() => {
     autoBlacklistBalance: props.channel.autoBlacklistBalance ?? true,
     normalizeMetadataUserId: props.channel.normalizeMetadataUserId ?? true,
     normalizeNonstandardChatRoles: !!props.channel.normalizeNonstandardChatRoles,
+    stripCodexClientTools: !!props.channel.stripCodexClientTools,
   }
 
   return JSON.stringify(currentPayload) !== JSON.stringify(originalPayload)
@@ -1915,6 +1930,7 @@ const resetForm = () => {
   form.autoBlacklistBalance = true
   form.normalizeMetadataUserId = true
   form.normalizeNonstandardChatRoles = false
+  form.stripCodexClientTools = false
 
   // 重置 baseUrlsText
   baseUrlsText.value = ''
@@ -1978,6 +1994,7 @@ const loadChannelData = (channel: Channel) => {
   form.autoBlacklistBalance = channel.autoBlacklistBalance ?? true
   form.normalizeMetadataUserId = channel.normalizeMetadataUserId ?? true
   form.normalizeNonstandardChatRoles = !!channel.normalizeNonstandardChatRoles
+  form.stripCodexClientTools = !!channel.stripCodexClientTools
 
   // 立即同步 baseUrl 到预览变量，避免等待 debounce
   formBaseUrlPreview.value = channel.baseUrl

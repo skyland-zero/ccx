@@ -9,6 +9,20 @@ func defaultResponsesToolParameters() map[string]interface{} {
 	}
 }
 
+func sanitizeResponsesToolParameters(parameters interface{}) interface{} {
+	paramMap, ok := parameters.(map[string]interface{})
+	if !ok {
+		return defaultResponsesToolParameters()
+	}
+	if paramType, ok := paramMap["type"].(string); !ok || paramType == "" {
+		paramMap["type"] = "object"
+	}
+	if _, ok := paramMap["properties"].(map[string]interface{}); !ok {
+		paramMap["properties"] = map[string]interface{}{}
+	}
+	return paramMap
+}
+
 func extractResponsesToolFields(tool map[string]interface{}) (string, string, interface{}) {
 	name, _ := tool["name"].(string)
 	description, _ := tool["description"].(string)
@@ -28,6 +42,8 @@ func extractResponsesToolFields(tool map[string]interface{}) (string, string, in
 
 	if parameters == nil {
 		parameters = defaultResponsesToolParameters()
+	} else {
+		parameters = sanitizeResponsesToolParameters(parameters)
 	}
 
 	return name, description, parameters

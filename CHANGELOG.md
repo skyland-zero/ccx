@@ -1,3 +1,13 @@
+## [Unreleased]
+
+### 新增
+
+- **新增 Responses Codex 工具兼容开关** - Responses 渠道新增 `stripCodexClientTools` 配置与前端开关，用于显式兼容不支持 Codex CLI 0.130+ 工具结构的旧版上游；默认保持原样透传，避免影响原生支持新版协议的上游；该开关同时覆盖原生 Responses 透传与 Responses 转 Chat/Claude/Gemini 路径
+
+### 修复
+
+- **允许 Responses 工具协议错误跨渠道重试** - 对 `tools[n].tools`、工具参数 schema 等上游工具结构兼容错误放行 failover，避免第三方镜像 400 直接阻断后续渠道
+
 ## [v2.6.83] - 2026-05-11
 
 ### 新增

@@ -34,6 +34,10 @@ type UpstreamConfig struct {
 	FastMode            bool              `json:"fastMode,omitempty"`
 	// OpenAI Chat 上游配置：启用后将非标准 Chat role 改写为 user（默认 false）
 	NormalizeNonstandardChatRoles bool `json:"normalizeNonstandardChatRoles,omitempty"`
+	// Responses 上游兼容开关：启用后在透传 /v1/responses 时剥离 Codex CLI 0.130+ 专属的
+	// 工具条目（字符串简写、type=namespace/custom/web_search/local_shell/computer_use 等），
+	// 用于对接不支持新协议的第三方 Responses 镜像。默认 false，保持原样透传。
+	StripCodexClientTools bool `json:"stripCodexClientTools,omitempty"`
 	// 多渠道调度相关字段
 	Priority       int        `json:"priority"`                 // 渠道优先级（数字越小优先级越高，默认按索引）
 	Status         string     `json:"status"`                   // 渠道状态：active（正常）, suspended（暂停）, disabled（备用池）
@@ -108,6 +112,7 @@ type UpstreamUpdate struct {
 	TextVerbosity                 *string           `json:"textVerbosity"`
 	FastMode                      *bool             `json:"fastMode"`
 	NormalizeNonstandardChatRoles *bool             `json:"normalizeNonstandardChatRoles"`
+	StripCodexClientTools         *bool             `json:"stripCodexClientTools"`
 	// 多渠道调度相关字段
 	Priority                *int       `json:"priority"`
 	Status                  *string    `json:"status"`

@@ -94,6 +94,9 @@ func (p *ResponsesProvider) buildProviderRequestBody(c *gin.Context, requestPath
 			return nil, nil, fmt.Errorf("透传模式下解析请求失败: %w", err)
 		}
 		normalizeResponsesInputForPassthrough(reqMap)
+		if upstream.StripCodexClientTools {
+			stripCodexClientOnlyTools(reqMap)
+		}
 		if model, ok := reqMap["model"].(string); ok {
 			reqMap["model"] = config.RedirectModel(model, upstream)
 			if effort := config.ResolveReasoningEffort(model, upstream); effort != "" {
@@ -109,6 +112,9 @@ func (p *ResponsesProvider) buildProviderRequestBody(c *gin.Context, requestPath
 		providerReq = reqMap
 	} else {
 		var responsesReq types.ResponsesRequest
+		if upstream.StripCodexClientTools {
+			bodyBytes = stripCodexClientOnlyToolsFromBody(bodyBytes)
+		}
 		if err := json.Unmarshal(bodyBytes, &responsesReq); err != nil {
 			return nil, nil, fmt.Errorf("解析 Responses 请求失败: %w", err)
 		}
@@ -745,6 +751,118 @@ func toString(v interface{}) string {
 		return s
 	}
 	return ""
+}
+
+func stripCodexClientOnlyToolsFromBody(bodyBytes []byte) []byte {
+	var reqMap map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &reqMap); err != nil {
+		return bodyBytes
+	}
+	stripCodexClientOnlyTools(reqMap)
+	updated, err := json.Marshal(reqMap)
+	if err != nil {
+		return bodyBytes
+	}
+	return updated
+}
+
+// stripCodexClientOnlyTools 在 /v1/responses 中剥离仅对官方 Codex 有效的工具条目。
+// Codex CLI 0.130+ 会在 tools 数组里混入字符串简写（如 "exec_command"、"mcp__chrome_devtools__"）
+// 以及 type=namespace/custom/web_search 等客户端侧约定对象，第三方 Responses 镜像通常不认识，
+// 会直接 400（例如 anyrouter 报 "Missing required parameter: 'tools[15].tools'"）。
+// 这里只保留第三方上游普遍支持的对象型工具（function/tool 等），其它条目连同 tool_choice 一起剥掉。
+func stripCodexClientOnlyTools(reqMap map[string]interface{}) {
+	rawTools, ok := reqMap["tools"].([]interface{})
+	if !ok || len(rawTools) == 0 {
+		return
+	}
+
+	kept := make([]interface{}, 0, len(rawTools))
+	removed := 0
+	for _, item := range rawTools {
+		switch v := item.(type) {
+		case string:
+			removed++
+		case map[string]interface{}:
+			if shouldDropResponsesToolObject(v) {
+				removed++
+				continue
+			}
+			kept = append(kept, v)
+		default:
+			removed++
+		}
+	}
+
+	if removed == 0 {
+		return
+	}
+
+	if len(kept) == 0 {
+		delete(reqMap, "tools")
+		delete(reqMap, "tool_choice")
+		delete(reqMap, "parallel_tool_calls")
+		return
+	}
+	reqMap["tools"] = kept
+	normalizeToolChoiceAfterToolStrip(reqMap, kept)
+}
+
+func normalizeToolChoiceAfterToolStrip(reqMap map[string]interface{}, keptTools []interface{}) {
+	choice, ok := reqMap["tool_choice"].(map[string]interface{})
+	if !ok {
+		return
+	}
+	choiceName := extractToolChoiceName(choice)
+	if choiceName == "" {
+		return
+	}
+	if hasToolName(keptTools, choiceName) {
+		return
+	}
+	reqMap["tool_choice"] = "auto"
+}
+
+func extractToolChoiceName(choice map[string]interface{}) string {
+	if name := toString(choice["name"]); name != "" {
+		return name
+	}
+	function, ok := choice["function"].(map[string]interface{})
+	if !ok {
+		return ""
+	}
+	return toString(function["name"])
+}
+
+func hasToolName(tools []interface{}, name string) bool {
+	for _, raw := range tools {
+		tool, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if toolName := toString(tool["name"]); toolName == name {
+			return true
+		}
+		function, ok := tool["function"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if functionName := toString(function["name"]); functionName == name {
+			return true
+		}
+	}
+	return false
+}
+
+// shouldDropResponsesToolObject 判断对象型工具条目是否为 Codex 客户端专属。
+// 仅识别明确的客户端约定类型，未知类型保守保留，避免误伤上游自定义扩展。
+func shouldDropResponsesToolObject(tool map[string]interface{}) bool {
+	toolType := strings.ToLower(toString(tool["type"]))
+	switch toolType {
+	case "namespace", "custom", "web_search", "local_shell", "computer_use":
+		return true
+	}
+	return false
 }
 
 func normalizeResponsesInputForPassthrough(reqMap map[string]interface{}) {

@@ -24,6 +24,7 @@ func BuildChannelView(up config.UpstreamConfig, index int) gin.H {
 		"textVerbosity":                 up.TextVerbosity,
 		"fastMode":                      up.FastMode,
 		"normalizeNonstandardChatRoles": up.NormalizeNonstandardChatRoles,
+		"stripCodexClientTools":         up.StripCodexClientTools,
 		"latency":                       nil,
 		"status":                        status,
 		"adminState":                    config.GetChannelAdminState(&up),
