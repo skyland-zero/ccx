@@ -43,6 +43,24 @@ func TestParseResponsesInput_NormalizesLegacyResponsesItemsSlice(t *testing.T) {
 	}
 }
 
+func TestParseResponsesInput_InfersMessageTypeFromRole(t *testing.T) {
+	items, err := ParseResponsesInput([]interface{}{
+		map[string]interface{}{
+			"role":    "user",
+			"content": "Who are you?",
+		},
+	})
+	if err != nil {
+		t.Fatalf("ParseResponsesInput failed: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(items))
+	}
+	if items[0].Type != "message" || items[0].Role != "user" || items[0].Content != "Who are you?" {
+		t.Fatalf("message type not inferred: %#v", items[0])
+	}
+}
+
 func TestNormalizeResponsesItem_IsIdempotent(t *testing.T) {
 	original := ResponsesItem{
 		Type:      "function_call",

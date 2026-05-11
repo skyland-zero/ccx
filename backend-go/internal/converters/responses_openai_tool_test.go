@@ -536,6 +536,22 @@ func TestResponsesToOpenAIChatMessages_DeepSeekMultiTurnToolCalls(t *testing.T) 
 	assert.Equal(t, "run tests now", messages[3]["content"])
 }
 
+func TestResponsesToOpenAIChatMessages_InferMessageTypeForRoleContentInput(t *testing.T) {
+	sess := &session.Session{Messages: []types.ResponsesItem{}}
+
+	messages, err := ResponsesToOpenAIChatMessages(sess, []interface{}{
+		map[string]interface{}{
+			"role":    "user",
+			"content": "Who are you?",
+		},
+	}, "")
+
+	assert.NoError(t, err)
+	assert.Len(t, messages, 1)
+	assert.Equal(t, "user", messages[0]["role"])
+	assert.Equal(t, "Who are you?", messages[0]["content"])
+}
+
 // TestResponsesToOpenAIChatMessages_OrphanReasoningUsesEmptyContent 验证孤儿 reasoning 不会产生 content:null。
 func TestResponsesToOpenAIChatMessages_OrphanReasoningUsesEmptyContent(t *testing.T) {
 	sess := &session.Session{Messages: []types.ResponsesItem{}}
