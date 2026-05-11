@@ -1,0 +1,8 @@
+services:
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: ccx-watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: ccx --cleanup --interval 3600
+    restart: unless-stopped
