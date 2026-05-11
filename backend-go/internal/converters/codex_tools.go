@@ -2,8 +2,6 @@ package converters
 
 import (
 	"encoding/json"
-	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/BenedictKing/ccx/internal/types"
@@ -890,9 +888,6 @@ func WrapOpenAIChatResponseToResponsesWithContext(
 
 	return resp, nil
 }
-
-var _ = fmt.Sprintf
-var _ = sort.Ints
 
 // RemapCustomToolCallsInResponse remaps proxy function_call items to custom_tool_call in a ResponsesResponse.
 func (ctx *CodexToolContext) RemapCustomToolCallsInResponse(resp *types.ResponsesResponse) {
