@@ -360,7 +360,7 @@ func TestConvertOpenAIChatToResponses_CustomToolCall(t *testing.T) {
 		`data: {"id":"chatcmpl-custom","object":"chat.completion.chunk","created":1234567890,"model":"gpt-4o","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}`,
 		`data: [DONE]`,
 	}
-	originalReq := []byte(`{"model":"gpt-4o","input":"edit","tools":[{"type":"custom","name":"apply_patch"}]}`)
+	originalReq := []byte(`{"model":"gpt-4o","input":"edit","tools":[{"type":"custom","name":"apply_patch"}],"transformer_metadata":{"codex_tool_compat_enabled":true}}`)
 
 	var state any
 	var allEvents []string
@@ -542,7 +542,7 @@ func TestConvertOpenAIChatToResponsesNonStream_CustomToolCall(t *testing.T) {
 		}],
 		"usage": {"prompt_tokens": 5, "completion_tokens": 10, "total_tokens": 15}
 	}`
-	originalReq := []byte(`{"model":"gpt-4o","input":"edit","tools":[{"type":"custom","name":"apply_patch"}]}`)
+	originalReq := []byte(`{"model":"gpt-4o","input":"edit","tools":[{"type":"custom","name":"apply_patch"}],"transformer_metadata":{"codex_tool_compat_enabled":true}}`)
 
 	result := ConvertOpenAIChatToResponsesNonStream(ctx, "gpt-4o", originalReq, nil, []byte(chatResponse), nil)
 

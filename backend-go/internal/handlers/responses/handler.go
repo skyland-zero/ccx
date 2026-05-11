@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/BenedictKing/ccx/internal/config"
+	"github.com/tidwall/sjson"
 	"github.com/BenedictKing/ccx/internal/converters"
 	"github.com/BenedictKing/ccx/internal/handlers/common"
 	"github.com/BenedictKing/ccx/internal/middleware"
@@ -265,6 +266,16 @@ func handleSuccess(
 	defer resp.Body.Close()
 
 	isStream := originalReq != nil && originalReq.Stream
+
+	// Inject codex_tool_compat_enabled into raw JSON so converters can read it.
+	// TransformerMetadata is json:"-" so it does not survive serialization.
+	if originalReq != nil && originalReq.TransformerMetadata != nil {
+		if enabled, ok := originalReq.TransformerMetadata["codex_tool_compat_enabled"].(bool); ok {
+			if injected, err := sjson.SetBytes(originalRequestJSON, "transformer_metadata.codex_tool_compat_enabled", enabled); err == nil {
+				originalRequestJSON = injected
+			}
+		}
+	}
 
 	if isStream {
 		return handleStreamSuccess(c, resp, upstreamType, envCfg, startTime, originalReq, originalRequestJSON)

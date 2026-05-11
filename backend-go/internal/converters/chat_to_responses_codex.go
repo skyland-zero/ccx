@@ -30,7 +30,16 @@ func (st *chatToResponsesState) ensureCodexToolContext(originalRequestRawJSON []
 	if st.CodexCtxInitialized {
 		return
 	}
-	st.CodexCtx = buildCodexToolContextFromRequest(originalRequestRawJSON)
+	// Extract codexToolCompat flag from raw JSON (injected by handler).
+	if originalRequestRawJSON != nil {
+		req := gjson.ParseBytes(originalRequestRawJSON)
+		if enabled := req.Get("transformer_metadata.codex_tool_compat_enabled"); enabled.Exists() {
+			st.CodexToolCompatEnabled = enabled.Bool()
+		}
+	}
+	if st.CodexToolCompatEnabled {
+		st.CodexCtx = buildCodexToolContextFromRequest(originalRequestRawJSON)
+	}
 	st.CodexCtxInitialized = true
 }
 

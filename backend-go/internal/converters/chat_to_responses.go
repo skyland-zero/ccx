@@ -47,9 +47,10 @@ type chatToResponsesState struct {
 	HasClaudeCacheFields  bool
 	HasCacheDetails       bool
 	// 首次消息标记
-	FirstChunk          bool
-	CodexCtx            CodexToolContext
-	CodexCtxInitialized bool
+	FirstChunk            bool
+	CodexToolCompatEnabled bool
+	CodexCtx              CodexToolContext
+	CodexCtxInitialized   bool
 }
 
 // isCustomProxy returns true if the tool call at the given index is a Codex custom tool proxy.
@@ -335,6 +336,19 @@ func ConvertOpenAIChatToResponses(ctx context.Context, modelName string, origina
 					// 开始新的 tool call item. The concrete item type is emitted
 					// after the function name is known.
 					st.InFuncBlock = true
+
+					// When codexToolCompat is disabled, emit function_call output_item.added
+					// immediately upon receiving tool_call.id, preserving the original event timing.
+					if !st.CodexToolCompatEnabled {
+						outputIndex := st.customToolOutputIndex(idx)
+						item := `{"type":"response.output_item.added","sequence_number":0,"output_index":0,"item":{"id":"","type":"function_call","status":"in_progress","arguments":"","call_id":"","name":""}}`
+						item, _ = sjson.Set(item, "sequence_number", nextSeq())
+						item, _ = sjson.Set(item, "output_index", outputIndex)
+						item, _ = sjson.Set(item, "item.id", fmt.Sprintf("fc_%s", tcID.String()))
+						item, _ = sjson.Set(item, "item.call_id", tcID.String())
+						st.FuncItemAdded[idx] = true
+						out = append(out, emitResponsesEvent("response.output_item.added", item))
+					}
 				}
 
 				// 处理 function
