@@ -154,8 +154,10 @@ func convertMessageItem(item gjson.Result, out string) string {
 	content := item.Get("content")
 	if content.Exists() {
 		if content.IsArray() {
-			// content 是数组，需要提取文本
+			// 文本-only 保持 string，包含图片时保留 OpenAI Chat 多模态数组
 			var messageContent string
+			chatContent := `[]`
+			hasMedia := false
 			var toolCalls []interface{}
 
 			content.ForEach(func(_, contentItem gjson.Result) bool {
@@ -167,16 +169,28 @@ func convertMessageItem(item gjson.Result, out string) string {
 				switch contentType {
 				case "input_text", "output_text", "text":
 					text := contentItem.Get("text").String()
+					if text != "" {
+						textBlock := `{"type":"text","text":""}`
+						textBlock, _ = sjson.Set(textBlock, "text", text)
+						chatContent, _ = sjson.SetRaw(chatContent, "-1", textBlock)
+					}
 					if messageContent != "" {
 						messageContent += "\n" + text
 					} else {
 						messageContent = text
 					}
+				case "input_image", "image_url":
+					if imageBlock := responsesImageContentToChatBlock(contentItem); imageBlock != "" {
+						chatContent, _ = sjson.SetRaw(chatContent, "-1", imageBlock)
+						hasMedia = true
+					}
 				}
 				return true
 			})
 
-			if messageContent != "" {
+			if hasMedia {
+				message, _ = sjson.SetRaw(message, "content", chatContent)
+			} else if messageContent != "" {
 				message, _ = sjson.Set(message, "content", messageContent)
 			}
 
@@ -191,6 +205,31 @@ func convertMessageItem(item gjson.Result, out string) string {
 
 	out, _ = sjson.SetRaw(out, "messages.-1", message)
 	return out
+}
+
+func responsesImageContentToChatBlock(contentItem gjson.Result) string {
+	imageURL := contentItem.Get("image_url")
+	if !imageURL.Exists() {
+		return ""
+	}
+
+	block := `{"type":"image_url","image_url":{}}`
+	if imageURL.Type == gjson.String {
+		if imageURL.String() == "" {
+			return ""
+		}
+		block, _ = sjson.Set(block, "image_url.url", imageURL.String())
+	} else if imageURL.IsObject() {
+		block, _ = sjson.SetRaw(block, "image_url", imageURL.Raw)
+	} else {
+		return ""
+	}
+
+	if detail := contentItem.Get("detail"); detail.Exists() && detail.String() != "" {
+		block, _ = sjson.Set(block, "image_url.detail", detail.String())
+	}
+
+	return block
 }
 
 // convertFunctionCallItem 转换 function_call 类型的 item

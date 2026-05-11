@@ -542,27 +542,25 @@ func responsesItemToOpenAIMessage(item types.ResponsesItem) map[string]interface
 		}
 
 	case "message":
-		// 新格式：嵌套结构
-		role, contentText := resolveResponsesTextItem(item)
-		if contentText == "" {
+		role, content := resolveResponsesChatMessageContent(item)
+		if content == nil {
 			return nil
 		}
 
 		return map[string]interface{}{
 			"role":    role,
-			"content": contentText,
+			"content": content,
 		}
 
 	case "text":
-		// 旧格式：简单 string
-		role, contentStr := resolveResponsesTextItem(item)
-		if contentStr == "" {
+		role, content := resolveResponsesChatMessageContent(item)
+		if content == nil {
 			return nil
 		}
 
 		return map[string]interface{}{
 			"role":    role,
-			"content": contentStr,
+			"content": content,
 		}
 
 	case "function_call":

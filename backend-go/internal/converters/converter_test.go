@@ -181,6 +181,60 @@ func TestOpenAIChatConverter_WithMessageType(t *testing.T) {
 	}
 }
 
+func TestOpenAIChatConverter_WithImageMessageContent(t *testing.T) {
+	converter := &OpenAIChatConverter{}
+	sess := &session.Session{
+		ID:       "sess_test",
+		Messages: []types.ResponsesItem{},
+	}
+
+	req := &types.ResponsesRequest{
+		Model: "mimo-v2.5-pro",
+		Input: []interface{}{
+			map[string]interface{}{
+				"type": "message",
+				"role": "user",
+				"content": []interface{}{
+					map[string]interface{}{
+						"type": "input_text",
+						"text": "描述这张图片",
+					},
+					map[string]interface{}{
+						"type":      "input_image",
+						"image_url": "data:image/png;base64,abc",
+						"detail":    "high",
+					},
+				},
+			},
+		},
+	}
+
+	result, err := converter.ToProviderRequest(sess, req)
+	if err != nil {
+		t.Fatalf("转换失败: %v", err)
+	}
+
+	resultMap := result.(map[string]interface{})
+	messages := resultMap["messages"].([]map[string]interface{})
+	content, ok := messages[0]["content"].([]map[string]interface{})
+	if !ok {
+		t.Fatalf("content 应为多模态数组，实际为 %#v", messages[0]["content"])
+	}
+	if len(content) != 2 {
+		t.Fatalf("期望 2 个 content block，实际为 %d", len(content))
+	}
+	if content[0]["type"] != "text" || content[0]["text"] != "描述这张图片" {
+		t.Fatalf("文本 block 不匹配: %#v", content[0])
+	}
+	imageURL, ok := content[1]["image_url"].(map[string]interface{})
+	if !ok || content[1]["type"] != "image_url" {
+		t.Fatalf("图片 block 不匹配: %#v", content[1])
+	}
+	if imageURL["url"] != "data:image/png;base64,abc" || imageURL["detail"] != "high" {
+		t.Fatalf("图片 URL 不匹配: %#v", imageURL)
+	}
+}
+
 // ============== Claude 转换器测试 ==============
 
 func TestClaudeConverter_WithInstructions(t *testing.T) {

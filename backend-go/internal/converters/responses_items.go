@@ -108,6 +108,103 @@ func resolveResponsesTextItem(item types.ResponsesItem) (string, string) {
 	return role, extractTextFromContent(item.Content)
 }
 
+func resolveResponsesChatMessageContent(item types.ResponsesItem) (string, interface{}) {
+	role, text := resolveResponsesTextItem(item)
+	contentParts := responsesContentToOpenAIChatParts(item.Content)
+	if len(contentParts) == 0 {
+		if text == "" {
+			return role, nil
+		}
+		return role, text
+	}
+	return role, contentParts
+}
+
+func responsesContentToOpenAIChatParts(content interface{}) []map[string]interface{} {
+	switch v := content.(type) {
+	case []interface{}:
+		parts := make([]map[string]interface{}, 0, len(v))
+		hasImage := false
+		for _, raw := range v {
+			block, ok := raw.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			part := responsesContentBlockToOpenAIChatPart(block)
+			if part == nil {
+				continue
+			}
+			if part["type"] == "image_url" {
+				hasImage = true
+			}
+			parts = append(parts, part)
+		}
+		if !hasImage {
+			return nil
+		}
+		return parts
+	default:
+		return nil
+	}
+}
+
+func responsesContentBlockToOpenAIChatPart(block map[string]interface{}) map[string]interface{} {
+	blockType, _ := block["type"].(string)
+	if blockType == "" {
+		blockType = "input_text"
+	}
+
+	switch blockType {
+	case "input_text", "output_text", "text":
+		text, _ := block["text"].(string)
+		if text == "" {
+			return nil
+		}
+		return map[string]interface{}{"type": "text", "text": text}
+	case "input_image", "image_url":
+		imageURL := normalizeResponsesImageURL(block)
+		if imageURL == nil {
+			return nil
+		}
+		return map[string]interface{}{"type": "image_url", "image_url": imageURL}
+	default:
+		return nil
+	}
+}
+
+func normalizeResponsesImageURL(block map[string]interface{}) map[string]interface{} {
+	rawImageURL, ok := block["image_url"]
+	if !ok {
+		return nil
+	}
+
+	switch imageURL := rawImageURL.(type) {
+	case string:
+		if imageURL == "" {
+			return nil
+		}
+		result := map[string]interface{}{"url": imageURL}
+		if detail, _ := block["detail"].(string); detail != "" {
+			result["detail"] = detail
+		}
+		return result
+	case map[string]interface{}:
+		if _, ok := imageURL["url"].(string); !ok {
+			return nil
+		}
+		result := make(map[string]interface{}, len(imageURL)+1)
+		for key, value := range imageURL {
+			result[key] = value
+		}
+		if detail, _ := block["detail"].(string); detail != "" {
+			result["detail"] = detail
+		}
+		return result
+	default:
+		return nil
+	}
+}
+
 func extractResponsesReasoningText(item types.ResponsesItem) string {
 	if text := extractReasoningTextFromSummary(item.Summary); text != "" {
 		return text

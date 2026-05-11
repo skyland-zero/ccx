@@ -136,6 +136,37 @@ func TestConvertResponsesToOpenAIChatRequest(t *testing.T) {
 			},
 		},
 		{
+			name: "多模态图片输入保留为 Chat content array",
+			input: `{
+				"model": "mimo-v2.5-pro",
+				"input": [{"type": "message", "role": "user", "content": [
+					{"type": "input_text", "text": "描述这张图片"},
+					{"type": "input_image", "image_url": "data:image/png;base64,abc", "detail": "high"}
+				]}]
+			}`,
+			model:  "mimo-v2.5-pro",
+			stream: false,
+			validate: func(t *testing.T, result []byte) {
+				root := gjson.ParseBytes(result)
+				content := root.Get("messages.0.content")
+				if !content.IsArray() {
+					t.Fatalf("content should be array, got %s", content.Raw)
+				}
+				if content.Get("0.type").String() != "text" || content.Get("0.text").String() != "描述这张图片" {
+					t.Fatalf("text block mismatch: %s", content.Get("0").Raw)
+				}
+				if content.Get("1.type").String() != "image_url" {
+					t.Fatalf("image block type mismatch: %s", content.Get("1").Raw)
+				}
+				if content.Get("1.image_url.url").String() != "data:image/png;base64,abc" {
+					t.Fatalf("image url mismatch: %s", content.Get("1").Raw)
+				}
+				if content.Get("1.image_url.detail").String() != "high" {
+					t.Fatalf("image detail mismatch: %s", content.Get("1").Raw)
+				}
+			},
+		},
+		{
 			name: "tool_choice object 保真",
 			input: `{
 				"model": "gpt-4",
