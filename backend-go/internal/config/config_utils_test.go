@@ -106,7 +106,7 @@ func TestResolveReasoningEffort(t *testing.T) {
 	}{
 		{"精确匹配", "o3", "medium"},
 		{"最长匹配优先", "gpt-5.1-codex", "xhigh"},
-		{"模糊匹配回退", "gpt-5.1", "xhigh"},
+		{"模糊匹配回退", "gpt-5.1", "high"},
 		{"未匹配返回空", "claude-3-7-sonnet", ""},
 	}
 

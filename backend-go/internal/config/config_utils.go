@@ -90,7 +90,7 @@ func RedirectModel(model string, upstream *UpstreamConfig) string {
 	})
 
 	for _, m := range mappings {
-		if strings.Contains(model, m.source) || strings.Contains(m.source, model) {
+		if strings.Contains(model, m.source) {
 			return m.target
 		}
 	}
@@ -118,7 +118,7 @@ func ResolveReasoningEffort(model string, upstream *UpstreamConfig) string {
 		return len(mappings[i].source) > len(mappings[j].source)
 	})
 	for _, m := range mappings {
-		if strings.Contains(model, m.source) || strings.Contains(m.source, model) {
+		if strings.Contains(model, m.source) {
 			return m.effort
 		}
 	}
