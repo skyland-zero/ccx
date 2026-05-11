@@ -535,3 +535,95 @@ func TestResponsesToOpenAIChatMessages_DeepSeekMultiTurnToolCalls(t *testing.T) 
 	assert.Equal(t, "user", messages[3]["role"])
 	assert.Equal(t, "run tests now", messages[3]["content"])
 }
+
+func TestResponsesToOpenAIChatMessages_InferMessageTypeForRoleContentInput(t *testing.T) {
+	sess := &session.Session{Messages: []types.ResponsesItem{}}
+
+	messages, err := ResponsesToOpenAIChatMessages(sess, []interface{}{
+		map[string]interface{}{
+			"role":    "user",
+			"content": "Who are you?",
+		},
+	}, "")
+
+	assert.NoError(t, err)
+	assert.Len(t, messages, 1)
+	assert.Equal(t, "user", messages[0]["role"])
+	assert.Equal(t, "Who are you?", messages[0]["content"])
+}
+
+// TestResponsesToOpenAIChatMessages_OrphanReasoningUsesEmptyContent 验证孤儿 reasoning 不会产生 content:null。
+func TestResponsesToOpenAIChatMessages_OrphanReasoningUsesEmptyContent(t *testing.T) {
+	sess := &session.Session{Messages: []types.ResponsesItem{}}
+
+	messages, err := ResponsesToOpenAIChatMessages(sess, []interface{}{
+		map[string]interface{}{
+			"type":   "reasoning",
+			"status": "completed",
+			"summary": []interface{}{
+				map[string]interface{}{"type": "summary_text", "text": "partial reasoning"},
+			},
+		},
+		map[string]interface{}{
+			"type": "message",
+			"role": "user",
+			"content": []interface{}{
+				map[string]interface{}{"type": "input_text", "text": "继续"},
+			},
+		},
+	}, "")
+
+	assert.NoError(t, err)
+	assert.Len(t, messages, 2)
+	assert.Equal(t, "assistant", messages[0]["role"])
+	assert.Equal(t, "", messages[0]["content"])
+	assert.Equal(t, "partial reasoning", messages[0]["reasoning_content"])
+	assert.Equal(t, "user", messages[1]["role"])
+}
+
+// TestResponsesToOpenAIChatMessages_InterruptedSessionMergesOrphanReasoning 模拟 Codex 停止生成后继续输入。
+func TestResponsesToOpenAIChatMessages_InterruptedSessionMergesOrphanReasoning(t *testing.T) {
+	sess := &session.Session{Messages: []types.ResponsesItem{
+		{
+			Type:   "reasoning",
+			Status: "completed",
+			Summary: []interface{}{map[string]interface{}{
+				"type": "summary_text",
+				"text": "first reasoning",
+			}},
+		},
+		{
+			Type: "message",
+			Role: "assistant",
+			Content: []types.ContentBlock{{
+				Type: "output_text",
+				Text: "partial answer before stop",
+			}},
+		},
+		{
+			Type:   "reasoning",
+			Status: "completed",
+			Summary: []interface{}{map[string]interface{}{
+				"type": "summary_text",
+				"text": "interrupted reasoning",
+			}},
+		},
+	}}
+
+	messages, err := ResponsesToOpenAIChatMessages(sess, []interface{}{
+		map[string]interface{}{
+			"type": "message",
+			"role": "user",
+			"content": []interface{}{
+				map[string]interface{}{"type": "input_text", "text": "后边无论输入什么"},
+			},
+		},
+	}, "")
+
+	assert.NoError(t, err)
+	assert.Len(t, messages, 2)
+	assert.Equal(t, "assistant", messages[0]["role"])
+	assert.Equal(t, "partial answer before stop", messages[0]["content"])
+	assert.Equal(t, "first reasoning\ninterrupted reasoning", messages[0]["reasoning_content"])
+	assert.Equal(t, "user", messages[1]["role"])
+}
