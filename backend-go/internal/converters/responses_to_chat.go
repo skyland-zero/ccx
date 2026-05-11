@@ -275,25 +275,51 @@ func convertFunctionCallOutputItem(item gjson.Result, out string) string {
 }
 
 // convertToolsToOpenAIFormat 将 Responses tools 转换为 OpenAI Chat Completions tools 格式
+//
+// 兼容性说明：
+//  1. Codex 新版 Responses 的 tool schema 可能省略 `required` 字段，部分严格
+//     校验 JSONSchema 的上游镜像会报 "None is not of type 'array'"。
+//     转换时统一补齐 `required: []`，并确保 `type: object` 与 `properties: {}`。
+//  2. Responses 的 custom / web_search / namespace 等非 function 工具
+//     在 Chat Completions 中没有对应概念，直接跳过，避免触发协议错误。
 func convertToolsToOpenAIFormat(tools gjson.Result, out string) string {
 	var chatCompletionsTools []interface{}
 
 	tools.ForEach(func(_, tool gjson.Result) bool {
+		toolType := tool.Get("type").String()
+		// Chat Completions 只支持 function tool，其他类型直接跳过
+		if toolType != "" && toolType != "function" {
+			return true
+		}
+
 		chatTool := `{"type":"function","function":{}}`
 
 		function := `{"name":"","description":"","parameters":{}}`
 
-		if name := tool.Get("name"); name.Exists() {
-			function, _ = sjson.Set(function, "name", name.String())
+		// 支持两种写法：{name, parameters} 与 {function: {name, parameters}}
+		name := tool.Get("name")
+		if !name.Exists() {
+			name = tool.Get("function.name")
+		}
+		description := tool.Get("description")
+		if !description.Exists() {
+			description = tool.Get("function.description")
+		}
+		parameters := tool.Get("parameters")
+		if !parameters.Exists() {
+			parameters = tool.Get("function.parameters")
 		}
 
-		if description := tool.Get("description"); description.Exists() {
+		if !name.Exists() || name.String() == "" {
+			return true
+		}
+		function, _ = sjson.Set(function, "name", name.String())
+
+		if description.Exists() && description.String() != "" {
 			function, _ = sjson.Set(function, "description", description.String())
 		}
 
-		if parameters := tool.Get("parameters"); parameters.Exists() {
-			function, _ = sjson.SetRaw(function, "parameters", parameters.Raw)
-		}
+		function, _ = sjson.SetRaw(function, "parameters", normalizeChatToolParameters(parameters))
 
 		chatTool, _ = sjson.SetRaw(chatTool, "function", function)
 		chatCompletionsTools = append(chatCompletionsTools, gjson.Parse(chatTool).Value())
@@ -306,4 +332,28 @@ func convertToolsToOpenAIFormat(tools gjson.Result, out string) string {
 	}
 
 	return out
+}
+
+// normalizeChatToolParameters 规范化 tool.parameters，补齐严格校验所需字段。
+//
+// 针对的上游异常：部分镜像在未提供 `required` 时直接按 None 走校验，
+// 抛出 "Invalid schema for function ...: None is not of type 'array'"。
+// 通过显式填充 required=[] / type=object / properties={} 规避。
+func normalizeChatToolParameters(parameters gjson.Result) string {
+	raw := "{}"
+	if parameters.Exists() && parameters.IsObject() {
+		raw = parameters.Raw
+	}
+
+	if !gjson.Get(raw, "type").Exists() {
+		raw, _ = sjson.Set(raw, "type", "object")
+	}
+	if !gjson.Get(raw, "properties").Exists() {
+		raw, _ = sjson.SetRaw(raw, "properties", "{}")
+	}
+	if !gjson.Get(raw, "required").Exists() {
+		raw, _ = sjson.SetRaw(raw, "required", "[]")
+	}
+
+	return raw
 }

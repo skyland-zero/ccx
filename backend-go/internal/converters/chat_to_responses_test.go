@@ -187,6 +187,77 @@ func TestConvertResponsesToOpenAIChatRequest(t *testing.T) {
 		},
 
 		{
+			name: "tools 缺失 required 字段时自动补齐 []",
+			input: `{
+				"model": "gpt-5-codex",
+				"input": "list mcp resources",
+				"tools": [
+					{
+						"type": "function",
+						"name": "list_mcp_resources",
+						"description": "Lists resources provided by MCP servers.",
+						"strict": false,
+						"parameters": {
+							"type": "object",
+							"properties": {
+								"cursor": {"type": "string"},
+								"server": {"type": "string"}
+							},
+							"additionalProperties": false
+						}
+					}
+				]
+			}`,
+			model:  "gpt-5-codex",
+			stream: false,
+			validate: func(t *testing.T, result []byte) {
+				root := gjson.ParseBytes(result)
+				tools := root.Get("tools").Array()
+				if len(tools) != 1 {
+					t.Fatalf("should have 1 tool, got %d", len(tools))
+				}
+				tool := tools[0]
+				if tool.Get("function.name").String() != "list_mcp_resources" {
+					t.Fatalf("tool name mismatch: %s", tool.Raw)
+				}
+				params := tool.Get("function.parameters")
+				if params.Get("type").String() != "object" {
+					t.Fatalf("parameters.type should be object: %s", params.Raw)
+				}
+				required := params.Get("required")
+				if !required.Exists() || !required.IsArray() {
+					t.Fatalf("parameters.required should exist and be array, got %s", params.Raw)
+				}
+				if params.Get("additionalProperties").Bool() != false {
+					t.Fatalf("additionalProperties should be preserved: %s", params.Raw)
+				}
+			},
+		},
+		{
+			name: "非 function 类型的工具应被跳过",
+			input: `{
+				"model": "gpt-5-codex",
+				"input": "search the web",
+				"tools": [
+					{"type": "web_search"},
+					{"type": "custom", "name": "grep"},
+					{"type": "function", "name": "do_thing", "parameters": {"type": "object", "properties": {}}}
+				]
+			}`,
+			model:  "gpt-5-codex",
+			stream: false,
+			validate: func(t *testing.T, result []byte) {
+				root := gjson.ParseBytes(result)
+				tools := root.Get("tools").Array()
+				if len(tools) != 1 {
+					t.Fatalf("expected 1 tool after filtering, got %d (%s)", len(tools), root.Get("tools").Raw)
+				}
+				if tools[0].Get("function.name").String() != "do_thing" {
+					t.Fatalf("should keep only function tool, got %s", tools[0].Raw)
+				}
+			},
+		},
+		{
 			name: "reasoning effort 转换",
 			input: `{
 				"model": "o1-mini",

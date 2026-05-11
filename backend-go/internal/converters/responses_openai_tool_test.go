@@ -627,3 +627,66 @@ func TestResponsesToOpenAIChatMessages_InterruptedSessionMergesOrphanReasoning(t
 	assert.Equal(t, "first reasoning\ninterrupted reasoning", messages[0]["reasoning_content"])
 	assert.Equal(t, "user", messages[1]["role"])
 }
+
+// TestResponsesToolsToOpenAI_RequiredAutoFill 验证 required 字段自动补齐
+// 根因：部分上游（如 duckcoding 的 OpenAI 严格 schema）在 required 缺失时
+// 直接按 None 校验，抛 "Invalid schema for function ...: None is not of type 'array'"
+func TestResponsesToolsToOpenAI_RequiredAutoFill(t *testing.T) {
+	tools := []map[string]interface{}{
+		{
+			"type":        "function",
+			"name":        "list_mcp_resources",
+			"description": "Lists resources provided by MCP servers.",
+			"parameters": map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"cursor": map[string]interface{}{"type": "string"},
+					"server": map[string]interface{}{"type": "string"},
+				},
+				"additionalProperties": false,
+			},
+		},
+	}
+
+	openaiTools := responsesToolsToOpenAI(tools)
+	assert.Len(t, openaiTools, 1)
+
+	fn := openaiTools[0]["function"].(map[string]interface{})
+	params := fn["parameters"].(map[string]interface{})
+	required, ok := params["required"]
+	assert.True(t, ok, "parameters.required 必须存在以兼容严格 schema 校验")
+	arr, ok := required.([]interface{})
+	assert.True(t, ok, "required 必须是 array 类型")
+	assert.Equal(t, 0, len(arr))
+}
+
+// TestResponsesToolsToOpenAI_SkipsCustomTools 非 function 类型不应透传给 Chat Completions
+func TestResponsesToolsToOpenAI_SkipsCustomTools(t *testing.T) {
+	tools := []map[string]interface{}{
+		{"type": "custom", "name": "apply_patch"},
+		{"type": "web_search"},
+		{"type": "function", "name": "do_thing", "parameters": map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}},
+	}
+
+	openaiTools := responsesToolsToOpenAI(tools)
+	assert.Len(t, openaiTools, 1, "仅保留 function 类型工具")
+
+	fn := openaiTools[0]["function"].(map[string]interface{})
+	assert.Equal(t, "do_thing", fn["name"])
+}
+
+// TestResponsesToolsToOpenAI_EmptyParametersDefault 无 parameters 时使用默认值
+func TestResponsesToolsToOpenAI_EmptyParametersDefault(t *testing.T) {
+	tools := []map[string]interface{}{
+		{"type": "function", "name": "ping"},
+	}
+
+	openaiTools := responsesToolsToOpenAI(tools)
+	assert.Len(t, openaiTools, 1)
+
+	fn := openaiTools[0]["function"].(map[string]interface{})
+	params := fn["parameters"].(map[string]interface{})
+	assert.Equal(t, "object", params["type"])
+	assert.NotNil(t, params["properties"])
+	assert.NotNil(t, params["required"])
+}
