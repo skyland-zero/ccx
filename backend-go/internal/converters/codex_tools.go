@@ -32,9 +32,10 @@ type CodexFunctionToolSpec struct {
 
 // CodexToolContext holds parsed information about all tools in a request.
 type CodexToolContext struct {
-	CustomTools    map[string]CodexCustomToolSpec
-	FunctionTools  map[string]CodexFunctionToolSpec
-	HasCustomTools bool
+	CustomTools       map[string]CodexCustomToolSpec
+	FunctionTools     map[string]CodexFunctionToolSpec
+	HasCustomTools    bool
+	HasNamespaceTools bool
 }
 
 // BuildCodexToolContext inspects a Responses request's tools array and builds
@@ -77,10 +78,64 @@ func BuildCodexToolContext(tools []map[string]interface{}) CodexToolContext {
 				continue
 			}
 			ctx.FunctionTools[name] = CodexFunctionToolSpec{Name: name}
+		case "namespace":
+			addNamespaceToolsToContext(&ctx, tool)
 		}
 	}
 
 	return ctx
+}
+
+// flattenNamespaceToolName returns the flat function name for a namespace tool child.
+func flattenNamespaceToolName(namespace, name string) string {
+	if namespace == "" {
+		return name
+	}
+	if name == "" {
+		return namespace
+	}
+	if strings.HasSuffix(namespace, "__") || strings.HasPrefix(name, "__") {
+		return namespace + name
+	}
+	return namespace + "__" + name
+}
+
+func addNamespaceToolsToContext(ctx *CodexToolContext, namespaceTool map[string]interface{}) {
+	namespace, _ := namespaceTool["name"].(string)
+	children, _ := namespaceTool["tools"].([]interface{})
+	for _, raw := range children {
+		child, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		childType, _ := child["type"].(string)
+		switch childType {
+		case "function":
+			name, _ := child["name"].(string)
+			if name == "" {
+				continue
+			}
+			flat := flattenNamespaceToolName(namespace, name)
+			ctx.FunctionTools[flat] = CodexFunctionToolSpec{
+				Namespace: namespace,
+				Name:      name,
+			}
+			ctx.HasNamespaceTools = true
+		// case "custom", "namespace": not implemented in this pass
+		}
+	}
+}
+
+// OpenAINameForFunctionTool returns the unflattened (name, namespace) for an upstream flat function name.
+func (ctx CodexToolContext) OpenAINameForFunctionTool(upstreamName string) (name string, namespace string) {
+	spec, ok := ctx.FunctionTools[upstreamName]
+	if !ok {
+		return upstreamName, ""
+	}
+	if spec.Name == "" {
+		return upstreamName, spec.Namespace
+	}
+	return spec.Name, spec.Namespace
 }
 
 func detectCodexCustomToolKind(tool map[string]interface{}) (CodexCustomToolKind, string) {
@@ -121,7 +176,7 @@ func (ctx *CodexToolContext) OriginalCustomToolName(upstreamName string) string 
 // ============== Request-Side Tool Conversion ==============
 
 func responsesToolsToOpenAIWithContext(tools []map[string]interface{}, ctx CodexToolContext) []map[string]interface{} {
-	if !ctx.HasCustomTools {
+	if !ctx.HasCustomTools && !ctx.HasNamespaceTools {
 		return responsesToolsToOpenAI(tools)
 	}
 
@@ -147,6 +202,8 @@ func responsesToolsToOpenAIWithContext(tools []map[string]interface{}, ctx Codex
 				ot["function"].(map[string]interface{})["description"] = description
 			}
 			openaiTools = append(openaiTools, ot)
+		case "namespace":
+			openaiTools = append(openaiTools, namespaceToolsToOpenAI(tool, ctx)...)
 		case "custom":
 			name, _ := tool["name"].(string)
 			if name == "" {
@@ -177,6 +234,54 @@ func responsesToolsToOpenAIWithContext(tools []map[string]interface{}, ctx Codex
 	}
 
 	return openaiTools
+}
+
+func namespaceToolsToOpenAI(namespaceTool map[string]interface{}, ctx CodexToolContext) []map[string]interface{} {
+	namespace, _ := namespaceTool["name"].(string)
+	namespaceDesc, _ := namespaceTool["description"].(string)
+	children, _ := namespaceTool["tools"].([]interface{})
+
+	out := make([]map[string]interface{}, 0, len(children))
+	for _, raw := range children {
+		child, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if childType, _ := child["type"].(string); childType != "function" {
+			continue
+		}
+		name, description, parameters := extractResponsesToolFields(child)
+		if name == "" {
+			continue
+		}
+		flat := flattenNamespaceToolName(namespace, name)
+		combinedDescription := combineNamespaceDescription(namespaceDesc, description)
+		function := map[string]interface{}{
+			"name":       flat,
+			"parameters": parameters,
+		}
+		if combinedDescription != "" {
+			function["description"] = combinedDescription
+		}
+		out = append(out, map[string]interface{}{
+			"type":     "function",
+			"function": function,
+		})
+	}
+	return out
+}
+
+func combineNamespaceDescription(namespaceDesc, childDesc string) string {
+	namespaceDesc = strings.TrimSpace(namespaceDesc)
+	childDesc = strings.TrimSpace(childDesc)
+	switch {
+	case namespaceDesc == "":
+		return childDesc
+	case childDesc == "":
+		return namespaceDesc
+	default:
+		return namespaceDesc + "\n\n" + childDesc
+	}
 }
 
 func genericCustomProxyTool(name, description string) map[string]interface{} {
@@ -819,32 +924,47 @@ func ConvertToolChoiceForCodex(toolChoice interface{}, ctx CodexToolContext) int
 		return toolChoice
 	}
 	tcType, _ := tcMap["type"].(string)
-	if tcType != "custom" {
+	switch tcType {
+	case "function":
+		// Check for namespace tool_choice: {"type":"function","namespace":"...","name":"..."}
+		if namespace, _ := tcMap["namespace"].(string); namespace != "" {
+			name, _ := tcMap["name"].(string)
+			flat := flattenNamespaceToolName(namespace, name)
+			return map[string]interface{}{
+				"type": "function",
+				"function": map[string]interface{}{
+					"name": flat,
+				},
+			}
+		}
 		return toolChoice
-	}
-	name, _ := tcMap["name"].(string)
-	if name == "" {
-		return toolChoice
-	}
-	spec, ok := ctx.CustomTools[name]
-	if !ok {
-		return nil
-	}
-	switch spec.Kind {
-	case CodexCustomToolApplyPatch:
-		return map[string]interface{}{
-			"type": "function",
-			"function": map[string]interface{}{
-				"name": spec.OpenAIName + "_batch",
-			},
+	case "custom":
+		name, _ := tcMap["name"].(string)
+		if name == "" {
+			return toolChoice
+		}
+		spec, ok := ctx.CustomTools[name]
+		if !ok {
+			return nil
+		}
+		switch spec.Kind {
+		case CodexCustomToolApplyPatch:
+			return map[string]interface{}{
+				"type": "function",
+				"function": map[string]interface{}{
+					"name": spec.OpenAIName + "_batch",
+				},
+			}
+		default:
+			return map[string]interface{}{
+				"type": "function",
+				"function": map[string]interface{}{
+					"name": spec.OpenAIName,
+				},
+			}
 		}
 	default:
-		return map[string]interface{}{
-			"type": "function",
-			"function": map[string]interface{}{
-				"name": spec.OpenAIName,
-			},
-		}
+		return toolChoice
 	}
 }
 
@@ -862,28 +982,34 @@ func WrapOpenAIChatResponseToResponsesWithContext(
 		return nil, err
 	}
 
-	if !ctx.HasCustomTools || resp == nil {
+	if resp == nil {
 		return resp, nil
 	}
 
-	for i, item := range resp.Output {
-		if item.Type != "function_call" {
-			continue
-		}
-		spec, ok := ctx.CustomTools[item.Name]
-		if !ok {
-			continue
-		}
-		customInput := ReconstructCustomToolCallInput(ctx, item.Name, item.Arguments)
-		if customInput != "" {
-			resp.Output[i] = types.ResponsesItem{
-				Type:   "custom_tool_call",
-				CallID: item.CallID,
-				Name:   spec.OpenAIName,
-				Status: "completed",
-				Input:  customInput,
+	if ctx.HasCustomTools {
+		for i, item := range resp.Output {
+			if item.Type != "function_call" {
+				continue
+			}
+			spec, ok := ctx.CustomTools[item.Name]
+			if !ok {
+				continue
+			}
+			customInput := ReconstructCustomToolCallInput(ctx, item.Name, item.Arguments)
+			if customInput != "" {
+				resp.Output[i] = types.ResponsesItem{
+					Type:   "custom_tool_call",
+					CallID: item.CallID,
+					Name:   spec.OpenAIName,
+					Status: "completed",
+					Input:  customInput,
+				}
 			}
 		}
+	}
+
+	if ctx.HasNamespaceTools {
+		RemapNamespaceFunctionCallsInResponse(resp, ctx)
 	}
 
 	return resp, nil
@@ -912,6 +1038,25 @@ func (ctx *CodexToolContext) RemapCustomToolCallsInResponse(resp *types.Response
 				Input:  customInput,
 			}
 		}
+	}
+}
+
+// RemapNamespaceFunctionCallsInResponse unflattens namespace function calls in a ResponsesResponse.
+func RemapNamespaceFunctionCallsInResponse(resp *types.ResponsesResponse, ctx CodexToolContext) {
+	if resp == nil || len(ctx.FunctionTools) == 0 {
+		return
+	}
+	for i := range resp.Output {
+		item := &resp.Output[i]
+		if item.Type != "function_call" {
+			continue
+		}
+		name, namespace := ctx.OpenAINameForFunctionTool(item.Name)
+		if namespace == "" {
+			continue
+		}
+		item.Name = name
+		item.Namespace = namespace
 	}
 }
 

@@ -81,3 +81,506 @@ func TestRemapCustomToolCallsInResponseSkipsWhenHasCustomToolsFalse(t *testing.T
 		t.Fatalf("item type = %s, want function_call", resp.Output[0].Type)
 	}
 }
+
+// ========== Namespace tool tests ==========
+
+func TestBuildCodexToolContext_NamespaceTool(t *testing.T) {
+	tools := []map[string]interface{}{{
+		"type": "namespace",
+		"name": "mcp__vscode_mcp__",
+		"tools": []interface{}{
+			map[string]interface{}{
+				"type": "function",
+				"name": "execute_command",
+				"parameters": map[string]interface{}{
+					"type":       "object",
+					"properties": map[string]interface{}{},
+				},
+			},
+		},
+	}}
+
+	ctx := BuildCodexToolContext(tools)
+
+	if !ctx.HasNamespaceTools {
+		t.Fatal("HasNamespaceTools should be true")
+	}
+	spec, ok := ctx.FunctionTools["mcp__vscode_mcp__execute_command"]
+	if !ok {
+		t.Fatal("missing flat function tool entry")
+	}
+	if spec.Namespace != "mcp__vscode_mcp__" {
+		t.Fatalf("namespace = %q, want %q", spec.Namespace, "mcp__vscode_mcp__")
+	}
+	if spec.Name != "execute_command" {
+		t.Fatalf("name = %q, want %q", spec.Name, "execute_command")
+	}
+}
+
+func TestFlattenNamespaceToolName(t *testing.T) {
+	cases := []struct {
+		namespace, name, want string
+	}{
+		{"mcp__vscode_mcp__", "execute_command", "mcp__vscode_mcp__execute_command"},
+		{"mcp__", "foo", "mcp__foo"},
+		{"mcp", "__foo", "mcp__foo"},
+		{"mcp", "foo", "mcp__foo"},
+		{"", "foo", "foo"},
+		{"mcp", "", "mcp"},
+	}
+
+	for _, c := range cases {
+		got := flattenNamespaceToolName(c.namespace, c.name)
+		if got != c.want {
+			t.Errorf("flattenNamespaceToolName(%q, %q) = %q, want %q", c.namespace, c.name, got, c.want)
+		}
+	}
+}
+
+func TestCombineNamespaceDescription(t *testing.T) {
+	cases := []struct{ nsDesc, childDesc, want string }{
+		{"VSCode MCP tools", "Execute VSCode command", "VSCode MCP tools\n\nExecute VSCode command"},
+		{"", "Execute command", "Execute command"},
+		{"VSCode MCP tools", "", "VSCode MCP tools"},
+		{"", "", ""},
+	}
+
+	for _, c := range cases {
+		got := combineNamespaceDescription(c.nsDesc, c.childDesc)
+		if got != c.want {
+			t.Errorf("combineNamespaceDescription(%q, %q) = %q, want %q", c.nsDesc, c.childDesc, got, c.want)
+		}
+	}
+}
+
+func TestNamespaceToolsToOpenAI(t *testing.T) {
+	tools := []map[string]interface{}{{
+		"type": "namespace",
+		"name": "mcp__vscode_mcp__",
+		"description": "VSCode MCP tools",
+		"tools": []interface{}{
+			map[string]interface{}{
+				"type": "function",
+				"name": "execute_command",
+				"description": "Execute VSCode command",
+				"parameters": map[string]interface{}{
+					"type":       "object",
+					"properties": map[string]interface{}{"command": map[string]interface{}{"type": "string"}},
+					"required":   []interface{}{"command"},
+				},
+			},
+		},
+	}}
+
+	ctx := BuildCodexToolContext(tools)
+	openaiTools := responsesToolsToOpenAIWithContext(tools, ctx)
+
+	if len(openaiTools) != 1 {
+		t.Fatalf("got %d tools, want 1", len(openaiTools))
+	}
+	fn, ok := openaiTools[0]["function"].(map[string]interface{})
+	if !ok {
+		t.Fatal("missing function field")
+	}
+	name, _ := fn["name"].(string)
+	if name != "mcp__vscode_mcp__execute_command" {
+		t.Fatalf("name = %q, want %q", name, "mcp__vscode_mcp__execute_command")
+	}
+	desc, _ := fn["description"].(string)
+	if desc != "VSCode MCP tools\n\nExecute VSCode command" {
+		t.Fatalf("desc = %q", desc)
+	}
+}
+
+func TestRemapNamespaceFunctionCallsInResponse(t *testing.T) {
+	ctx := BuildCodexToolContext([]map[string]interface{}{{
+		"type": "namespace",
+		"name": "mcp__vscode_mcp__",
+		"tools": []interface{}{
+			map[string]interface{}{
+				"type":       "function",
+				"name":       "execute_command",
+				"parameters": map[string]interface{}{"type": "object", "properties": map[string]interface{}{}},
+			},
+		},
+	}})
+
+	resp := &types.ResponsesResponse{
+		Output: []types.ResponsesItem{{
+			Type:      "function_call",
+			CallID:    "call_1",
+			Name:      "mcp__vscode_mcp__execute_command",
+			Arguments: `{"command":"workbench.action.files.saveAll"}`,
+		}},
+	}
+
+	RemapNamespaceFunctionCallsInResponse(resp, ctx)
+
+	item := resp.Output[0]
+	if item.Type != "function_call" {
+		t.Fatalf("type = %s, want function_call", item.Type)
+	}
+	if item.Name != "execute_command" {
+		t.Fatalf("name = %q, want %q", item.Name, "execute_command")
+	}
+	if item.Namespace != "mcp__vscode_mcp__" {
+		t.Fatalf("namespace = %q, want %q", item.Namespace, "mcp__vscode_mcp__")
+	}
+	if item.Arguments != `{"command":"workbench.action.files.saveAll"}` {
+		t.Fatalf("arguments = %q", item.Arguments)
+	}
+}
+
+func TestRemapNamespaceFunctionCallsSkipsNonNamespaceTools(t *testing.T) {
+	ctx := BuildCodexToolContext([]map[string]interface{}{{
+		"type": "namespace",
+		"name": "mcp__vscode_mcp__",
+		"tools": []interface{}{
+			map[string]interface{}{"type": "function", "name": "execute_command",
+				"parameters": map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}},
+		},
+	}})
+
+	resp := &types.ResponsesResponse{
+		Output: []types.ResponsesItem{{
+			Type:      "function_call",
+			CallID:    "call_2",
+			Name:      "do_something",
+			Arguments: `{}`,
+		}},
+	}
+
+	RemapNamespaceFunctionCallsInResponse(resp, ctx)
+
+	if resp.Output[0].Name != "do_something" {
+		t.Fatalf("unrelated function_call was modified: name = %q", resp.Output[0].Name)
+	}
+}
+
+func TestOpenAINameForFunctionTool(t *testing.T) {
+	ctx := BuildCodexToolContext([]map[string]interface{}{
+		{
+			"type": "function",
+			"name": "top_level_func",
+		},
+		{
+			"type": "namespace",
+			"name": "mcp__vscode_mcp__",
+			"tools": []interface{}{
+				map[string]interface{}{"type": "function", "name": "execute_command",
+					"parameters": map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}},
+			},
+		},
+	})
+
+	name, ns := ctx.OpenAINameForFunctionTool("mcp__vscode_mcp__execute_command")
+	if name != "execute_command" || ns != "mcp__vscode_mcp__" {
+		t.Fatalf("OpenAINameForFunctionTool = (%q, %q), want (%q, %q)", name, ns, "execute_command", "mcp__vscode_mcp__")
+	}
+
+	name2, ns2 := ctx.OpenAINameForFunctionTool("top_level_func")
+	if name2 != "top_level_func" || ns2 != "" {
+		t.Fatalf("top-level OpenAINameForFunctionTool = (%q, %q), want (%q, %q)", name2, ns2, "top_level_func", "")
+	}
+
+	name3, ns3 := ctx.OpenAINameForFunctionTool("unknown_func")
+	if name3 != "unknown_func" || ns3 != "" {
+		t.Fatalf("unknown OpenAINameForFunctionTool = (%q, %q), want (%q, %q)", name3, ns3, "unknown_func", "")
+	}
+}
+
+func TestConvertToolChoiceForCodex_NamespaceFunction(t *testing.T) {
+	ctx := BuildCodexToolContext([]map[string]interface{}{{
+		"type": "namespace",
+		"name": "mcp__vscode_mcp__",
+		"tools": []interface{}{
+			map[string]interface{}{"type": "function", "name": "execute_command",
+				"parameters": map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}},
+		},
+	}})
+
+	toolChoice := map[string]interface{}{
+		"type":      "function",
+		"namespace": "mcp__vscode_mcp__",
+		"name":      "execute_command",
+	}
+	result := ConvertToolChoiceForCodex(toolChoice, ctx)
+
+	rm, ok := result.(map[string]interface{})
+	if !ok {
+		t.Fatal("result is not a map")
+	}
+	fn, ok := rm["function"].(map[string]interface{})
+	if !ok {
+		t.Fatal("missing function field")
+	}
+	name, _ := fn["name"].(string)
+	if name != "mcp__vscode_mcp__execute_command" {
+		t.Fatalf("name = %q, want %q", name, "mcp__vscode_mcp__execute_command")
+	}
+}
+
+func TestConvertToolChoiceForCodex_NormalFunctionUnchanged(t *testing.T) {
+	ctx := CodexToolContext{}
+	toolChoice := map[string]interface{}{
+		"type": "function",
+		"name": "do_something",
+	}
+	result := ConvertToolChoiceForCodex(toolChoice, ctx)
+
+	if _, ok := result.(map[string]interface{}); !ok {
+		t.Fatal("normal function tool choice should pass through as a map")
+	}
+}
+
+func TestResponsesToolsToOpenAIWithContext_FallsBackWhenDisabled(t *testing.T) {
+	tools := []map[string]interface{}{{
+		"type": "function",
+		"name": "foo",
+		"parameters": map[string]interface{}{
+			"type":       "object",
+			"properties": map[string]interface{}{},
+		},
+	}}
+
+	ctx := CodexToolContext{}
+	got := responsesToolsToOpenAIWithContext(tools, ctx)
+	if len(got) != 1 {
+		t.Fatalf("got %d tools, want 1", len(got))
+	}
+	fn := got[0]["function"].(map[string]interface{})
+	if fn["name"] != "foo" {
+		t.Fatalf("name = %q, want %q", fn["name"], "foo")
+	}
+}
+
+func TestBackwardCompatibility_ApplyPatchCustomToolStillWorks(t *testing.T) {
+	// Verify that apply_patch custom tools are still handled
+	tools := []map[string]interface{}{{
+		"type": "custom",
+		"name": "apply_patch",
+	}}
+
+	ctx := BuildCodexToolContext(tools)
+	if !ctx.HasCustomTools {
+		t.Fatal("HasCustomTools should be true for apply_patch")
+	}
+	if _, ok := ctx.CustomTools["apply_patch_add_file"]; !ok {
+		t.Fatal("apply_patch_add_file proxy tool missing")
+	}
+	if _, ok := ctx.CustomTools["apply_patch_delete_file"]; !ok {
+		t.Fatal("apply_patch_delete_file proxy tool missing")
+	}
+	if _, ok := ctx.CustomTools["apply_patch_update_file"]; !ok {
+		t.Fatal("apply_patch_update_file proxy tool missing")
+	}
+	if _, ok := ctx.CustomTools["apply_patch_replace_file"]; !ok {
+		t.Fatal("apply_patch_replace_file proxy tool missing")
+	}
+	if _, ok := ctx.CustomTools["apply_patch_batch"]; !ok {
+		t.Fatal("apply_patch_batch proxy tool missing")
+	}
+}
+
+func TestHistoryReplay_NamespaceFunctionCallFlattened(t *testing.T) {
+	// Simulate a ResponsesItem with namespace from history, converted to OpenAI message.
+	item := types.ResponsesItem{
+		Type:      "function_call",
+		CallID:    "call_1",
+		Namespace: "mcp__vscode_mcp__",
+		Name:      "execute_command",
+		Arguments: `{"command":"workbench.action.files.saveAll"}`,
+	}
+
+	msg := responsesItemToOpenAIMessage(item)
+	if msg == nil {
+		t.Fatal("responsesItemToOpenAIMessage returned nil")
+	}
+
+	role, _ := msg["role"].(string)
+	if role != "assistant" {
+		t.Fatalf("role = %q, want assistant", role)
+	}
+
+	toolCalls, ok := msg["tool_calls"].([]map[string]interface{})
+	if !ok || len(toolCalls) != 1 {
+		t.Fatal("missing tool_calls")
+	}
+
+	fn := toolCalls[0]["function"].(map[string]interface{})
+	fnName, _ := fn["name"].(string)
+	if fnName != "mcp__vscode_mcp__execute_command" {
+		t.Fatalf("flattened name = %q, want %q", fnName, "mcp__vscode_mcp__execute_command")
+	}
+	args, _ := fn["arguments"].(string)
+	if args != `{"command":"workbench.action.files.saveAll"}` {
+		t.Fatalf("args = %q", args)
+	}
+}
+
+func TestHistoryReplay_TopLevelFunctionCallNotModified(t *testing.T) {
+	item := types.ResponsesItem{
+		Type:      "function_call",
+		CallID:    "call_2",
+		Name:      "list_mcp_resources",
+		Arguments: `{}`,
+	}
+
+	msg := responsesItemToOpenAIMessage(item)
+	if msg == nil {
+		t.Fatal("responsesItemToOpenAIMessage returned nil")
+	}
+
+	toolCalls, ok := msg["tool_calls"].([]map[string]interface{})
+	if !ok || len(toolCalls) != 1 {
+		t.Fatal("missing tool_calls")
+	}
+
+	fn := toolCalls[0]["function"].(map[string]interface{})
+	fnName, _ := fn["name"].(string)
+	if fnName != "list_mcp_resources" {
+		t.Fatalf("name = %q, want %q", fnName, "list_mcp_resources")
+	}
+}
+
+func TestNamespaceAndCustomToolsCoexist(t *testing.T) {
+	tools := []map[string]interface{}{
+		{
+			"type": "namespace",
+			"name": "mcp__vscode_mcp__",
+			"tools": []interface{}{
+				map[string]interface{}{"type": "function", "name": "execute_command",
+					"parameters": map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}},
+			},
+		},
+		{
+			"type": "custom",
+			"name": "apply_patch",
+		},
+	}
+
+	ctx := BuildCodexToolContext(tools)
+
+	if !ctx.HasCustomTools {
+		t.Fatal("HasCustomTools should be true")
+	}
+	if !ctx.HasNamespaceTools {
+		t.Fatal("HasNamespaceTools should be true")
+	}
+
+	// Verify namespace function in context
+	spec, ok := ctx.FunctionTools["mcp__vscode_mcp__execute_command"]
+	if !ok || spec.Name != "execute_command" {
+		t.Fatal("namespace function tool missing")
+	}
+
+	// Verify custom proxies
+	if _, ok := ctx.CustomTools["apply_patch_add_file"]; !ok {
+		t.Fatal("custom proxy tools missing")
+	}
+
+	// Convert to OpenAI tools
+	openaiTools := responsesToolsToOpenAIWithContext(tools, ctx)
+
+	hasNamespaceTool := false
+	hasCustomProxy := false
+	for _, ot := range openaiTools {
+		fn := ot["function"].(map[string]interface{})
+		name := fn["name"].(string)
+		if name == "mcp__vscode_mcp__execute_command" {
+			hasNamespaceTool = true
+		}
+		if name == "apply_patch_batch" {
+			hasCustomProxy = true
+		}
+	}
+	if !hasNamespaceTool {
+		t.Fatal("namespace tool missing from OpenAI output")
+	}
+	if !hasCustomProxy {
+		t.Fatal("custom proxy tool missing from OpenAI output")
+	}
+}
+
+func TestResponsesToolsToOpenAIWithContext_NilNamespaceName(t *testing.T) {
+	// Namespace tool with no name should be skipped gracefully
+	tools := []map[string]interface{}{{
+		"type": "namespace",
+		"tools": []interface{}{
+			map[string]interface{}{
+				"type":       "function",
+				"name":       "func",
+				"parameters": map[string]interface{}{"type": "object", "properties": map[string]interface{}{}},
+			},
+		},
+	}}
+
+	ctx := BuildCodexToolContext(tools)
+	openaiTools := responsesToolsToOpenAIWithContext(tools, ctx)
+	if len(openaiTools) != 1 {
+		t.Fatalf("got %d tools, want 1", len(openaiTools))
+	}
+	// With empty namespace, name should be just "func" (or "__func" depending on flatten logic)
+	fn := openaiTools[0]["function"].(map[string]interface{})
+	name := fn["name"].(string)
+	if name != "func" && name != "__func" {
+		t.Fatalf("unexpected name: %q", name)
+	}
+}
+
+func TestWrapOpenAIChatResponseToResponsesWithContext_NamespaceRemapping(t *testing.T) {
+	ctx := BuildCodexToolContext([]map[string]interface{}{{
+		"type": "namespace",
+		"name": "mcp__vscode_mcp__",
+		"tools": []interface{}{
+			map[string]interface{}{"type": "function", "name": "execute_command",
+				"parameters": map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}},
+		},
+	}})
+
+	openaiResp := map[string]interface{}{
+		"id":    "chatcmpl-123",
+		"model": "gpt-4",
+		"choices": []interface{}{
+			map[string]interface{}{
+				"index": float64(0),
+				"message": map[string]interface{}{
+					"role": "assistant",
+					"tool_calls": []interface{}{
+						map[string]interface{}{
+							"id":   "call_1",
+							"type": "function",
+							"function": map[string]interface{}{
+								"name":      "mcp__vscode_mcp__execute_command",
+								"arguments": `{"command":"test"}`,
+							},
+						},
+					},
+				},
+			},
+		},
+		"usage": map[string]interface{}{
+			"prompt_tokens":     float64(10),
+			"completion_tokens": float64(5),
+			"total_tokens":      float64(15),
+		},
+	}
+
+	resp, err := WrapOpenAIChatResponseToResponsesWithContext(openaiResp, "session_1", ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Output) != 1 {
+		t.Fatalf("output len = %d, want 1", len(resp.Output))
+	}
+	item := resp.Output[0]
+	if item.Type != "function_call" {
+		t.Fatalf("type = %s, want function_call", item.Type)
+	}
+	if item.Name != "execute_command" {
+		t.Fatalf("name = %q, want %q", item.Name, "execute_command")
+	}
+	if item.Namespace != "mcp__vscode_mcp__" {
+		t.Fatalf("namespace = %q, want %q", item.Namespace, "mcp__vscode_mcp__")
+	}
+}

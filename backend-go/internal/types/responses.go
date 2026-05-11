@@ -39,6 +39,7 @@ type ResponsesItem struct {
 	ToolUse   *ToolUse    `json:"tool_use,omitempty"`
 	CallID    string      `json:"call_id,omitempty"`
 	Name      string      `json:"name,omitempty"`
+	Namespace string      `json:"namespace,omitempty"`
 	Input     string      `json:"input,omitempty"`
 	Arguments string      `json:"arguments,omitempty"`
 	Output    interface{} `json:"output,omitempty"`

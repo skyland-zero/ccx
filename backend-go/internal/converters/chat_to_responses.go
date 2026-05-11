@@ -82,7 +82,11 @@ func (st *chatToResponsesState) addToolCallItemIfNeeded(idx int, nextSeq func() 
 		itemID := fmt.Sprintf("fc_%s", callID)
 		item = `{"type":"response.output_item.added","sequence_number":0,"output_index":0,"item":{"id":"","type":"function_call","status":"in_progress","arguments":"","call_id":"","name":""}}`
 		item, _ = sjson.Set(item, "item.id", itemID)
-		item, _ = sjson.Set(item, "item.name", name)
+		displayName, namespace := st.CodexCtx.OpenAINameForFunctionTool(name)
+		item, _ = sjson.Set(item, "item.name", displayName)
+		if namespace != "" {
+			item, _ = sjson.Set(item, "item.namespace", namespace)
+		}
 	}
 	item, _ = sjson.Set(item, "sequence_number", nextSeq())
 	item, _ = sjson.Set(item, "output_index", outputIndex)
@@ -638,7 +642,11 @@ func (st *chatToResponsesState) closeFuncBlocks(nextSeq func() int) []string {
 		itemDone, _ = sjson.Set(itemDone, "item.id", fmt.Sprintf("fc_%s", callID))
 		itemDone, _ = sjson.Set(itemDone, "item.arguments", args)
 		itemDone, _ = sjson.Set(itemDone, "item.call_id", callID)
-		itemDone, _ = sjson.Set(itemDone, "item.name", name)
+		displayName, namespace := st.CodexCtx.OpenAINameForFunctionTool(name)
+		itemDone, _ = sjson.Set(itemDone, "item.name", displayName)
+		if namespace != "" {
+			itemDone, _ = sjson.Set(itemDone, "item.namespace", namespace)
+		}
 		out = append(out, emitResponsesEvent("response.output_item.done", itemDone))
 	}
 
@@ -777,13 +785,17 @@ func (st *chatToResponsesState) generateCompletedEvents(originalRequestRawJSON [
 				outputs = append(outputs, item)
 				continue
 			}
+			displayName, namespace := st.CodexCtx.OpenAINameForFunctionTool(name)
 			item := map[string]interface{}{
 				"id":        fmt.Sprintf("fc_%s", callID),
 				"type":      "function_call",
 				"status":    "completed",
 				"arguments": args,
 				"call_id":   callID,
-				"name":      name,
+				"name":      displayName,
+			}
+			if namespace != "" {
+				item["namespace"] = namespace
 			}
 			outputs = append(outputs, item)
 		}
@@ -971,13 +983,17 @@ func ConvertOpenAIChatToResponsesNonStream(_ context.Context, _ string, original
 					continue
 				}
 
+				displayName, namespace := codexCtx.OpenAINameForFunctionTool(funcName)
 				item := map[string]interface{}{
 					"id":        fmt.Sprintf("fc_%s", callID),
 					"type":      "function_call",
 					"status":    "completed",
 					"arguments": funcArgs,
 					"call_id":   callID,
-					"name":      funcName,
+					"name":      displayName,
+				}
+				if namespace != "" {
+					item["namespace"] = namespace
 				}
 				outputs = append(outputs, item)
 			}

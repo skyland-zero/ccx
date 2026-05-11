@@ -651,13 +651,17 @@ func responsesItemToOpenAIMessage(item types.ResponsesItem) map[string]interface
 		if err != nil {
 			return nil
 		}
+		toolName := name
+		if item.Namespace != "" {
+			toolName = flattenNamespaceToolName(item.Namespace, name)
+		}
 		return map[string]interface{}{
 			"role": "assistant",
 			"tool_calls": []map[string]interface{}{{
 				"id":   callID,
 				"type": "function",
 				"function": map[string]interface{}{
-					"name":      name,
+					"name":      toolName,
 					"arguments": arguments,
 				},
 			}},
