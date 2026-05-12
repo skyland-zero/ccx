@@ -14,6 +14,7 @@
 - **truncateMessage 截断函数 UTF-8 安全** - `truncateMessage` 和 `truncateErrorSummary` 改用 `[]rune` 截断，避免多字节字符被切断产生乱码；`truncateMessage` 上限从 200 提升至 800 字符
 - **保留 Responses 配对工具历史，仅降级孤立输出** - `normalizeStatelessResponsesToolHistory` 改为仅降级无对应 `function_call` 的孤立 `function_call_output`，配对的工具调用/输出历史保持原样透传
 - **兼容无 session 的重放式工具历史** - 无 `previous_response_id` 的重放式请求不再因缺少 session 而丢失工具历史
+- **修复文件日志缺失全量记录** - `logger.Setup` 将全局 `log.Printf` 输出目标从仅 stdout 改为 `io.MultiWriter(stdout, file)`，确保 300+ 处 `log.Printf` 调用均写入 `app.log`；`Console=false` 时不再丢弃日志改为仅写文件
 
 ## [v2.6.83] - 2026-05-11
 

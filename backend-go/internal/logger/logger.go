@@ -78,11 +78,11 @@ func Setup(cfg *Config) error {
 
 	flags := log.Ldate | log.Ltime | log.Lmicroseconds
 
-	// log.Printf 始终仅写 stdout（精简格式）
+	// log.Printf 写入 stdout + 文件（精简格式，确保文件记录全量日志）
 	if cfg.Console {
-		log.SetOutput(os.Stdout)
+		log.SetOutput(io.MultiWriter(os.Stdout, lumberLogger))
 	} else {
-		log.SetOutput(io.Discard)
+		log.SetOutput(lumberLogger)
 	}
 	// rawFileLog 始终仅写文件（原始 JSON），用于双通道输出
 	rawFileLog = log.New(lumberLogger, "", flags)
