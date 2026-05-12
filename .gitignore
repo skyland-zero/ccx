@@ -242,3 +242,7 @@ docs/claude-code-investigation-*.md
 
 .planning/
 __pycache__/
+
+.mcp.json
+.serena/
+
