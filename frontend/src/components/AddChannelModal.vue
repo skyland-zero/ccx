@@ -960,7 +960,7 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<{
   'update:show': [value: boolean]
-  save: [channel: Omit<Channel, 'index' | 'latency' | 'status'>, options?: { isQuickAdd?: boolean }]
+  save: [channel: Omit<Channel, 'index' | 'latency' | 'status'>, options?: { isQuickAdd?: boolean; triggerCapabilityTest?: boolean }]
   testCapability: [channelId: number]
   error: [message: string]
 }>()
@@ -2422,12 +2422,43 @@ const handleCancel = () => {
   resetForm()
 }
 
+const PAYLOAD_KEYS = [
+  'name', 'serviceType', 'baseUrl', 'baseUrls', 'website', 'insecureSkipVerify',
+  'lowQuality', 'injectDummyThoughtSignature', 'stripThoughtSignature', 'description',
+  'apiKeys', 'modelMapping', 'reasoningMapping', 'reasoningParamStyle', 'textVerbosity',
+  'fastMode', 'customHeaders', 'proxyUrl', 'routePrefix', 'supportedModels',
+  'autoBlacklistBalance', 'normalizeMetadataUserId', 'codexToolCompat',
+  'normalizeNonstandardChatRoles', 'stripCodexClientTools'
+] as const
+
+function extractPayloadFields(channel: Channel): Record<string, unknown> {
+  const result: Record<string, unknown> = {}
+  for (const key of PAYLOAD_KEYS) {
+    if (key in channel) {
+      result[key] = channel[key as keyof Channel]
+    }
+  }
+  return result
+}
+
 const handleTestCapability = async () => {
   if (props.channel?.index === undefined || props.channel?.index === null) {
     return
   }
 
-  emit('testCapability', props.channel.index)
+  if (!formRef.value) return
+  const { valid } = await formRef.value.validate()
+  if (!valid) return
+
+  const channelData = buildChannelPayload(form)
+  const original = extractPayloadFields(props.channel)
+  const hasChanges = JSON.stringify(channelData) !== JSON.stringify(original)
+
+  if (hasChanges) {
+    emit('save', channelData, { triggerCapabilityTest: true })
+  } else {
+    emit('testCapability', props.channel.index)
+  }
 }
 
 // 监听props变化

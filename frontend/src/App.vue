@@ -609,7 +609,7 @@ const refreshChannels = async () => {
   }
 }
 
-const saveChannel = async (channel: Omit<Channel, 'index' | 'latency' | 'status'>, options?: { isQuickAdd?: boolean }) => {
+const saveChannel = async (channel: Omit<Channel, 'index' | 'latency' | 'status'>, options?: { isQuickAdd?: boolean; triggerCapabilityTest?: boolean }) => {
   try {
     const result = await channelStore.saveChannel(channel, dialogStore.editingChannel?.index ?? null, options)
     showToast(result.message, 'success')
@@ -618,6 +618,11 @@ const saveChannel = async (channel: Omit<Channel, 'index' | 'latency' | 'status'
     }
     dialogStore.closeAddChannelModal()
     await refreshChannels()
+
+    if (options?.triggerCapabilityTest && result.channelId !== undefined) {
+      testChannelCapability(result.channelId)
+    }
+
     return result
   } catch (error) {
     handleAuthError(error)
