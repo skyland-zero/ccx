@@ -213,15 +213,27 @@ func responsesToolsToOpenAIWithContext(tools []map[string]interface{}, ctx Codex
 	return responsesRawToolsToOpenAIWithContext(rawTools, ctx)
 }
 
+func responsesRawToolsToOpenAI(tools []interface{}) []map[string]interface{} {
+	mappedTools := make([]map[string]interface{}, 0, len(tools))
+	openaiTools := make([]map[string]interface{}, 0, len(tools))
+	for _, raw := range tools {
+		switch tool := raw.(type) {
+		case string:
+			if tool == "" {
+				continue
+			}
+			openaiTools = append(openaiTools, genericCustomProxyTool(tool, ""))
+		case map[string]interface{}:
+			mappedTools = append(mappedTools, tool)
+		}
+	}
+	openaiTools = append(openaiTools, responsesToolsToOpenAI(mappedTools)...)
+	return openaiTools
+}
+
 func responsesRawToolsToOpenAIWithContext(tools []interface{}, ctx CodexToolContext) []map[string]interface{} {
 	if !ctx.HasCustomTools && !ctx.HasNamespaceTools {
-		mappedTools := make([]map[string]interface{}, 0, len(tools))
-		for _, raw := range tools {
-			if tool, ok := raw.(map[string]interface{}); ok {
-				mappedTools = append(mappedTools, tool)
-			}
-		}
-		return responsesToolsToOpenAI(mappedTools)
+		return responsesRawToolsToOpenAI(tools)
 	}
 
 	openaiTools := make([]map[string]interface{}, 0, len(tools)*2)

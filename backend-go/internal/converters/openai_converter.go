@@ -67,7 +67,7 @@ func (c *OpenAIChatConverter) ToProviderRequest(sess *session.Session, req *type
 			if tools := responsesRawToolsToOpenAIWithContext(req.RawTools, codexToolCtx); len(tools) > 0 {
 				openaiReq["tools"] = tools
 			}
-		} else if tools := responsesToolsToOpenAI(req.Tools); len(tools) > 0 {
+		} else if tools := responsesRawToolsToOpenAI(req.RawTools); len(tools) > 0 {
 			openaiReq["tools"] = tools
 		}
 	}

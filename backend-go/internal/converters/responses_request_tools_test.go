@@ -38,8 +38,8 @@ func TestOpenAIChatConverter_ToProviderRequest_PreservesTools(t *testing.T) {
 		Input:             "hello",
 		ToolChoice:        "auto",
 		ParallelToolCalls: &parallelToolCalls,
-		Tools: []map[string]interface{}{
-			{
+		RawTools: []interface{}{
+			map[string]interface{}{
 				"type":        "function",
 				"name":        "get_weather",
 				"description": "Get weather",
@@ -95,8 +95,8 @@ func TestOpenAIChatConverter_ToolRequiredField_FilledWhenMissing(t *testing.T) {
 	req := &types.ResponsesRequest{
 		Model: "gpt-5.5",
 		Input: "list resources",
-		Tools: []map[string]interface{}{
-			{
+		RawTools: []interface{}{
+			map[string]interface{}{
 				"type":        "function",
 				"name":        "list_mcp_resources",
 				"description": "Lists resources",
@@ -127,10 +127,10 @@ func TestOpenAIChatConverter_SkipsNonFunctionTools(t *testing.T) {
 	req := &types.ResponsesRequest{
 		Model: "gpt-5.5",
 		Input: "search",
-		Tools: []map[string]interface{}{
-			{"type": "web_search", "search_content_types": []interface{}{"text"}},
-			{"type": "custom", "name": "apply_patch", "format": map[string]interface{}{"type": "grammar"}},
-			{
+		RawTools: []interface{}{
+			map[string]interface{}{"type": "web_search", "search_content_types": []interface{}{"text"}},
+			map[string]interface{}{"type": "custom", "name": "apply_patch", "format": map[string]interface{}{"type": "grammar"}},
+			map[string]interface{}{
 				"type":       "function",
 				"name":       "do_thing",
 				"parameters": map[string]interface{}{"type": "object", "properties": map[string]interface{}{}},
@@ -144,6 +144,21 @@ func TestOpenAIChatConverter_SkipsNonFunctionTools(t *testing.T) {
 	tools := requestMap["tools"].([]map[string]interface{})
 	assert.Len(t, tools, 1, "只应保留 function 类型工具")
 	assert.Equal(t, "do_thing", tools[0]["function"].(map[string]interface{})["name"])
+}
+
+func TestOpenAIChatConverter_PreservesStringToolsWhenCodexCompatDisabled(t *testing.T) {
+	req := &types.ResponsesRequest{
+		Model:    "gpt-5.5",
+		Input:    "search",
+		RawTools: []interface{}{"web_search_preview"},
+	}
+
+	converted, err := (&OpenAIChatConverter{}).ToProviderRequest(&session.Session{}, req)
+	assert.NoError(t, err)
+	requestMap := converted.(map[string]interface{})
+	tools := requestMap["tools"].([]map[string]interface{})
+	assert.Len(t, tools, 1)
+	assert.Equal(t, "web_search_preview", tools[0]["function"].(map[string]interface{})["name"])
 }
 
 func TestOpenAIChatResponseToResponses_ToolCalls(t *testing.T) {
