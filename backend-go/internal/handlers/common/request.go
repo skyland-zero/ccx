@@ -24,12 +24,10 @@ import (
 
 const MaxUpstreamResponseLogBytes = 1024 * 1024
 
-// logRawToFile 仅在 RawLogOutput 开启时将原始内容写入日志文件。
-// 用于 JSON body/header 的双通道输出：stdout 用精简格式，文件用原始内容。
-func logRawToFile(envCfg *config.EnvConfig, format string, args ...interface{}) {
-	if envCfg.RawLogOutput {
-		logger.RawFileLog().Printf(format, args...)
-	}
+// logToFile 向日志文件写入一行（原始格式）。
+// 所有请求/响应日志都通过此函数写入文件，确保文件始终包含完整日志。
+func logToFile(format string, args ...interface{}) {
+	logger.RawFileLog().Printf(format, args...)
 }
 
 type LimitedLogBuffer struct {
@@ -173,7 +171,7 @@ func LogUpstreamResponseHeaders(resp *http.Response, envCfg *config.EnvConfig, a
 	respHeadersJSON, _ := json.MarshalIndent(respHeaders, "", "  ")
 	log.Printf("[%s-Response] 响应头:\n%s", apiType, string(respHeadersJSON))
 	rawHeadersJSON, _ := json.Marshal(respHeaders)
-	logRawToFile(envCfg, "[%s-Response] 响应头:\n%s", apiType, string(rawHeadersJSON))
+	logToFile("[%s-Response] 响应头:\n%s", apiType, string(rawHeadersJSON))
 }
 
 func LogUpstreamResponseBody(bodyBytes []byte, envCfg *config.EnvConfig, apiType string) {
@@ -182,7 +180,7 @@ func LogUpstreamResponseBody(bodyBytes []byte, envCfg *config.EnvConfig, apiType
 	}
 
 	log.Printf("[%s-Response] 响应体:\n%s", apiType, utils.FormatJSONBytesForLog(bodyBytes, 0))
-	logRawToFile(envCfg, "[%s-Response] 响应体:\n%s", apiType, utils.FormatJSONBytesRaw(bodyBytes))
+	logToFile("[%s-Response] 响应体:\n%s", apiType, utils.FormatJSONBytesRaw(bodyBytes))
 }
 
 func LogUpstreamResponse(resp *http.Response, bodyBytes []byte, envCfg *config.EnvConfig, apiType string) {
@@ -211,15 +209,19 @@ func SendRequestWithLifecycleTrace(req *http.Request, upstream *config.UpstreamC
 
 	if upstream.InsecureSkipVerify && envCfg.EnableRequestLogs {
 		log.Printf("[%s-Request-TLS] 警告: 正在跳过对 %s 的TLS证书验证", apiType, req.URL.String())
+		logToFile("[%s-Request-TLS] 警告: 正在跳过对 %s 的TLS证书验证", apiType, req.URL.String())
 	}
 
 	if envCfg.EnableRequestLogs {
 		log.Printf("[%s-Request-URL] 实际请求URL: %s", apiType, req.URL.String())
 		log.Printf("[%s-Request-Method] 请求方法: %s", apiType, req.Method)
+		logToFile("[%s-Request-URL] 实际请求URL: %s", apiType, req.URL.String())
+		logToFile("[%s-Request-Method] 请求方法: %s", apiType, req.Method)
 		if upstream.ProxyURL != "" {
 			// 对代理 URL 进行脱敏处理，避免泄露凭证
 			redactedProxyURL := utils.RedactURLCredentials(upstream.ProxyURL)
 			log.Printf("[%s-Request-Proxy] 使用代理: %s", apiType, redactedProxyURL)
+			logToFile("[%s-Request-Proxy] 使用代理: %s", apiType, redactedProxyURL)
 		}
 		if envCfg.IsDevelopment() {
 			logRequestDetails(req, envCfg, apiType)
@@ -264,19 +266,20 @@ func logRequestDetails(req *http.Request, envCfg *config.EnvConfig, apiType stri
 	reqHeadersJSON, _ := json.MarshalIndent(maskedReqHeaders, "", "  ")
 	log.Printf("[%s-Request-Headers] 实际请求头:\n%s", apiType, string(reqHeadersJSON))
 	rawReqHeadersJSON, _ := json.Marshal(maskedReqHeaders)
-	logRawToFile(envCfg, "[%s-Request-Headers] 实际请求头:\n%s", apiType, string(rawReqHeadersJSON))
+	logToFile("[%s-Request-Headers] 实际请求头:\n%s", apiType, string(rawReqHeadersJSON))
 
 	if req.Body != nil {
 		contentType := req.Header.Get("Content-Type")
 		if strings.HasPrefix(strings.ToLower(contentType), "multipart/form-data") {
 			log.Printf("[%s-Request-Body] 实际请求体: [multipart/form-data omitted]", apiType)
+			logToFile("[%s-Request-Body] 实际请求体: [multipart/form-data omitted]", apiType)
 			return
 		}
 		bodyBytes, err := io.ReadAll(req.Body)
 		if err == nil {
 			req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 			log.Printf("[%s-Request-Body] 实际请求体:\n%s", apiType, utils.FormatJSONBytesForLog(bodyBytes, 0))
-			logRawToFile(envCfg, "[%s-Request-Body] 实际请求体:\n%s", apiType, utils.FormatJSONBytesRaw(bodyBytes))
+			logToFile("[%s-Request-Body] 实际请求体:\n%s", apiType, utils.FormatJSONBytesRaw(bodyBytes))
 		}
 	}
 }
@@ -288,14 +291,16 @@ func LogOriginalRequest(c *gin.Context, bodyBytes []byte, envCfg *config.EnvConf
 	}
 
 	log.Printf("[Request-Receive] 收到%s请求: %s %s", apiType, c.Request.Method, c.Request.URL.Path)
+	logToFile("[Request-Receive] 收到%s请求: %s %s", apiType, c.Request.Method, c.Request.URL.Path)
 
 	if envCfg.IsDevelopment() {
 		contentType := c.GetHeader("Content-Type")
 		if strings.HasPrefix(strings.ToLower(contentType), "multipart/form-data") {
 			log.Printf("[Request-OriginalBody] 原始请求体: [multipart/form-data omitted]")
+			logToFile("[Request-OriginalBody] 原始请求体: [multipart/form-data omitted]")
 		} else {
 			log.Printf("[Request-OriginalBody] 原始请求体:\n%s", utils.FormatJSONBytesForLog(bodyBytes, 0))
-			logRawToFile(envCfg, "[Request-OriginalBody] 原始请求体:\n%s", utils.FormatJSONBytesRaw(bodyBytes))
+			logToFile("[Request-OriginalBody] 原始请求体:\n%s", utils.FormatJSONBytesRaw(bodyBytes))
 		}
 
 		sanitizedHeaders := make(map[string]string)
@@ -308,7 +313,7 @@ func LogOriginalRequest(c *gin.Context, bodyBytes []byte, envCfg *config.EnvConf
 		headersJSON, _ := json.MarshalIndent(maskedHeaders, "", "  ")
 		log.Printf("[Request-OriginalHeaders] 原始请求头:\n%s", string(headersJSON))
 		rawHeadersJSON, _ := json.Marshal(maskedHeaders)
-		logRawToFile(envCfg, "[Request-OriginalHeaders] 原始请求头:\n%s", string(rawHeadersJSON))
+		logToFile("[Request-OriginalHeaders] 原始请求头:\n%s", string(rawHeadersJSON))
 	}
 }
 

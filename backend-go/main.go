@@ -45,14 +45,13 @@ func main() {
 
 	// 初始化日志系统（必须在其他初始化之前）
 	logCfg := &logger.Config{
-		LogDir:       envCfg.LogDir,
-		LogFile:      envCfg.LogFile,
-		MaxSize:      envCfg.LogMaxSize,
-		MaxBackups:   envCfg.LogMaxBackups,
-		MaxAge:       envCfg.LogMaxAge,
-		Compress:     envCfg.LogCompress,
-		Console:      envCfg.LogToConsole,
-		RawLogOutput: envCfg.RawLogOutput,
+		LogDir:     envCfg.LogDir,
+		LogFile:    envCfg.LogFile,
+		MaxSize:    envCfg.LogMaxSize,
+		MaxBackups: envCfg.LogMaxBackups,
+		MaxAge:     envCfg.LogMaxAge,
+		Compress:   envCfg.LogCompress,
+		Console:    envCfg.LogToConsole,
 	}
 	if err := logger.Setup(logCfg); err != nil {
 		log.Fatalf("初始化日志系统失败: %v", err)
