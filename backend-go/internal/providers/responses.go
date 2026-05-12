@@ -133,6 +133,11 @@ func (p *ResponsesProvider) buildProviderRequestBody(c *gin.Context, requestPath
 		}
 
 		responsesReq.Model = config.RedirectModel(responsesReq.Model, upstream)
+		// Inject codex_tool_compat_enabled into TransformerMetadata for the converter.
+		if responsesReq.TransformerMetadata == nil {
+			responsesReq.TransformerMetadata = make(map[string]interface{})
+		}
+		responsesReq.TransformerMetadata["codex_tool_compat_enabled"] = upstream.IsCodexToolCompatEnabled()
 		convertedReq, err := converter.ToProviderRequest(sess, &responsesReq)
 		if err != nil {
 			return nil, nil, fmt.Errorf("convert request failed: %w", err)

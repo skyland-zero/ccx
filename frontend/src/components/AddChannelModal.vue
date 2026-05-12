@@ -705,6 +705,19 @@
               </div>
             </v-col>
 
+            <v-col v-if="props.channelType === 'responses'" cols="12">
+              <div class="d-flex align-center justify-space-between">
+                <div class="d-flex align-center ga-2">
+                  <v-icon color="primary">mdi-cog</v-icon>
+                  <div>
+                    <div class="section-title section-title--soft">{{ t('addChannel.codexToolCompatLabel') }}</div>
+                    <div class="text-caption text-medium-emphasis">{{ t('addChannel.codexToolCompatHint') }}</div>
+                  </div>
+                </div>
+                <v-switch v-model="form.codexToolCompat" inset color="primary" hide-details />
+              </div>
+            </v-col>
+
             <v-col v-if="props.channelType === 'messages' || props.channelType === 'responses'" cols="12">
               <div class="d-flex align-center justify-space-between">
                 <div class="d-flex align-center ga-2">
@@ -1612,6 +1625,7 @@ const form = reactive({
   supportedModels: [] as string[],
   autoBlacklistBalance: true,
   normalizeMetadataUserId: true,
+  codexToolCompat: false,
   normalizeNonstandardChatRoles: false,
   stripCodexClientTools: false,
 })
@@ -1924,6 +1938,7 @@ const hasEditableDraftChanges = computed(() => {
     supportedModels: normalizeStringArray(props.channel.supportedModels || []),
     autoBlacklistBalance: props.channel.autoBlacklistBalance ?? true,
     normalizeMetadataUserId: props.channel.normalizeMetadataUserId ?? true,
+    codexToolCompat: props.channel.codexToolCompat ?? false,
     normalizeNonstandardChatRoles: !!props.channel.normalizeNonstandardChatRoles,
     stripCodexClientTools: !!props.channel.stripCodexClientTools,
   }
@@ -1994,6 +2009,7 @@ const resetForm = () => {
   supportedModelsError.value = ''
   form.autoBlacklistBalance = true
   form.normalizeMetadataUserId = true
+  form.codexToolCompat = false
   form.normalizeNonstandardChatRoles = false
   form.stripCodexClientTools = false
 
@@ -2058,6 +2074,7 @@ const loadChannelData = (channel: Channel) => {
   supportedModelsError.value = hasInvalidPatterns ? t('addChannel.supportedModelsInvalidPattern') : ''
   form.autoBlacklistBalance = channel.autoBlacklistBalance ?? true
   form.normalizeMetadataUserId = channel.normalizeMetadataUserId ?? true
+  form.codexToolCompat = channel.codexToolCompat ?? false
   form.normalizeNonstandardChatRoles = !!channel.normalizeNonstandardChatRoles
   form.stripCodexClientTools = !!channel.stripCodexClientTools
 

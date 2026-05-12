@@ -423,6 +423,39 @@ func TestConvertOpenAIChatToResponses_ToolCall(t *testing.T) {
 	}
 }
 
+func TestConvertOpenAIChatToResponses_CustomToolCall(t *testing.T) {
+	ctx := context.Background()
+	sseLines := []string{
+		`data: {"id":"chatcmpl-custom","object":"chat.completion.chunk","created":1234567890,"model":"gpt-4o","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_patch","type":"function","function":{"name":"apply_patch_add_file","arguments":""}}]},"finish_reason":null}]}`,
+		`data: {"id":"chatcmpl-custom","object":"chat.completion.chunk","created":1234567890,"model":"gpt-4o","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"path\":\"docs/test.md\",\"content\":\"# Test\\n\"}"}}]},"finish_reason":null}]}`,
+		`data: {"id":"chatcmpl-custom","object":"chat.completion.chunk","created":1234567890,"model":"gpt-4o","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}`,
+		`data: [DONE]`,
+	}
+	originalReq := []byte(`{"model":"gpt-4o","input":"edit","tools":[{"type":"custom","name":"apply_patch"}],"transformer_metadata":{"codex_tool_compat_enabled":true}}`)
+
+	var state any
+	var allEvents []string
+	for _, line := range sseLines {
+		allEvents = append(allEvents, ConvertOpenAIChatToResponses(ctx, "gpt-4o", originalReq, nil, []byte(line), &state)...)
+	}
+	joined := strings.Join(allEvents, "\n")
+	if strings.Contains(joined, `"type":"function_call"`) {
+		t.Fatalf("custom tool stream leaked function_call events: %s", joined)
+	}
+	if strings.Contains(joined, "response.function_call_arguments.") {
+		t.Fatalf("custom tool stream leaked function argument events: %s", joined)
+	}
+	if !strings.Contains(joined, `"type":"custom_tool_call"`) {
+		t.Fatalf("missing custom_tool_call item: %s", joined)
+	}
+	if !strings.Contains(joined, "response.custom_tool_call_input.delta") {
+		t.Fatalf("missing custom tool input delta: %s", joined)
+	}
+	if !strings.Contains(joined, `*** Add File: docs/test.md`) || strings.Contains(joined, `\n+\n*** End Patch`) {
+		t.Fatalf("unexpected patch input: %s", joined)
+	}
+}
+
 func TestConvertOpenAIChatToResponsesNonStream(t *testing.T) {
 	ctx := context.Background()
 
@@ -552,6 +585,55 @@ func TestConvertOpenAIChatToResponsesNonStream_ToolCalls(t *testing.T) {
 	}
 	if funcItem["call_id"] != "call_xyz" {
 		t.Errorf("call_id should be call_xyz, got %v", funcItem["call_id"])
+	}
+}
+
+func TestConvertOpenAIChatToResponsesNonStream_CustomToolCall(t *testing.T) {
+	ctx := context.Background()
+	chatResponse := `{
+		"id": "chatcmpl-custom",
+		"object": "chat.completion",
+		"created": 1234567890,
+		"model": "gpt-4o",
+		"choices": [{
+			"index": 0,
+			"message": {
+				"role": "assistant",
+				"content": null,
+				"tool_calls": [{
+					"id": "call_patch",
+					"type": "function",
+					"function": {
+						"name": "apply_patch_add_file",
+						"arguments": "{\"path\":\"docs/test.md\",\"content\":\"# Test\\n\"}"
+					}
+				}]
+			},
+			"finish_reason": "tool_calls"
+		}],
+		"usage": {"prompt_tokens": 5, "completion_tokens": 10, "total_tokens": 15}
+	}`
+	originalReq := []byte(`{"model":"gpt-4o","input":"edit","tools":[{"type":"custom","name":"apply_patch"}],"transformer_metadata":{"codex_tool_compat_enabled":true}}`)
+
+	result := ConvertOpenAIChatToResponsesNonStream(ctx, "gpt-4o", originalReq, nil, []byte(chatResponse), nil)
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal([]byte(result), &resp); err != nil {
+		t.Fatal(err)
+	}
+	output := resp["output"].([]interface{})
+	item := output[0].(map[string]interface{})
+	if item["type"] != "custom_tool_call" {
+		t.Fatalf("item type = %v, result = %s", item["type"], result)
+	}
+	if item["name"] != "apply_patch" {
+		t.Fatalf("name = %v", item["name"])
+	}
+	if _, ok := item["output"]; ok {
+		t.Fatalf("custom_tool_call should not contain output: %#v", item)
+	}
+	if got := item["input"].(string); got != "*** Begin Patch\n*** Add File: docs/test.md\n+# Test\n*** End Patch" {
+		t.Fatalf("input = %q", got)
 	}
 }
 
