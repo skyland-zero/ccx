@@ -1,3 +1,20 @@
+## [v2.6.86] - 2026-05-12
+
+### 新增
+
+- **能力测试超时时间调整为 30s** - 将能力测试超时时间从默认值调整为 30 秒，优化测试流程
+
+### 修复
+
+- **Responses→Chat 转换补齐 assistant tool_calls content 字段** - cucloud 等上游镜像对 OpenAI Chat 消息的 content 字段做了必填校验，assistant 消息仅含 tool_calls 时缺少 content 会导致 JSON 反序列化失败；转换时自动补齐空 content
+- **编辑渠道弹窗能力测试前先保存表单变更** - 点击能力测试按钮时，如果表单有未保存的修改（modelMapping、baseUrl 等），先自动保存再触发测试；无修改时直接测试，跳过多余保存请求
+- **修复 Codex 兼容开关文案挤占开关布局** - 修复前端 Codex 工具兼容开关文案过长导致开关组件布局错位
+
+### 其他
+
+- **go fmt 格式化对齐** - 统一 Go 源码格式
+- **添加 .mcp.json 和 .serena/ 到 gitignore** - 补充工具配置文件的 gitignore 规则
+
 ## [v2.6.85] - 2026-05-12
 
 ### 新增
