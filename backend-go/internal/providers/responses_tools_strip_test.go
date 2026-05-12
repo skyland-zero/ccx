@@ -137,3 +137,65 @@ func TestStripCodexClientOnlyToolsFromBody(t *testing.T) {
 		t.Fatalf("仍有 function 工具时不应删除 tool_choice")
 	}
 }
+
+func TestNormalizeResponsesInputForPassthrough_StatelessToolHistory(t *testing.T) {
+	req := map[string]interface{}{
+		"input": []interface{}{
+			map[string]interface{}{
+				"type":      "function_call",
+				"name":      "exec_command",
+				"call_id":   "call_123",
+				"arguments": `{"cmd":"pwd"}{"cmd":"ls"}`,
+				"status":    "completed",
+			},
+			map[string]interface{}{
+				"type":    "function_call_output",
+				"call_id": "call_123",
+				"output":  "failed to parse function arguments: trailing characters",
+			},
+		},
+	}
+
+	normalizeResponsesInputForPassthrough(req)
+
+	input := req["input"].([]interface{})
+	if len(input) != 2 {
+		t.Fatalf("input 长度=%d，期望 2", len(input))
+	}
+	for i, raw := range input {
+		item := raw.(map[string]interface{})
+		if item["type"] != "message" {
+			t.Fatalf("input[%d].type=%v，期望 message", i, item["type"])
+		}
+		if _, ok := item["status"]; ok {
+			t.Fatalf("input[%d] 不应保留 status", i)
+		}
+	}
+	if input[0].(map[string]interface{})["role"] != "assistant" {
+		t.Fatalf("function_call 应降级为 assistant message")
+	}
+	if input[1].(map[string]interface{})["role"] != "user" {
+		t.Fatalf("function_call_output 应降级为 user message")
+	}
+}
+
+func TestNormalizeResponsesInputForPassthrough_PreservesStatefulToolOutput(t *testing.T) {
+	req := map[string]interface{}{
+		"previous_response_id": "resp_123",
+		"input": []interface{}{
+			map[string]interface{}{
+				"type":    "function_call_output",
+				"call_id": "call_123",
+				"output":  "ok",
+			},
+		},
+	}
+
+	normalizeResponsesInputForPassthrough(req)
+
+	input := req["input"].([]interface{})
+	item := input[0].(map[string]interface{})
+	if item["type"] != "function_call_output" {
+		t.Fatalf("有 previous_response_id 时应保留 function_call_output，当前=%v", item)
+	}
+}

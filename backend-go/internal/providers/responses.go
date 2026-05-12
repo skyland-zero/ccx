@@ -871,6 +871,12 @@ func normalizeResponsesInputForPassthrough(reqMap map[string]interface{}) {
 		return
 	}
 
+	stateless := toString(reqMap["previous_response_id"]) == ""
+	if stateless {
+		input = normalizeStatelessResponsesToolHistory(input)
+		reqMap["input"] = input
+	}
+
 	for _, rawItem := range input {
 		item, ok := rawItem.(map[string]interface{})
 		if !ok {
@@ -901,4 +907,65 @@ func normalizeResponsesInputForPassthrough(reqMap map[string]interface{}) {
 			}
 		}
 	}
+}
+
+func normalizeStatelessResponsesToolHistory(input []interface{}) []interface{} {
+	normalized := make([]interface{}, 0, len(input))
+	for _, rawItem := range input {
+		item, ok := rawItem.(map[string]interface{})
+		if !ok {
+			normalized = append(normalized, rawItem)
+			continue
+		}
+
+		switch toString(item["type"]) {
+		case "function_call":
+			normalized = append(normalized, responsesToolHistoryMessage("assistant", formatFunctionCallHistory(item)))
+		case "function_call_output":
+			normalized = append(normalized, responsesToolHistoryMessage("user", formatFunctionCallOutputHistory(item)))
+		default:
+			normalized = append(normalized, rawItem)
+		}
+	}
+	return normalized
+}
+
+func responsesToolHistoryMessage(role, text string) map[string]interface{} {
+	return map[string]interface{}{
+		"type": "message",
+		"role": role,
+		"content": []interface{}{
+			map[string]interface{}{
+				"type": responsesTextContentType(role),
+				"text": text,
+			},
+		},
+	}
+}
+
+func formatFunctionCallHistory(item map[string]interface{}) string {
+	name := toString(item["name"])
+	callID := toString(item["call_id"])
+	arguments := toString(item["arguments"])
+	if name == "" {
+		name = "function_call"
+	}
+	if callID != "" {
+		return fmt.Sprintf("Function call %s (%s): %s", name, callID, arguments)
+	}
+	return fmt.Sprintf("Function call %s: %s", name, arguments)
+}
+
+func formatFunctionCallOutputHistory(item map[string]interface{}) string {
+	callID := toString(item["call_id"])
+	output := toString(item["output"])
+	if output == "" && item["output"] != nil {
+		if outputJSON, err := json.Marshal(item["output"]); err == nil {
+			output = string(outputJSON)
+		}
+	}
+	if callID != "" {
+		return fmt.Sprintf("Function call output (%s): %s", callID, output)
+	}
+	return fmt.Sprintf("Function call output: %s", output)
 }
