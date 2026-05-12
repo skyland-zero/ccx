@@ -175,7 +175,7 @@ func handleMultiChannelCompact(
 	channelLogStore := channelScheduler.GetChannelLogStore(scheduler.ChannelKindResponses)
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
-		selection, err := channelScheduler.SelectChannel(c.Request.Context(), userID, failedChannels, scheduler.ChannelKindResponses, requestModel, c.Param("routePrefix"))
+		selection, err := channelScheduler.SelectChannel(c.Request.Context(), userID, failedChannels, scheduler.ChannelKindResponses, requestModel, c.Param("routePrefix"), c.GetHeader("X-Channel"))
 		if err != nil {
 			selectionErr = err
 			break
