@@ -118,8 +118,7 @@ func addNamespaceToolsToContext(ctx *CodexToolContext, namespaceTool map[string]
 				continue
 			}
 			flat := flattenNamespaceToolName(namespace, name)
-			// Skip if a top-level function with the same flat name exists (top-level takes priority).
-			if _, exists := ctx.FunctionTools[flat]; exists {
+			if spec, exists := ctx.FunctionTools[flat]; exists && spec.Namespace == "" {
 				continue
 			}
 			ctx.FunctionTools[flat] = CodexFunctionToolSpec{

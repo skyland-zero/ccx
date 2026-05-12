@@ -323,7 +323,7 @@ func handleSuccess(
 		if codexEnabled {
 			codexCtx := converters.BuildCodexToolContext(originalReq.Tools)
 			codexCtx.RemapCustomToolCallsInResponse(responsesResp)
-			converters.RemapNamespaceFunctionCallsInResponse(responsesResp, codexCtx)
+			codexCtx.RemapNamespaceFunctionCallsInResponse(responsesResp)
 		}
 	}
 
