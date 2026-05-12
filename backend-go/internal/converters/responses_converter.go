@@ -491,6 +491,7 @@ func appendResponsesItemsToOpenAIMessages(messages []map[string]interface{}, ite
 		}
 		msg := map[string]interface{}{
 			"role":       "assistant",
+			"content":    "",
 			"tool_calls": pendingToolCalls,
 		}
 		if len(pendingReasoning) > 0 {
