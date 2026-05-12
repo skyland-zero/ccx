@@ -214,7 +214,7 @@ func TestRemapNamespaceFunctionCallsInResponse(t *testing.T) {
 		}},
 	}
 
-	RemapNamespaceFunctionCallsInResponse(resp, ctx)
+	ctx.RemapNamespaceFunctionCallsInResponse(resp)
 
 	item := resp.Output[0]
 	if item.Type != "function_call" {
@@ -250,7 +250,7 @@ func TestRemapNamespaceFunctionCallsSkipsNonNamespaceTools(t *testing.T) {
 		}},
 	}
 
-	RemapNamespaceFunctionCallsInResponse(resp, ctx)
+	ctx.RemapNamespaceFunctionCallsInResponse(resp)
 
 	if resp.Output[0].Name != "do_something" {
 		t.Fatalf("unrelated function_call was modified: name = %q", resp.Output[0].Name)
@@ -502,8 +502,8 @@ func TestNamespaceAndCustomToolsCoexist(t *testing.T) {
 	}
 }
 
-func TestResponsesToolsToOpenAIWithContext_NilNamespaceName(t *testing.T) {
-	// Namespace tool with no name should be skipped gracefully
+func TestResponsesToolsToOpenAIWithContext_EmptyNamespaceName(t *testing.T) {
+	// Namespace tool with empty name: flattened name should be just the child name.
 	tools := []map[string]interface{}{{
 		"type": "namespace",
 		"tools": []interface{}{
@@ -520,11 +520,10 @@ func TestResponsesToolsToOpenAIWithContext_NilNamespaceName(t *testing.T) {
 	if len(openaiTools) != 1 {
 		t.Fatalf("got %d tools, want 1", len(openaiTools))
 	}
-	// With empty namespace, name should be just "func" (or "__func" depending on flatten logic)
 	fn := openaiTools[0]["function"].(map[string]interface{})
 	name := fn["name"].(string)
-	if name != "func" && name != "__func" {
-		t.Fatalf("unexpected name: %q", name)
+	if name != "func" {
+		t.Fatalf("unexpected name: %q, want func", name)
 	}
 }
 
@@ -584,3 +583,67 @@ func TestWrapOpenAIChatResponseToResponsesWithContext_NamespaceRemapping(t *test
 		t.Fatalf("namespace = %q, want %q", item.Namespace, "mcp__vscode_mcp__")
 	}
 }
+
+func TestWrapOpenAIChatResponseToResponsesWithContext_NamespaceStreaming(t *testing.T) {
+	ctx := BuildCodexToolContext([]map[string]interface{}{{
+		"type": "namespace",
+		"name": "mcp__vscode_mcp__",
+		"tools": []interface{}{
+			map[string]interface{}{
+				"type":       "function",
+				"name":       "execute_command",
+				"parameters": map[string]interface{}{"type": "object", "properties": map[string]interface{}{}},
+			},
+		},
+	}})
+
+	openaiResp := map[string]interface{}{
+		"id":    "chatcmpl-123",
+		"model": "gpt-4",
+		"choices": []interface{}{
+			map[string]interface{}{
+				"index": float64(0),
+				"message": map[string]interface{}{
+					"role": "assistant",
+					"tool_calls": []interface{}{
+						map[string]interface{}{
+							"id":   "call_1",
+							"type": "function",
+							"function": map[string]interface{}{
+								"name":      "mcp__vscode_mcp__execute_command",
+								"arguments": `{"command":"test"}`,
+							},
+						},
+					},
+				},
+			},
+		},
+		"usage": map[string]interface{}{
+			"prompt_tokens":     float64(10),
+			"completion_tokens": float64(5),
+			"total_tokens":      float64(15),
+		},
+	}
+
+	resp, err := WrapOpenAIChatResponseToResponsesWithContext(openaiResp, "session_1", ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Output) != 1 {
+		t.Fatalf("output len = %d, want 1", len(resp.Output))
+	}
+	item := resp.Output[0]
+	if item.Type != "function_call" {
+		t.Fatalf("type = %s, want function_call", item.Type)
+	}
+	if item.Name != "execute_command" {
+		t.Fatalf("name = %q, want %q", item.Name, "execute_command")
+	}
+	if item.Namespace != "mcp__vscode_mcp__" {
+		t.Fatalf("namespace = %q, want %q", item.Namespace, "mcp__vscode_mcp__")
+	}
+	if item.Arguments != `{"command":"test"}` {
+		t.Fatalf("arguments = %q", item.Arguments)
+	}
+}
+

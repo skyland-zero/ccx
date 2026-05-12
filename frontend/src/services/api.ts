@@ -118,7 +118,7 @@ export interface Channel {
   routePrefix?: string                     // 路由前缀（如 "kimi"，访问 /kimi/v1/messages）
   autoBlacklistBalance?: boolean           // 余额不足自动拉黑（默认 true）
   normalizeMetadataUserId?: boolean        // 规范化 metadata.user_id（默认 true）
-  codexToolCompat?: boolean               // Codex 自定义工具兼容（默认 false）
+  codexToolCompat?: boolean               // Codex 工具兼容（默认 false）
   normalizeNonstandardChatRoles?: boolean  // OpenAI Chat 上游：将非标准 role 改写为 user（默认 false）
   latency?: number
   status?: ChannelStatus | 'healthy' | 'error' | 'unknown' | ''

@@ -87,6 +87,7 @@ func BuildCodexToolContext(tools []map[string]interface{}) CodexToolContext {
 }
 
 // flattenNamespaceToolName returns the flat function name for a namespace tool child.
+// Expects namespace names to end with "__" per Codex convention.
 func flattenNamespaceToolName(namespace, name string) string {
 	if namespace == "" {
 		return name
@@ -102,6 +103,7 @@ func flattenNamespaceToolName(namespace, name string) string {
 
 func addNamespaceToolsToContext(ctx *CodexToolContext, namespaceTool map[string]interface{}) {
 	namespace, _ := namespaceTool["name"].(string)
+	// Silently yields nil when the key is absent; for range nil is safe in Go.
 	children, _ := namespaceTool["tools"].([]interface{})
 	for _, raw := range children {
 		child, ok := raw.(map[string]interface{})
@@ -116,6 +118,10 @@ func addNamespaceToolsToContext(ctx *CodexToolContext, namespaceTool map[string]
 				continue
 			}
 			flat := flattenNamespaceToolName(namespace, name)
+			// Skip if a top-level function with the same flat name exists (top-level takes priority).
+			if _, exists := ctx.FunctionTools[flat]; exists {
+				continue
+			}
 			ctx.FunctionTools[flat] = CodexFunctionToolSpec{
 				Namespace: namespace,
 				Name:      name,
@@ -236,6 +242,8 @@ func responsesToolsToOpenAIWithContext(tools []map[string]interface{}, ctx Codex
 	return openaiTools
 }
 
+// namespaceToolsToOpenAI converts a namespace tool into OpenAI function tools.
+// The ctx parameter is used to check for name collisions with top-level functions.
 func namespaceToolsToOpenAI(namespaceTool map[string]interface{}, ctx CodexToolContext) []map[string]interface{} {
 	namespace, _ := namespaceTool["name"].(string)
 	namespaceDesc, _ := namespaceTool["description"].(string)
@@ -255,6 +263,13 @@ func namespaceToolsToOpenAI(namespaceTool map[string]interface{}, ctx CodexToolC
 			continue
 		}
 		flat := flattenNamespaceToolName(namespace, name)
+		// Skip generating an OpenAI tool when the flat name is already occupied by a top-level function.
+		// Only applies when namespace is non-empty, otherwise the FunctionTools entry may be from this same namespace tool.
+		if namespace != "" {
+			if spec, exists := ctx.FunctionTools[flat]; exists && spec.Namespace == "" {
+				continue
+			}
+		}
 		combinedDescription := combineNamespaceDescription(namespaceDesc, description)
 		function := map[string]interface{}{
 			"name":       flat,
@@ -932,9 +947,18 @@ func ConvertToolChoiceForCodex(toolChoice interface{}, ctx CodexToolContext) int
 			flat := flattenNamespaceToolName(namespace, name)
 			return map[string]interface{}{
 				"type": "function",
-				"function": map[string]interface{}{
-					"name": flat,
-				},
+				"function": map[string]interface{}{"name": flat},
+			}
+		}
+		// Check for nested namespace tool_choice: {"type":"function","function":{"namespace":"...","name":"..."}}
+		if fnMap, ok := tcMap["function"].(map[string]interface{}); ok {
+			if ns, _ := fnMap["namespace"].(string); ns != "" {
+				name, _ := fnMap["name"].(string)
+				flat := flattenNamespaceToolName(ns, name)
+				return map[string]interface{}{
+					"type":     "function",
+					"function": map[string]interface{}{"name": flat},
+				}
 			}
 		}
 		return toolChoice
@@ -971,7 +995,8 @@ func ConvertToolChoiceForCodex(toolChoice interface{}, ctx CodexToolContext) int
 // ============== Response Wrappers ==============
 
 // WrapOpenAIChatResponseToResponsesWithContext converts a Chat Completions response
-// and remaps proxy function_call items back into custom_tool_call items.
+// and remaps proxy function_call items back into custom_tool_call items,
+// and unflattens namespace function calls back into namespace/name format.
 func WrapOpenAIChatResponseToResponsesWithContext(
 	openaiResp map[string]interface{},
 	sessionID string,
@@ -987,29 +1012,11 @@ func WrapOpenAIChatResponseToResponsesWithContext(
 	}
 
 	if ctx.HasCustomTools {
-		for i, item := range resp.Output {
-			if item.Type != "function_call" {
-				continue
-			}
-			spec, ok := ctx.CustomTools[item.Name]
-			if !ok {
-				continue
-			}
-			customInput := ReconstructCustomToolCallInput(ctx, item.Name, item.Arguments)
-			if customInput != "" {
-				resp.Output[i] = types.ResponsesItem{
-					Type:   "custom_tool_call",
-					CallID: item.CallID,
-					Name:   spec.OpenAIName,
-					Status: "completed",
-					Input:  customInput,
-				}
-			}
-		}
+		ctx.RemapCustomToolCallsInResponse(resp)
 	}
 
 	if ctx.HasNamespaceTools {
-		RemapNamespaceFunctionCallsInResponse(resp, ctx)
+		ctx.RemapNamespaceFunctionCallsInResponse(resp)
 	}
 
 	return resp, nil
@@ -1042,7 +1049,7 @@ func (ctx *CodexToolContext) RemapCustomToolCallsInResponse(resp *types.Response
 }
 
 // RemapNamespaceFunctionCallsInResponse unflattens namespace function calls in a ResponsesResponse.
-func RemapNamespaceFunctionCallsInResponse(resp *types.ResponsesResponse, ctx CodexToolContext) {
+func (ctx *CodexToolContext) RemapNamespaceFunctionCallsInResponse(resp *types.ResponsesResponse) {
 	if resp == nil || len(ctx.FunctionTools) == 0 {
 		return
 	}
