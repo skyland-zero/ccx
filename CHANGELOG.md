@@ -3,6 +3,12 @@
 ### 新增
 
 - **支持 X-Channel 请求头指定目标渠道** - 新增 `X-Channel` 请求头，可通过渠道名直接定位目标渠道，跳过促销/亲和/优先级自动选择逻辑，便于单渠道调试测试；`SelectChannel` 新增 `channelName` 参数，非空时直接按名称匹配；`HandleMultiChannelFailover` / `compact` / `models` 路径同步更新签名；补充 `TestSelectChannelByName` 测试覆盖
+- **Codex 自定义工具兼容层** - Responses 渠道支持将 Codex CLI 的 `custom`/`namespace`/`web_search`/`local_shell`/`computer_use` 工具及字符串简写转换为 Chat Completions 兼容的 function 代理工具；`apply_patch` 拆分为 5 个结构化代理工具（add/delete/update/replace/batch）；响应侧自动将 upstream function call remap 回 `custom_tool_call` 格式；流式和非流式路径均支持；支持 `custom_tool_call`/`custom_tool_call_output` 历史回放
+
+### 变更
+
+- **统一 Codex 工具兼容开关为 `codexToolCompat`** - 将原有 `stripCodexClientTools`（Responses 透传剥离）和 PR #43 的 `codexToolsCompat`（Chat 上游转换）合并为单一 `codexToolCompat` 开关；行为按上游 `serviceType` 自动分支：Responses 透传时剥离 Codex 专属工具，Chat/Claude/Gemini 上游时转换为 function 代理；旧配置 `stripCodexClientTools` 自动迁移；前端仅在 Responses 渠道显示该开关
+- **扩展 Responses 请求工具类型支持** - `ResponsesRequest.Tools` 新增 `RawTools` 字段保留原始 `tools` 数组（含字符串简写），自定义 Marshal/Unmarshal 确保字符串工具不丢失；Codex 兼容层支持字符串工具名和 `web_search`/`local_shell`/`computer_use` 类型转为通用 function 代理
 
 ## [v2.6.84] - 2026-05-12
 
