@@ -62,12 +62,20 @@ func (c *OpenAIChatConverter) ToProviderRequest(sess *session.Session, req *type
 	if codexEnabled {
 		codexToolCtx = BuildCodexToolContextFromRaw(req.RawTools)
 	}
-	if len(req.Tools) > 0 || len(req.RawTools) > 0 {
+	if len(req.RawTools) > 0 {
 		if codexEnabled {
 			if tools := responsesRawToolsToOpenAIWithContext(req.RawTools, codexToolCtx); len(tools) > 0 {
 				openaiReq["tools"] = tools
 			}
 		} else if tools := responsesRawToolsToOpenAI(req.RawTools); len(tools) > 0 {
+			openaiReq["tools"] = tools
+		}
+	} else if len(req.Tools) > 0 {
+		if codexEnabled {
+			if tools := responsesToolsToOpenAIWithContext(req.Tools, codexToolCtx); len(tools) > 0 {
+				openaiReq["tools"] = tools
+			}
+		} else if tools := responsesToolsToOpenAI(req.Tools); len(tools) > 0 {
 			openaiReq["tools"] = tools
 		}
 	}
