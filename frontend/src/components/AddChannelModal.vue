@@ -706,15 +706,15 @@
             </v-col>
 
             <v-col v-if="props.channelType === 'responses'" cols="12">
-              <div class="d-flex align-center justify-space-between">
-                <div class="d-flex align-center ga-2">
+              <div class="d-flex align-center justify-space-between ga-5">
+                <div class="d-flex align-center ga-2" style="min-width: 0; flex: 1 1 auto;">
                   <v-icon color="primary">mdi-cog</v-icon>
-                  <div>
+                  <div style="min-width: 0;">
                     <div class="section-title section-title--soft">{{ t('addChannel.codexToolCompatLabel') }}</div>
-                    <div class="text-caption text-medium-emphasis">{{ t('addChannel.codexToolCompatHint') }}</div>
+                    <div class="text-caption text-medium-emphasis" style="word-break: break-word;">{{ t('addChannel.codexToolCompatHint') }}</div>
                   </div>
                 </div>
-                <v-switch v-model="form.codexToolCompat" inset color="primary" hide-details />
+                <v-switch v-model="form.codexToolCompat" inset color="primary" hide-details style="flex-shrink: 0;" />
               </div>
             </v-col>
 
