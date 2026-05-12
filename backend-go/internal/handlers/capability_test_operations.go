@@ -190,7 +190,7 @@ func RetryCapabilityTestModel(cfgManager *config.ConfigManager, channelLogStore 
 			return
 		}
 
-		timeout := 10 * time.Second
+		timeout := 30 * time.Second
 		if job.TimeoutMilliseconds > 0 {
 			timeout = time.Duration(job.TimeoutMilliseconds) * time.Millisecond
 		}

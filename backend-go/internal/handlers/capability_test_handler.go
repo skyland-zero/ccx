@@ -88,7 +88,7 @@ func TestChannelCapability(cfgManager *config.ConfigManager, channelLogStore *me
 			return
 		}
 
-		timeout := 10 * time.Second
+		timeout := 30 * time.Second
 		if req.Timeout > 0 {
 			timeout = time.Duration(req.Timeout) * time.Millisecond
 		}
