@@ -14,6 +14,7 @@ const (
 	CodexCustomToolRaw        CodexCustomToolKind = "raw"
 	CodexCustomToolApplyPatch CodexCustomToolKind = "apply_patch"
 	CodexCustomToolExec       CodexCustomToolKind = "exec"
+	CodexCustomToolBuiltIn    CodexCustomToolKind = "builtin"
 )
 
 // CodexCustomToolSpec describes a single Codex custom tool and its upstream proxy.
@@ -41,12 +42,29 @@ type CodexToolContext struct {
 // BuildCodexToolContext inspects a Responses request's tools array and builds
 // the tool context needed for request/response conversion.
 func BuildCodexToolContext(tools []map[string]interface{}) CodexToolContext {
+	rawTools := make([]interface{}, 0, len(tools))
+	for _, tool := range tools {
+		rawTools = append(rawTools, tool)
+	}
+	return BuildCodexToolContextFromRaw(rawTools)
+}
+
+func BuildCodexToolContextFromRaw(tools []interface{}) CodexToolContext {
 	ctx := CodexToolContext{
 		CustomTools:   make(map[string]CodexCustomToolSpec),
 		FunctionTools: make(map[string]CodexFunctionToolSpec),
 	}
 
-	for _, tool := range tools {
+	for _, rawTool := range tools {
+		if name, ok := rawTool.(string); ok && name != "" {
+			ctx.CustomTools[name] = CodexCustomToolSpec{OpenAIName: name, Kind: CodexCustomToolRaw}
+			ctx.HasCustomTools = true
+			continue
+		}
+		tool, ok := rawTool.(map[string]interface{})
+		if !ok {
+			continue
+		}
 		toolType, _ := tool["type"].(string)
 		switch toolType {
 		case "custom":
@@ -80,6 +98,13 @@ func BuildCodexToolContext(tools []map[string]interface{}) CodexToolContext {
 			ctx.FunctionTools[name] = CodexFunctionToolSpec{Name: name}
 		case "namespace":
 			addNamespaceToolsToContext(&ctx, tool)
+		case "web_search", "local_shell", "computer_use":
+			name, _ := tool["name"].(string)
+			if name == "" {
+				name = toolType
+			}
+			ctx.CustomTools[name] = CodexCustomToolSpec{OpenAIName: name, Kind: CodexCustomToolBuiltIn}
+			ctx.HasCustomTools = true
 		}
 	}
 
@@ -126,7 +151,7 @@ func addNamespaceToolsToContext(ctx *CodexToolContext, namespaceTool map[string]
 				Name:      name,
 			}
 			ctx.HasNamespaceTools = true
-		// case "custom", "namespace": not implemented in this pass
+			// case "custom", "namespace": not implemented in this pass
 		}
 	}
 }
@@ -181,14 +206,36 @@ func (ctx *CodexToolContext) OriginalCustomToolName(upstreamName string) string 
 // ============== Request-Side Tool Conversion ==============
 
 func responsesToolsToOpenAIWithContext(tools []map[string]interface{}, ctx CodexToolContext) []map[string]interface{} {
+	rawTools := make([]interface{}, 0, len(tools))
+	for _, tool := range tools {
+		rawTools = append(rawTools, tool)
+	}
+	return responsesRawToolsToOpenAIWithContext(rawTools, ctx)
+}
+
+func responsesRawToolsToOpenAIWithContext(tools []interface{}, ctx CodexToolContext) []map[string]interface{} {
 	if !ctx.HasCustomTools && !ctx.HasNamespaceTools {
-		return responsesToolsToOpenAI(tools)
+		mappedTools := make([]map[string]interface{}, 0, len(tools))
+		for _, raw := range tools {
+			if tool, ok := raw.(map[string]interface{}); ok {
+				mappedTools = append(mappedTools, tool)
+			}
+		}
+		return responsesToolsToOpenAI(mappedTools)
 	}
 
 	openaiTools := make([]map[string]interface{}, 0, len(tools)*2)
 	seenApplyPatch := map[string]bool{}
 
-	for _, tool := range tools {
+	for _, rawTool := range tools {
+		if name, ok := rawTool.(string); ok && name != "" {
+			openaiTools = append(openaiTools, genericCustomProxyTool(name, ""))
+			continue
+		}
+		tool, ok := rawTool.(map[string]interface{})
+		if !ok {
+			continue
+		}
 		toolType, _ := tool["type"].(string)
 		switch toolType {
 		case "function":
@@ -209,10 +256,10 @@ func responsesToolsToOpenAIWithContext(tools []map[string]interface{}, ctx Codex
 			openaiTools = append(openaiTools, ot)
 		case "namespace":
 			openaiTools = append(openaiTools, namespaceToolsToOpenAI(tool, ctx)...)
-		case "custom":
+		case "custom", "web_search", "local_shell", "computer_use":
 			name, _ := tool["name"].(string)
 			if name == "" {
-				continue
+				name = toolType
 			}
 			spec, ok := ctx.CustomTools[name]
 			if !ok {
@@ -945,7 +992,7 @@ func ConvertToolChoiceForCodex(toolChoice interface{}, ctx CodexToolContext) int
 			name, _ := tcMap["name"].(string)
 			flat := flattenNamespaceToolName(namespace, name)
 			return map[string]interface{}{
-				"type": "function",
+				"type":     "function",
 				"function": map[string]interface{}{"name": flat},
 			}
 		}

@@ -184,7 +184,9 @@ func (cm *ConfigManager) UpdateResponsesUpstream(index int, updates UpstreamUpda
 		upstream.NormalizeNonstandardChatRoles = *updates.NormalizeNonstandardChatRoles
 	}
 	if updates.StripCodexClientTools != nil {
-		upstream.StripCodexClientTools = *updates.StripCodexClientTools
+		v := *updates.StripCodexClientTools
+		upstream.CodexToolCompat = &v
+		upstream.StripCodexClientTools = v
 	}
 	if updates.InsecureSkipVerify != nil {
 		upstream.InsecureSkipVerify = *updates.InsecureSkipVerify
@@ -208,10 +210,6 @@ func (cm *ConfigManager) UpdateResponsesUpstream(index int, updates UpstreamUpda
 	if updates.NormalizeMetadataUserID != nil {
 		v := *updates.NormalizeMetadataUserID
 		upstream.NormalizeMetadataUserID = &v
-	}
-	if updates.CodexToolsCompat != nil {
-		v := *updates.CodexToolsCompat
-		upstream.CodexToolsCompat = &v
 	}
 	if updates.CodexToolCompat != nil {
 		v := *updates.CodexToolCompat

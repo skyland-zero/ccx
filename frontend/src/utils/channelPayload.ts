@@ -67,7 +67,7 @@ export function buildChannelPayload(form: ChannelFormLike): Omit<Channel, 'index
     normalizeMetadataUserId: form.normalizeMetadataUserId,
     codexToolCompat: form.codexToolCompat,
     normalizeNonstandardChatRoles: !!form.normalizeNonstandardChatRoles,
-    stripCodexClientTools: !!form.stripCodexClientTools,
+    stripCodexClientTools: form.codexToolCompat,
   }
 
   if (deduplicatedUrls.length > 1) {

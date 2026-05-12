@@ -34,9 +34,9 @@ type UpstreamConfig struct {
 	FastMode            bool              `json:"fastMode,omitempty"`
 	// OpenAI Chat 上游配置：启用后将非标准 Chat role 改写为 user（默认 false）
 	NormalizeNonstandardChatRoles bool `json:"normalizeNonstandardChatRoles,omitempty"`
-	// Responses 上游兼容开关：启用后在透传 /v1/responses 时剥离 Codex CLI 0.130+ 专属的
-	// 工具条目（字符串简写、type=namespace/custom/web_search/local_shell/computer_use 等），
-	// 用于对接不支持新协议的第三方 Responses 镜像。默认 false，保持原样透传。
+	// Codex 工具兼容开关（默认 false）。
+	CodexToolCompat *bool `json:"codexToolCompat,omitempty"`
+	// Deprecated: 使用 codexToolCompat；保留旧字段仅用于配置读取和旧前端写入兼容。
 	StripCodexClientTools bool `json:"stripCodexClientTools,omitempty"`
 	// 多渠道调度相关字段
 	Priority       int        `json:"priority"`                 // 渠道优先级（数字越小优先级越高，默认按索引）
@@ -47,9 +47,6 @@ type UpstreamConfig struct {
 	AutoBlacklistBalance *bool `json:"autoBlacklistBalance,omitempty"` // 余额不足时自动拉黑 Key（默认 true）
 	// metadata.user_id 规范化开关
 	NormalizeMetadataUserID *bool `json:"normalizeMetadataUserId,omitempty"` // 规范化 metadata.user_id（默认 true）
-	// Codex 工具兼容开关（默认 false）
-	CodexToolsCompat *bool `json:"codexToolsCompat,omitempty"` // 将 Codex custom/freeform/namespace 工具转换为 OpenAI function 工具格式（默认 false）
-	CodexToolCompat  *bool `json:"codexToolCompat,omitempty"`  // [已废弃] 请使用 codexToolsCompat，保留此字段仅用于向后兼容
 	// Gemini 特定配置
 	InjectDummyThoughtSignature bool `json:"injectDummyThoughtSignature,omitempty"` // 给空 thought_signature 注入 dummy 值（兼容 x666.me 等要求必须有该字段的 API）
 	StripThoughtSignature       bool `json:"stripThoughtSignature,omitempty"`       // 移除 thought_signature 字段（兼容旧版 Gemini API）
@@ -99,22 +96,12 @@ func (u *UpstreamConfig) IsNormalizeMetadataUserIDEnabled() bool {
 	return *u.NormalizeMetadataUserID
 }
 
-// IsCodexToolsCompatEnabled 检查 Codex 工具兼容是否启用（默认 false）
-// 优先使用 codexToolsCompat，若未设置则回退到旧字段 codexToolCompat
-func (u *UpstreamConfig) IsCodexToolsCompatEnabled() bool {
-	if u.CodexToolsCompat != nil {
-		return *u.CodexToolsCompat
-	}
+// IsCodexToolCompatEnabled 检查 Codex 工具兼容是否启用（默认 false）。
+func (u *UpstreamConfig) IsCodexToolCompatEnabled() bool {
 	if u.CodexToolCompat != nil {
 		return *u.CodexToolCompat
 	}
-	return false
-}
-
-// IsCodexToolCompatEnabled 检查 Codex 工具兼容是否启用（默认 false）
-// [已废弃] 请使用 IsCodexToolsCompatEnabled
-func (u *UpstreamConfig) IsCodexToolCompatEnabled() bool {
-	return u.IsCodexToolsCompatEnabled()
+	return u.StripCodexClientTools
 }
 
 // UpstreamUpdate 用于部分更新 UpstreamConfig
@@ -133,6 +120,7 @@ type UpstreamUpdate struct {
 	TextVerbosity                 *string           `json:"textVerbosity"`
 	FastMode                      *bool             `json:"fastMode"`
 	NormalizeNonstandardChatRoles *bool             `json:"normalizeNonstandardChatRoles"`
+	CodexToolCompat               *bool             `json:"codexToolCompat"`
 	StripCodexClientTools         *bool             `json:"stripCodexClientTools"`
 	// 多渠道调度相关字段
 	Priority                *int       `json:"priority"`
@@ -141,8 +129,6 @@ type UpstreamUpdate struct {
 	LowQuality              *bool      `json:"lowQuality"`
 	AutoBlacklistBalance    *bool      `json:"autoBlacklistBalance"`
 	NormalizeMetadataUserID *bool      `json:"normalizeMetadataUserId"`
-	CodexToolsCompat        *bool      `json:"codexToolsCompat"`
-	CodexToolCompat         *bool      `json:"codexToolCompat"`
 	// Gemini 特定配置
 	InjectDummyThoughtSignature *bool `json:"injectDummyThoughtSignature"`
 	StripThoughtSignature       *bool `json:"stripThoughtSignature"`

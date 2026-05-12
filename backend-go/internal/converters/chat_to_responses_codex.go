@@ -9,18 +9,16 @@ func buildCodexToolContextFromRequest(originalRequestRawJSON []byte) CodexToolCo
 
 	req := gjson.ParseBytes(originalRequestRawJSON)
 
-	// Check codex_tool_compat_enabled flag from TransformerMetadata
-	if enabled := req.Get("transformer_metadata.codex_tool_compat_enabled"); enabled.Exists() && !enabled.Bool() {
+	// Check codex_tool_compat_enabled flag from TransformerMetadata.
+	if enabled := req.Get("transformer_metadata.codex_tool_compat_enabled"); !enabled.Exists() || !enabled.Bool() {
 		return CodexToolContext{}
 	}
 	if tools := req.Get("tools"); tools.Exists() && tools.IsArray() {
-		var toolsList []map[string]interface{}
+		rawTools := make([]interface{}, 0, len(tools.Array()))
 		for _, t := range tools.Array() {
-			if tm, ok := t.Value().(map[string]interface{}); ok {
-				toolsList = append(toolsList, tm)
-			}
+			rawTools = append(rawTools, t.Value())
 		}
-		return BuildCodexToolContext(toolsList)
+		return BuildCodexToolContextFromRaw(rawTools)
 	}
 
 	return CodexToolContext{}

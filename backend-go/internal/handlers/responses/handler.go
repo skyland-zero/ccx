@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/BenedictKing/ccx/internal/config"
-	"github.com/tidwall/sjson"
 	"github.com/BenedictKing/ccx/internal/converters"
 	"github.com/BenedictKing/ccx/internal/handlers/common"
 	"github.com/BenedictKing/ccx/internal/middleware"
@@ -23,6 +22,7 @@ import (
 	"github.com/BenedictKing/ccx/internal/types"
 	"github.com/BenedictKing/ccx/internal/utils"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/sjson"
 )
 
 // Handler Responses API 代理处理器
@@ -314,7 +314,7 @@ func handleSuccess(
 
 	// Remap Codex custom tool proxy function calls to custom_tool_call items.
 	if originalReq != nil {
-		codexEnabled := true
+		codexEnabled := false
 		if originalReq.TransformerMetadata != nil {
 			if v, ok := originalReq.TransformerMetadata["codex_tool_compat_enabled"].(bool); ok {
 				codexEnabled = v

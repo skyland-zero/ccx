@@ -70,6 +70,9 @@ func (cm *ConfigManager) loadConfig() error {
 	if cm.applyServiceTypeDefaults() {
 		needSaveDefaults = true
 	}
+	if cm.applyCodexToolCompatMigration(data) {
+		needSaveDefaults = true
+	}
 
 	// 兼容旧格式：检测是否需要迁移
 	needMigration := cm.migrateOldFormat()
@@ -141,6 +144,62 @@ func (cm *ConfigManager) applyConfigDefaults(rawJSON []byte) bool {
 	}
 
 	return needSave
+}
+
+func (cm *ConfigManager) applyCodexToolCompatMigration(rawJSON []byte) bool {
+	var rawMap map[string]json.RawMessage
+	if err := json.Unmarshal(rawJSON, &rawMap); err != nil {
+		return false
+	}
+	updated := false
+	apply := func(raw json.RawMessage, channels *[]UpstreamConfig, channelName string) {
+		var rawChannels []map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &rawChannels); err != nil {
+			return
+		}
+		for i := range *channels {
+			if i >= len(rawChannels) {
+				continue
+			}
+			rawChannel := rawChannels[i]
+			if (*channels)[i].CodexToolCompat != nil {
+				continue
+			}
+			if rawCodexToolsCompat, ok := rawChannel["codexToolsCompat"]; ok {
+				var v bool
+				if err := json.Unmarshal(rawCodexToolsCompat, &v); err == nil {
+					(*channels)[i].CodexToolCompat = &v
+					updated = true
+					log.Printf("[Config-Migration] %s 渠道 [%d] %s codexToolsCompat 已迁移为 codexToolCompat", channelName, i, (*channels)[i].Name)
+				}
+				continue
+			}
+			if rawStrip, ok := rawChannel["stripCodexClientTools"]; ok {
+				var v bool
+				if err := json.Unmarshal(rawStrip, &v); err == nil && v {
+					(*channels)[i].CodexToolCompat = &v
+					updated = true
+					log.Printf("[Config-Migration] %s 渠道 [%d] %s stripCodexClientTools 已迁移为 codexToolCompat", channelName, i, (*channels)[i].Name)
+				}
+			}
+		}
+	}
+	if raw, ok := rawMap["upstream"]; ok {
+		apply(raw, &cm.config.Upstream, "Messages")
+	}
+	if raw, ok := rawMap["responsesUpstream"]; ok {
+		apply(raw, &cm.config.ResponsesUpstream, "Responses")
+	}
+	if raw, ok := rawMap["geminiUpstream"]; ok {
+		apply(raw, &cm.config.GeminiUpstream, "Gemini")
+	}
+	if raw, ok := rawMap["chatUpstream"]; ok {
+		apply(raw, &cm.config.ChatUpstream, "Chat")
+	}
+	if raw, ok := rawMap["imagesUpstream"]; ok {
+		apply(raw, &cm.config.ImagesUpstream, "Images")
+	}
+	return updated
 }
 
 func (cm *ConfigManager) applyServiceTypeDefaults() bool {

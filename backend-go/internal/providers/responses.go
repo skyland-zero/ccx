@@ -94,7 +94,7 @@ func (p *ResponsesProvider) buildProviderRequestBody(c *gin.Context, requestPath
 			return nil, nil, fmt.Errorf("透传模式下解析请求失败: %w", err)
 		}
 		normalizeResponsesInputForPassthrough(reqMap)
-		if upstream.StripCodexClientTools {
+		if upstream.IsCodexToolCompatEnabled() {
 			stripCodexClientOnlyTools(reqMap)
 		}
 		if model, ok := reqMap["model"].(string); ok {
@@ -112,9 +112,6 @@ func (p *ResponsesProvider) buildProviderRequestBody(c *gin.Context, requestPath
 		providerReq = reqMap
 	} else {
 		var responsesReq types.ResponsesRequest
-		if upstream.StripCodexClientTools {
-			bodyBytes = stripCodexClientOnlyToolsFromBody(bodyBytes)
-		}
 		if err := json.Unmarshal(bodyBytes, &responsesReq); err != nil {
 			return nil, nil, fmt.Errorf("解析 Responses 请求失败: %w", err)
 		}
@@ -138,6 +135,7 @@ func (p *ResponsesProvider) buildProviderRequestBody(c *gin.Context, requestPath
 			responsesReq.TransformerMetadata = make(map[string]interface{})
 		}
 		responsesReq.TransformerMetadata["codex_tool_compat_enabled"] = upstream.IsCodexToolCompatEnabled()
+		responsesReq.RawTools = extractRawToolsFromRequest(bodyBytes)
 		convertedReq, err := converter.ToProviderRequest(sess, &responsesReq)
 		if err != nil {
 			return nil, nil, fmt.Errorf("convert request failed: %w", err)
@@ -991,4 +989,13 @@ func formatFunctionCallOutputHistory(item map[string]interface{}) string {
 		return fmt.Sprintf("Function call output (%s): %s", callID, output)
 	}
 	return fmt.Sprintf("Function call output: %s", output)
+}
+
+func extractRawToolsFromRequest(bodyBytes []byte) []interface{} {
+	var reqMap map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &reqMap); err != nil {
+		return nil
+	}
+	rawTools, _ := reqMap["tools"].([]interface{})
+	return rawTools
 }

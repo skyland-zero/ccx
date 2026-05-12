@@ -24,7 +24,7 @@ func BuildChannelView(up config.UpstreamConfig, index int) gin.H {
 		"textVerbosity":                 up.TextVerbosity,
 		"fastMode":                      up.FastMode,
 		"normalizeNonstandardChatRoles": up.NormalizeNonstandardChatRoles,
-		"stripCodexClientTools":         up.StripCodexClientTools,
+		"stripCodexClientTools":         up.IsCodexToolCompatEnabled(),
 		"latency":                       nil,
 		"status":                        status,
 		"adminState":                    config.GetChannelAdminState(&up),
@@ -41,6 +41,5 @@ func BuildChannelView(up config.UpstreamConfig, index int) gin.H {
 		"autoBlacklistBalance":          up.IsAutoBlacklistBalanceEnabled(),
 		"normalizeMetadataUserId":       up.IsNormalizeMetadataUserIDEnabled(),
 		"codexToolCompat":               up.IsCodexToolCompatEnabled(),
-		"codexToolsCompat":              up.IsCodexToolsCompatEnabled(),
 	}
 }

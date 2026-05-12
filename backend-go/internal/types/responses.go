@@ -18,7 +18,8 @@ type ResponsesRequest struct {
 	Stop               interface{}              `json:"stop,omitempty"`                // 停止序列 (string 或 []string)
 	User               string                   `json:"user,omitempty"`                // 用户标识
 	StreamOptions      interface{}              `json:"stream_options,omitempty"`      // 流式选项
-	Tools              []map[string]interface{} `json:"tools,omitempty"`               // function tools
+	Tools              []map[string]interface{} `json:"-"`                             // function tools
+	RawTools           []interface{}            `json:"tools,omitempty"`               // 原始工具定义，支持字符串简写
 	ToolChoice         interface{}              `json:"tool_choice,omitempty"`         // string 或 object
 	ParallelToolCalls  *bool                    `json:"parallel_tool_calls,omitempty"` // 是否允许并行工具调用
 

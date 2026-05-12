@@ -252,10 +252,6 @@ func (u *UpstreamConfig) Clone() *UpstreamConfig {
 		v := *u.NormalizeMetadataUserID
 		cloned.NormalizeMetadataUserID = &v
 	}
-	if u.CodexToolsCompat != nil {
-		v := *u.CodexToolsCompat
-		cloned.CodexToolsCompat = &v
-	}
 	if u.CodexToolCompat != nil {
 		v := *u.CodexToolCompat
 		cloned.CodexToolCompat = &v

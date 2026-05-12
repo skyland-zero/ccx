@@ -744,18 +744,6 @@
               </div>
             </v-col>
 
-            <v-col v-if="props.channelType === 'responses'" cols="12">
-              <div class="d-flex align-center justify-space-between">
-                <div class="d-flex align-center ga-2">
-                  <v-icon color="warning">mdi-tune</v-icon>
-                  <div>
-                    <div class="section-title section-title--soft">{{ t('addChannel.stripCodexClientToolsLabel') }}</div>
-                    <div class="text-caption text-medium-emphasis">{{ t('addChannel.stripCodexClientToolsHint') }}</div>
-                  </div>
-                </div>
-                <v-switch v-model="form.stripCodexClientTools" inset color="warning" hide-details />
-              </div>
-            </v-col>
 
             <v-col v-if="supportsOpenAIAdvancedOptions" cols="12">
               <div class="d-flex align-center justify-space-between ga-4">
@@ -1938,9 +1926,9 @@ const hasEditableDraftChanges = computed(() => {
     supportedModels: normalizeStringArray(props.channel.supportedModels || []),
     autoBlacklistBalance: props.channel.autoBlacklistBalance ?? true,
     normalizeMetadataUserId: props.channel.normalizeMetadataUserId ?? true,
-    codexToolCompat: props.channel.codexToolCompat ?? false,
+    codexToolCompat: props.channel.codexToolCompat ?? props.channel.stripCodexClientTools ?? false,
     normalizeNonstandardChatRoles: !!props.channel.normalizeNonstandardChatRoles,
-    stripCodexClientTools: !!props.channel.stripCodexClientTools,
+    stripCodexClientTools: props.channel.codexToolCompat ?? props.channel.stripCodexClientTools ?? false,
   }
 
   return JSON.stringify(currentPayload) !== JSON.stringify(originalPayload)
@@ -2074,9 +2062,9 @@ const loadChannelData = (channel: Channel) => {
   supportedModelsError.value = hasInvalidPatterns ? t('addChannel.supportedModelsInvalidPattern') : ''
   form.autoBlacklistBalance = channel.autoBlacklistBalance ?? true
   form.normalizeMetadataUserId = channel.normalizeMetadataUserId ?? true
-  form.codexToolCompat = channel.codexToolCompat ?? false
+  form.codexToolCompat = channel.codexToolCompat ?? channel.stripCodexClientTools ?? false
   form.normalizeNonstandardChatRoles = !!channel.normalizeNonstandardChatRoles
-  form.stripCodexClientTools = !!channel.stripCodexClientTools
+  form.stripCodexClientTools = channel.codexToolCompat ?? channel.stripCodexClientTools ?? false
 
   // 立即同步 baseUrl 到预览变量，避免等待 debounce
   formBaseUrlPreview.value = channel.baseUrl

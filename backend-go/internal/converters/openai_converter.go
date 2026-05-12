@@ -52,7 +52,7 @@ func (c *OpenAIChatConverter) ToProviderRequest(sess *session.Session, req *type
 	}
 
 	// Tools conversion with Codex custom tool support.
-	codexEnabled := true
+	codexEnabled := false
 	if req.TransformerMetadata != nil {
 		if v, ok := req.TransformerMetadata["codex_tool_compat_enabled"].(bool); ok {
 			codexEnabled = v
@@ -60,16 +60,24 @@ func (c *OpenAIChatConverter) ToProviderRequest(sess *session.Session, req *type
 	}
 	var codexToolCtx CodexToolContext
 	if codexEnabled {
-		codexToolCtx = BuildCodexToolContext(req.Tools)
+		codexToolCtx = BuildCodexToolContextFromRaw(req.RawTools)
 	}
-	if len(req.Tools) > 0 {
-		if tools := responsesToolsToOpenAIWithContext(req.Tools, codexToolCtx); len(tools) > 0 {
+	if len(req.Tools) > 0 || len(req.RawTools) > 0 {
+		if codexEnabled {
+			if tools := responsesRawToolsToOpenAIWithContext(req.RawTools, codexToolCtx); len(tools) > 0 {
+				openaiReq["tools"] = tools
+			}
+		} else if tools := responsesToolsToOpenAI(req.Tools); len(tools) > 0 {
 			openaiReq["tools"] = tools
 		}
 	}
 	if req.ToolChoice != nil {
-		if converted := ConvertToolChoiceForCodex(req.ToolChoice, codexToolCtx); converted != nil {
-			openaiReq["tool_choice"] = converted
+		if codexEnabled {
+			if converted := ConvertToolChoiceForCodex(req.ToolChoice, codexToolCtx); converted != nil {
+				openaiReq["tool_choice"] = converted
+			} else {
+				openaiReq["tool_choice"] = req.ToolChoice
+			}
 		} else {
 			openaiReq["tool_choice"] = req.ToolChoice
 		}
