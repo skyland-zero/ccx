@@ -202,6 +202,164 @@ func TestNormalizeResponsesInputForPassthrough_OrphanedToolOutput(t *testing.T) 
 	}
 }
 
+func TestNormalizeResponsesInputForPassthrough_EmptyCallId(t *testing.T) {
+	req := map[string]interface{}{
+		"input": []interface{}{
+			map[string]interface{}{
+				"type":      "function_call",
+				"name":      "exec_command",
+				"call_id":   "",
+				"arguments": `{}`,
+			},
+			map[string]interface{}{
+				"type":    "function_call_output",
+				"call_id": "",
+				"output":  "some output",
+			},
+		},
+	}
+
+	normalizeResponsesInputForPassthrough(req)
+
+	input := req["input"].([]interface{})
+	item0 := input[0].(map[string]interface{})
+	if item0["type"] != "function_call" {
+		t.Fatalf("empty call_id 的 function_call 仍应保留，当前=%v", item0["type"])
+	}
+	item1 := input[1].(map[string]interface{})
+	if item1["type"] != "message" {
+		t.Fatalf("empty call_id 对应的 output 应被判定为孤立并降级，当前=%v", item1["type"])
+	}
+}
+
+func TestNormalizeResponsesInputForPassthrough_OutputBeforeCall(t *testing.T) {
+	req := map[string]interface{}{
+		"input": []interface{}{
+			map[string]interface{}{
+				"type":    "function_call_output",
+				"call_id": "call_abc",
+				"output":  "result",
+			},
+			map[string]interface{}{
+				"type":      "function_call",
+				"name":      "exec_command",
+				"call_id":   "call_abc",
+				"arguments": `{}`,
+			},
+		},
+	}
+
+	normalizeResponsesInputForPassthrough(req)
+
+	input := req["input"].([]interface{})
+	item0 := input[0].(map[string]interface{})
+	if item0["type"] != "function_call_output" {
+		t.Fatalf("顺序颠倒但配对的 output 应保留，当前=%v", item0["type"])
+	}
+	item1 := input[1].(map[string]interface{})
+	if item1["type"] != "function_call" {
+		t.Fatalf("顺序颠倒的 function_call 应保留，当前=%v", item1["type"])
+	}
+}
+
+func TestNormalizeResponsesInputForPassthrough_NonMapItems(t *testing.T) {
+	req := map[string]interface{}{
+		"input": []interface{}{
+			"plain string item",
+			42.0,
+			map[string]interface{}{
+				"type":    "function_call_output",
+				"call_id": "orphan",
+				"output":  "stale",
+			},
+			true,
+		},
+	}
+
+	normalizeResponsesInputForPassthrough(req)
+
+	input := req["input"].([]interface{})
+	if len(input) != 4 {
+		t.Fatalf("input 长度=%d，期望 4", len(input))
+	}
+	if input[0] != "plain string item" {
+		t.Fatalf("字符串条目应原样保留，当前=%v", input[0])
+	}
+	if input[1] != 42.0 {
+		t.Fatalf("数值条目应原样保留，当前=%v", input[1])
+	}
+	if input[3] != true {
+		t.Fatalf("布尔条目应原样保留，当前=%v", input[3])
+	}
+	// 孤立 output 仍应降级
+	item2 := input[2].(map[string]interface{})
+	if item2["type"] != "message" {
+		t.Fatalf("孤立 output 应降级，当前=%v", item2["type"])
+	}
+}
+
+func TestNormalizeResponsesInputForPassthrough_MultipleToolsPartiallyOrphaned(t *testing.T) {
+	req := map[string]interface{}{
+		"input": []interface{}{
+			// pair A: 有对应 output
+			map[string]interface{}{
+				"type":      "function_call",
+				"name":      "tool_a",
+				"call_id":   "call_a",
+				"arguments": `{}`,
+			},
+			map[string]interface{}{
+				"type":    "function_call_output",
+				"call_id": "call_a",
+				"output":  "result_a",
+			},
+			// pair B: 孤立 output（无对应 function_call）
+			map[string]interface{}{
+				"type":    "function_call_output",
+				"call_id": "call_b",
+				"output":  "stale_b",
+			},
+			// pair C: 有对应 output
+			map[string]interface{}{
+				"type":      "function_call",
+				"name":      "tool_c",
+				"call_id":   "call_c",
+				"arguments": `{}`,
+			},
+			map[string]interface{}{
+				"type":    "function_call_output",
+				"call_id": "call_c",
+				"output":  "result_c",
+			},
+		},
+	}
+
+	normalizeResponsesInputForPassthrough(req)
+
+	input := req["input"].([]interface{})
+	if len(input) != 5 {
+		t.Fatalf("input 长度=%d，期望 5", len(input))
+	}
+	// pair A: 保留
+	if input[0].(map[string]interface{})["type"] != "function_call" {
+		t.Fatalf("pair A function_call 应保留")
+	}
+	if input[1].(map[string]interface{})["type"] != "function_call_output" {
+		t.Fatalf("pair A output 应保留")
+	}
+	// pair B: 孤立，降级
+	if input[2].(map[string]interface{})["type"] != "message" {
+		t.Fatalf("pair B 孤立 output 应降级为 message，当前=%v", input[2].(map[string]interface{})["type"])
+	}
+	// pair C: 保留
+	if input[3].(map[string]interface{})["type"] != "function_call" {
+		t.Fatalf("pair C function_call 应保留")
+	}
+	if input[4].(map[string]interface{})["type"] != "function_call_output" {
+		t.Fatalf("pair C output 应保留")
+	}
+}
+
 func TestNormalizeResponsesInputForPassthrough_PreservesStatefulToolOutput(t *testing.T) {
 	req := map[string]interface{}{
 		"previous_response_id": "resp_123",

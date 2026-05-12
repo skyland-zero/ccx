@@ -935,20 +935,24 @@ func extractErrorInfo(bodyBytes []byte) (errType string, errMessage string) {
 	return
 }
 
-// truncateMessage 截断错误信息（最多200字符），用于指标/原因字段等短摘要场景
+// truncateMessage 截断错误信息（最多800字符），用于指标/原因字段等短摘要场景
+// 使用 rune 截断，避免切断 UTF-8 多字节字符
 func truncateMessage(msg string) string {
-	if len(msg) > 200 {
-		return msg[:200]
+	runes := []rune(msg)
+	if len(runes) > 800 {
+		return string(runes[:800])
 	}
 	return msg
 }
 
 // truncateErrorSummary 用于日志打印上游错误详情，保留足够上下文以便定位协议/schema 问题
 // 上限设置为 4KB，避免极端情况下把巨型响应体全量入日志
+// 使用 rune 截断，避免切断 UTF-8 多字节字符
 func truncateErrorSummary(msg string) string {
 	const maxLen = 4096
-	if len(msg) > maxLen {
-		return msg[:maxLen] + "...(truncated)"
+	runes := []rune(msg)
+	if len(runes) > maxLen {
+		return string(runes[:maxLen]) + "...(truncated)"
 	}
 	return msg
 }
