@@ -449,10 +449,23 @@ func appendResponsesItemsToOpenAIMessages(messages []map[string]interface{}, ite
 		if len(pendingReasoning) == 0 {
 			return
 		}
+		reasoning := strings.Join(pendingReasoning, "\n")
+		if len(messages) > 0 {
+			last := messages[len(messages)-1]
+			if role, _ := last["role"].(string); role == "assistant" {
+				if existing, ok := last["reasoning_content"].(string); ok && existing != "" {
+					last["reasoning_content"] = existing + "\n" + reasoning
+				} else {
+					last["reasoning_content"] = reasoning
+				}
+				pendingReasoning = nil
+				return
+			}
+		}
 		messages = append(messages, map[string]interface{}{
 			"role":              "assistant",
-			"content":           nil,
-			"reasoning_content": strings.Join(pendingReasoning, "\n"),
+			"content":           "",
+			"reasoning_content": reasoning,
 		})
 		pendingReasoning = nil
 	}
@@ -482,7 +495,7 @@ func appendResponsesItemsToOpenAIMessages(messages []map[string]interface{}, ite
 		}
 		if len(pendingReasoning) > 0 {
 			msg["reasoning_content"] = strings.Join(pendingReasoning, "\n")
-			msg["content"] = nil
+			msg["content"] = ""
 			pendingReasoning = nil
 		}
 		messages = append(messages, msg)
@@ -518,7 +531,7 @@ func appendResponsesItemsToOpenAIMessages(messages []map[string]interface{}, ite
 			if role == "assistant" && len(pendingToolCalls) == 0 {
 				msg["reasoning_content"] = strings.Join(pendingReasoning, "\n")
 				if _, ok := msg["content"]; !ok {
-					msg["content"] = nil
+					msg["content"] = ""
 				}
 				pendingReasoning = nil
 			} else {
@@ -572,7 +585,7 @@ func responsesItemToOpenAIMessage(item types.ResponsesItem) map[string]interface
 		}
 		return map[string]interface{}{
 			"role":              "assistant",
-			"content":           nil,
+			"content":           "",
 			"reasoning_content": reasoning,
 		}
 

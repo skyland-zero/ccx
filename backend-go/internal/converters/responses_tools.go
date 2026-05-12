@@ -6,7 +6,28 @@ func defaultResponsesToolParameters() map[string]interface{} {
 	return map[string]interface{}{
 		"type":       "object",
 		"properties": map[string]interface{}{},
+		"required":   []interface{}{},
 	}
+}
+
+func sanitizeResponsesToolParameters(parameters interface{}) interface{} {
+	paramMap, ok := parameters.(map[string]interface{})
+	if !ok {
+		return defaultResponsesToolParameters()
+	}
+	if paramType, ok := paramMap["type"].(string); !ok || paramType == "" {
+		paramMap["type"] = "object"
+	}
+	if _, ok := paramMap["properties"].(map[string]interface{}); !ok {
+		paramMap["properties"] = map[string]interface{}{}
+	}
+	// 补齐 required=[]：部分上游（如 duckcoding 的 OpenAI 严格 schema 校验）
+	// 在 required 缺失时直接按 None 校验，抛出
+	// "Invalid schema for function ...: None is not of type 'array'"。
+	if _, exists := paramMap["required"]; !exists {
+		paramMap["required"] = []interface{}{}
+	}
+	return paramMap
 }
 
 func extractResponsesToolFields(tool map[string]interface{}) (string, string, interface{}) {
@@ -28,14 +49,30 @@ func extractResponsesToolFields(tool map[string]interface{}) (string, string, in
 
 	if parameters == nil {
 		parameters = defaultResponsesToolParameters()
+	} else {
+		parameters = sanitizeResponsesToolParameters(parameters)
 	}
 
 	return name, description, parameters
 }
 
+// isChatCompatibleResponsesTool 判断 Responses tool 是否能安全映射到 Chat Completions。
+// Chat Completions 只支持 function tool；Responses 扩展类型（custom/web_search/
+// namespace 等）直接映射会让上游拒绝或产出无效参数，应在入口处过滤掉。
+func isChatCompatibleResponsesTool(tool map[string]interface{}) bool {
+	toolType, _ := tool["type"].(string)
+	if toolType == "" || toolType == "function" {
+		return true
+	}
+	return false
+}
+
 func responsesToolsToOpenAI(tools []map[string]interface{}) []map[string]interface{} {
 	openaiTools := make([]map[string]interface{}, 0, len(tools))
 	for _, tool := range tools {
+		if !isChatCompatibleResponsesTool(tool) {
+			continue
+		}
 		name, description, parameters := extractResponsesToolFields(tool)
 		if name == "" {
 			continue

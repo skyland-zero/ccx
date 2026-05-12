@@ -28,6 +28,18 @@ type Config struct {
 	Console bool
 }
 
+// rawFileLog 仅写文件的 logger，用于向日志文件写入原始 JSON 输出
+var rawFileLog *log.Logger
+
+// RawFileLog 返回仅写文件的 logger。
+// 未初始化时回退到全局 logger。
+func RawFileLog() *log.Logger {
+	if rawFileLog != nil {
+		return rawFileLog
+	}
+	return log.Default()
+}
+
 // DefaultConfig 返回默认配置
 func DefaultConfig() *Config {
 	return &Config{
@@ -64,18 +76,18 @@ func Setup(cfg *Config) error {
 		LocalTime:  true,
 	}
 
-	var writer io.Writer
-	if cfg.Console {
-		// 同时输出到控制台和文件
-		writer = io.MultiWriter(os.Stdout, lumberLogger)
-	} else {
-		// 仅输出到文件
-		writer = lumberLogger
-	}
+	flags := log.Ldate | log.Ltime | log.Lmicroseconds
 
-	// 设置标准库 log 的输出
-	log.SetOutput(writer)
-	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
+	// log.Printf 始终仅写 stdout（精简格式）
+	if cfg.Console {
+		log.SetOutput(os.Stdout)
+	} else {
+		log.SetOutput(io.Discard)
+	}
+	// rawFileLog 始终仅写文件（原始 JSON），用于双通道输出
+	rawFileLog = log.New(lumberLogger, "", flags)
+
+	log.SetFlags(flags)
 
 	log.Printf("[Logger-Init] 日志系统已初始化")
 	log.Printf("[Logger-Init] 日志文件: %s", logPath)

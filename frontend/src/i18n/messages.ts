@@ -215,6 +215,8 @@ export type MessageKey =
   | 'addChannel.normalizeMetadataUserIdHint'
   | 'addChannel.normalizeNonstandardChatRolesLabel'
   | 'addChannel.normalizeNonstandardChatRolesHint'
+  | 'addChannel.stripCodexClientToolsLabel'
+  | 'addChannel.stripCodexClientToolsHint'
   | 'addChannel.injectDummyThoughtSignatureLabel'
   | 'addChannel.injectDummyThoughtSignatureHint'
   | 'addChannel.stripThoughtSignatureLabel'
@@ -601,6 +603,8 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'addChannel.normalizeMetadataUserIdHint': 'Auto-convert JSON object user_id to a flat string for upstream compatibility.',
     'addChannel.normalizeNonstandardChatRolesLabel': 'Normalize non-standard chat roles',
     'addChannel.normalizeNonstandardChatRolesHint': 'When enabled, roles outside system/user/assistant/tool are sent upstream as user.',
+    'addChannel.stripCodexClientToolsLabel': 'Strip Codex client tools',
+    'addChannel.stripCodexClientToolsHint': 'Enable only for legacy Responses upstreams that reject Codex CLI 0.130+ tool schemas.',
     'addChannel.injectDummyThoughtSignatureLabel': 'Inject dummy thought signature',
     'addChannel.injectDummyThoughtSignatureHint': 'Injects a dummy signature into functionCall for third-party APIs that require this field. Disable it for the official API.',
     'addChannel.stripThoughtSignatureLabel': 'Strip thought signature',
@@ -986,6 +990,8 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'addChannel.normalizeMetadataUserIdHint': 'Otomatis ubah user_id objek JSON menjadi string datar untuk kompatibilitas upstream.',
     'addChannel.normalizeNonstandardChatRolesLabel': 'Normalisasi role chat non-standar',
     'addChannel.normalizeNonstandardChatRolesHint': 'Jika aktif, role di luar system/user/assistant/tool dikirim ke upstream sebagai user.',
+    'addChannel.stripCodexClientToolsLabel': 'Hapus tool klien Codex',
+    'addChannel.stripCodexClientToolsHint': 'Aktifkan hanya untuk upstream Responses lama yang menolak schema tool Codex CLI 0.130+.',
     'addChannel.injectDummyThoughtSignatureLabel': 'Sisipkan dummy thought signature',
     'addChannel.injectDummyThoughtSignatureHint': 'Menyisipkan dummy signature ke functionCall agar kompatibel dengan API pihak ketiga yang membutuhkan field ini. Matikan untuk API resmi.',
     'addChannel.stripThoughtSignatureLabel': 'Hapus thought signature',
@@ -1371,6 +1377,8 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'addChannel.normalizeMetadataUserIdHint': '自动将 JSON 对象格式的 user_id 转换为扁平字符串，确保上游兼容性。',
     'addChannel.normalizeNonstandardChatRolesLabel': '规范化非常见 Chat role',
     'addChannel.normalizeNonstandardChatRolesHint': '开启后将 system/user/assistant/tool 之外的 role 作为 user 转发给上游。',
+    'addChannel.stripCodexClientToolsLabel': '剥离 Codex 客户端工具',
+    'addChannel.stripCodexClientToolsHint': '仅用于不支持 Codex CLI 0.130+ 工具结构的旧版 Responses 上游，默认请关闭。',
     'addChannel.injectDummyThoughtSignatureLabel': '注入 Dummy Thought Signature',
     'addChannel.injectDummyThoughtSignatureHint': '为 functionCall 注入 dummy signature，兼容需要该字段的第三方 API（官方 API 请关闭）',
     'addChannel.stripThoughtSignatureLabel': '移除 Thought Signature',

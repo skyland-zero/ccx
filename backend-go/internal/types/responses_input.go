@@ -65,6 +65,10 @@ func responsesItemFromMap(itemMap map[string]interface{}) ResponsesItem {
 		Output:    itemMap["output"],
 	}
 
+	if item.Type == "" && item.Role != "" {
+		item.Type = "message"
+	}
+
 	if toolUseMap, ok := itemMap["tool_use"].(map[string]interface{}); ok {
 		item.ToolUse = &ToolUse{
 			ID:    stringFromMap(toolUseMap, "id"),

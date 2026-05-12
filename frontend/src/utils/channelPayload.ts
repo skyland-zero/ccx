@@ -27,6 +27,7 @@ export interface ChannelFormLike {
   normalizeMetadataUserId: boolean
   codexToolCompat: boolean
   normalizeNonstandardChatRoles?: boolean
+  stripCodexClientTools?: boolean
 
 }
 
@@ -66,6 +67,7 @@ export function buildChannelPayload(form: ChannelFormLike): Omit<Channel, 'index
     normalizeMetadataUserId: form.normalizeMetadataUserId,
     codexToolCompat: form.codexToolCompat,
     normalizeNonstandardChatRoles: !!form.normalizeNonstandardChatRoles,
+    stripCodexClientTools: !!form.stripCodexClientTools,
   }
 
   if (deduplicatedUrls.length > 1) {

@@ -91,6 +91,61 @@ func TestClaudeConverter_ToProviderRequest_PreservesTools(t *testing.T) {
 	assert.NotNil(t, tools[0]["input_schema"])
 }
 
+func TestOpenAIChatConverter_ToolRequiredField_FilledWhenMissing(t *testing.T) {
+	req := &types.ResponsesRequest{
+		Model: "gpt-5.5",
+		Input: "list resources",
+		Tools: []map[string]interface{}{
+			{
+				"type":        "function",
+				"name":        "list_mcp_resources",
+				"description": "Lists resources",
+				"parameters": map[string]interface{}{
+					"type":                 "object",
+					"properties":           map[string]interface{}{},
+					"additionalProperties": false,
+				},
+			},
+		},
+	}
+
+	converted, err := (&OpenAIChatConverter{}).ToProviderRequest(&session.Session{}, req)
+	assert.NoError(t, err)
+	requestMap := converted.(map[string]interface{})
+	tools := requestMap["tools"].([]map[string]interface{})
+
+	params, ok := tools[0]["function"].(map[string]interface{})["parameters"].(map[string]interface{})
+	assert.True(t, ok)
+	required, exists := params["required"]
+	assert.True(t, exists, "required 字段必须存在")
+	_, isArray := required.([]interface{})
+	assert.True(t, isArray, "required 字段必须是数组")
+	assert.False(t, exists && !isArray, "required 不应为 None 或非数组")
+}
+
+func TestOpenAIChatConverter_SkipsNonFunctionTools(t *testing.T) {
+	req := &types.ResponsesRequest{
+		Model: "gpt-5.5",
+		Input: "search",
+		Tools: []map[string]interface{}{
+			{"type": "web_search", "search_content_types": []interface{}{"text"}},
+			{"type": "custom", "name": "apply_patch", "format": map[string]interface{}{"type": "grammar"}},
+			{
+				"type":       "function",
+				"name":       "do_thing",
+				"parameters": map[string]interface{}{"type": "object", "properties": map[string]interface{}{}},
+			},
+		},
+	}
+
+	converted, err := (&OpenAIChatConverter{}).ToProviderRequest(&session.Session{}, req)
+	assert.NoError(t, err)
+	requestMap := converted.(map[string]interface{})
+	tools := requestMap["tools"].([]map[string]interface{})
+	assert.Len(t, tools, 1, "只应保留 function 类型工具")
+	assert.Equal(t, "do_thing", tools[0]["function"].(map[string]interface{})["name"])
+}
+
 func TestOpenAIChatResponseToResponses_ToolCalls(t *testing.T) {
 	openaiResp := map[string]interface{}{
 		"model": "gpt-4o",

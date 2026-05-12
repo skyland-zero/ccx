@@ -57,7 +57,7 @@ func shouldRetryWithNextKeyFuzzy(statusCode int, bodyBytes []byte, apiType strin
 	// 检查是否为参数校验类不可重试错误（invalid_request 等）
 	// 仅对 4xx 客户端错误生效，5xx 服务端错误应始终允许 failover
 	if statusCode >= 400 && statusCode < 500 && len(bodyBytes) > 0 {
-		if isNonRetryableError(bodyBytes) {
+		if isNonRetryableError(bodyBytes, apiType) {
 			log.Printf("[%s-Failover-Fuzzy] 检测到不可重试错误 (statusCode=%d)，不进行 failover", apiType, statusCode)
 			return false, false
 		}
@@ -94,7 +94,7 @@ func shouldRetryWithNextKeyNormal(statusCode int, bodyBytes []byte, apiType stri
 
 	// 检查是否为参数校验类不可重试错误（invalid_request 等）
 	// 仅对 4xx 客户端错误生效，5xx 服务端错误应始终允许 failover
-	if statusCode >= 400 && statusCode < 500 && len(bodyBytes) > 0 && isNonRetryableError(bodyBytes) {
+	if statusCode >= 400 && statusCode < 500 && len(bodyBytes) > 0 && isNonRetryableError(bodyBytes, apiType) {
 		log.Printf("[%s-Failover-Debug] 检测到不可重试错误 (statusCode=%d)，不进行 failover", apiType, statusCode)
 		return false, false
 	}
@@ -411,6 +411,7 @@ func isSchemaValidationMessage(msgLower string) bool {
 		// 结构字段校验（Anthropic 常见）
 		"field required",
 		"required field",
+		"missing required parameter",
 		"is required",
 		"messages.",
 		".content.",
@@ -593,13 +594,18 @@ func isContentModerationError(bodyBytes []byte) bool {
 }
 
 // isNonRetryableError 检查响应体是否包含不可重试的错误码
-func isNonRetryableError(bodyBytes []byte) bool {
+func isNonRetryableError(bodyBytes []byte, apiType string) bool {
 	var errResp map[string]interface{}
 	if err := json.Unmarshal(bodyBytes, &errResp); err != nil {
 		return false
 	}
 	errObj, ok := errResp["error"].(map[string]interface{})
 	if !ok {
+		return false
+	}
+	// 在判定 schema/invalid_request 之前，先放行上游协议兼容类 400：
+	// 这些错误源于上游镜像不认识新版 Responses tools schema，换兼容上游后可恢复。
+	if strings.EqualFold(apiType, "Responses") && isResponsesToolsProtocolError(errObj) {
 		return false
 	}
 	if isSchemaValidationError(errObj) {
@@ -609,6 +615,69 @@ func isNonRetryableError(bodyBytes []byte) bool {
 		return isNonRetryableErrorCode(errCode)
 	}
 	return false
+}
+
+// isResponsesToolsProtocolError 识别上游对 /v1/responses 中 tools 结构的兼容性拒绝。
+// 例如第三方 Responses 镜像不识别 Codex CLI 0.130+ 的 namespace/custom/web_search 等条目，
+// 返回形如 "Missing required parameter: 'tools[15].tools'" 的 400。
+func isResponsesToolsProtocolError(errObj map[string]interface{}) bool {
+	message := strings.ToLower(toStringField(errObj, "message"))
+	param := strings.ToLower(toStringField(errObj, "param"))
+	code := strings.ToLower(toStringField(errObj, "code"))
+	upstream := strings.ToLower(toStringField(errObj, "upstream_error"))
+	if nested, ok := errObj["upstream_error"].(map[string]interface{}); ok {
+		upstream += " " + strings.ToLower(toStringField(nested, "message"))
+		upstream += " " + strings.ToLower(toStringField(nested, "param"))
+		upstream += " " + strings.ToLower(toStringField(nested, "code"))
+	}
+
+	combined := strings.Join([]string{message, param, code, upstream}, " ")
+	if !mentionsResponsesTools(combined) {
+		return false
+	}
+	if code == "invalid_function_parameters" || code == "missing_required_parameter" {
+		return true
+	}
+	markers := []string{
+		"missing required parameter",
+		"unknown parameter",
+		"invalid schema",
+		"invalid function parameters",
+		"unsupported tool",
+		"unknown tool",
+		"expected", // 兼容 "expected object/array/string" 类 schema 文案
+	}
+	for _, marker := range markers {
+		if strings.Contains(combined, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func mentionsResponsesTools(text string) bool {
+	toolMarkers := []string{
+		"tools",
+		"tool_choice",
+		"function '",
+		"function \"",
+		"web_search",
+		"namespace",
+		"custom tool",
+	}
+	for _, marker := range toolMarkers {
+		if strings.Contains(text, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func toStringField(m map[string]interface{}, key string) string {
+	if v, ok := m[key].(string); ok {
+		return v
+	}
+	return ""
 }
 
 // isModelRoutingError 识别上游将模型路由失败误报为 5xx 的错误
@@ -866,10 +935,24 @@ func extractErrorInfo(bodyBytes []byte) (errType string, errMessage string) {
 	return
 }
 
-// truncateMessage 截断错误信息（最多200字符）
+// truncateMessage 截断错误信息（最多800字符），用于指标/原因字段等短摘要场景
+// 使用 rune 截断，避免切断 UTF-8 多字节字符
 func truncateMessage(msg string) string {
-	if len(msg) > 200 {
-		return msg[:200]
+	runes := []rune(msg)
+	if len(runes) > 800 {
+		return string(runes[:800])
+	}
+	return msg
+}
+
+// truncateErrorSummary 用于日志打印上游错误详情，保留足够上下文以便定位协议/schema 问题
+// 上限设置为 4KB，避免极端情况下把巨型响应体全量入日志
+// 使用 rune 截断，避免切断 UTF-8 多字节字符
+func truncateErrorSummary(msg string) string {
+	const maxLen = 4096
+	runes := []rune(msg)
+	if len(runes) > maxLen {
+		return string(runes[:maxLen]) + "...(truncated)"
 	}
 	return msg
 }
