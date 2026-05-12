@@ -47,10 +47,10 @@ type chatToResponsesState struct {
 	HasClaudeCacheFields  bool
 	HasCacheDetails       bool
 	// 首次消息标记
-	FirstChunk            bool
+	FirstChunk             bool
 	CodexToolCompatEnabled bool
-	CodexCtx              CodexToolContext
-	CodexCtxInitialized   bool
+	CodexCtx               CodexToolContext
+	CodexCtxInitialized    bool
 }
 
 // isCustomProxy returns true if the tool call at the given index is a Codex custom tool proxy.

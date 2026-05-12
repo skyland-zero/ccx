@@ -64,9 +64,9 @@ func TestRemapCustomToolCallsInResponseSkipsWhenHasCustomToolsFalse(t *testing.T
 	ctx := CodexToolContext{}
 	resp := &types.ResponsesResponse{
 		Output: []types.ResponsesItem{{
-			Type:      "function_call",
-			CallID:    "call_1",
-			Name:      "apply_patch_add_file",
+			Type:   "function_call",
+			CallID: "call_1",
+			Name:   "apply_patch_add_file",
 			Arguments: `{"path":"docs/test.md","content":"# Test
 "}`,
 		}},
@@ -155,13 +155,13 @@ func TestCombineNamespaceDescription(t *testing.T) {
 
 func TestNamespaceToolsToOpenAI(t *testing.T) {
 	tools := []map[string]interface{}{{
-		"type": "namespace",
-		"name": "mcp__vscode_mcp__",
+		"type":        "namespace",
+		"name":        "mcp__vscode_mcp__",
 		"description": "VSCode MCP tools",
 		"tools": []interface{}{
 			map[string]interface{}{
-				"type": "function",
-				"name": "execute_command",
+				"type":        "function",
+				"name":        "execute_command",
 				"description": "Execute VSCode command",
 				"parameters": map[string]interface{}{
 					"type":       "object",
@@ -646,4 +646,3 @@ func TestWrapOpenAIChatResponseToResponsesWithContext_NamespaceStreaming(t *test
 		t.Fatalf("arguments = %q", item.Arguments)
 	}
 }
-
