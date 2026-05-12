@@ -162,20 +162,43 @@ func TestNormalizeResponsesInputForPassthrough_StatelessToolHistory(t *testing.T
 	if len(input) != 2 {
 		t.Fatalf("input 长度=%d，期望 2", len(input))
 	}
-	for i, raw := range input {
-		item := raw.(map[string]interface{})
-		if item["type"] != "message" {
-			t.Fatalf("input[%d].type=%v，期望 message", i, item["type"])
-		}
-		if _, ok := item["status"]; ok {
-			t.Fatalf("input[%d] 不应保留 status", i)
-		}
+	// 配对的 function_call/function_call_output 应保留原样
+	item0 := input[0].(map[string]interface{})
+	if item0["type"] != "function_call" {
+		t.Fatalf("配对的 function_call 应保留原样，当前=%v", item0["type"])
 	}
-	if input[0].(map[string]interface{})["role"] != "assistant" {
-		t.Fatalf("function_call 应降级为 assistant message")
+	if _, ok := item0["status"]; ok {
+		t.Fatalf("input[0] 不应保留 status")
 	}
-	if input[1].(map[string]interface{})["role"] != "user" {
-		t.Fatalf("function_call_output 应降级为 user message")
+	item1 := input[1].(map[string]interface{})
+	if item1["type"] != "function_call_output" {
+		t.Fatalf("配对的 function_call_output 应保留原样，当前=%v", item1["type"])
+	}
+}
+
+func TestNormalizeResponsesInputForPassthrough_OrphanedToolOutput(t *testing.T) {
+	req := map[string]interface{}{
+		"input": []interface{}{
+			map[string]interface{}{
+				"type":    "function_call_output",
+				"call_id": "orphan_call_456",
+				"output":  "some stale output",
+			},
+		},
+	}
+
+	normalizeResponsesInputForPassthrough(req)
+
+	input := req["input"].([]interface{})
+	if len(input) != 1 {
+		t.Fatalf("input 长度=%d，期望 1", len(input))
+	}
+	item := input[0].(map[string]interface{})
+	if item["type"] != "message" {
+		t.Fatalf("孤立 function_call_output 应降级为 message，当前=%v", item["type"])
+	}
+	if item["role"] != "user" {
+		t.Fatalf("孤立 function_call_output 应降级为 user message，当前=%v", item["role"])
 	}
 }
 

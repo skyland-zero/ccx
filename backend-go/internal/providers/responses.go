@@ -910,6 +910,19 @@ func normalizeResponsesInputForPassthrough(reqMap map[string]interface{}) {
 }
 
 func normalizeStatelessResponsesToolHistory(input []interface{}) []interface{} {
+	knownCalls := make(map[string]struct{}, len(input))
+	for _, rawItem := range input {
+		item, ok := rawItem.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if toString(item["type"]) == "function_call" {
+			if id := toString(item["call_id"]); id != "" {
+				knownCalls[id] = struct{}{}
+			}
+		}
+	}
+
 	normalized := make([]interface{}, 0, len(input))
 	for _, rawItem := range input {
 		item, ok := rawItem.(map[string]interface{})
@@ -920,9 +933,14 @@ func normalizeStatelessResponsesToolHistory(input []interface{}) []interface{} {
 
 		switch toString(item["type"]) {
 		case "function_call":
-			normalized = append(normalized, responsesToolHistoryMessage("assistant", formatFunctionCallHistory(item)))
+			normalized = append(normalized, rawItem)
 		case "function_call_output":
-			normalized = append(normalized, responsesToolHistoryMessage("user", formatFunctionCallOutputHistory(item)))
+			callID := toString(item["call_id"])
+			if _, paired := knownCalls[callID]; paired {
+				normalized = append(normalized, rawItem)
+			} else {
+				normalized = append(normalized, responsesToolHistoryMessage("user", formatFunctionCallOutputHistory(item)))
+			}
 		default:
 			normalized = append(normalized, rawItem)
 		}
