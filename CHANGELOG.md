@@ -1,3 +1,9 @@
+## [Unreleased]
+
+### 新增
+
+- **支持 X-Channel 请求头指定目标渠道** - 新增 `X-Channel` 请求头，可通过渠道名直接定位目标渠道，跳过促销/亲和/优先级自动选择逻辑，便于单渠道调试测试；`SelectChannel` 新增 `channelName` 参数，非空时直接按名称匹配；`HandleMultiChannelFailover` / `compact` / `models` 路径同步更新签名；补充 `TestSelectChannelByName` 测试覆盖
+
 ## [v2.6.84] - 2026-05-12
 
 ### 新增
