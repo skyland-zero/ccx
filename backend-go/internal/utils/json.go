@@ -26,6 +26,10 @@ func TruncateJSONIntelligently(data interface{}, maxTextLength int) interface{} 
 	if data == nil {
 		return nil
 	}
+	// maxTextLength <= 0 表示不截断
+	if maxTextLength <= 0 {
+		return data
+	}
 
 	switch v := data.(type) {
 	case string:
@@ -749,15 +753,12 @@ func formatJSONWithCompactArrays(data interface{}, indent string, depth int) str
 }
 
 // FormatJSONBytesForLog 格式化JSON字节数组用于日志输出
+// maxTextLength <= 0 时不截断，保留完整内容
 func FormatJSONBytesForLog(jsonData []byte, maxTextLength int) string {
 	var data interface{}
 	if err := json.Unmarshal(jsonData, &data); err != nil {
 		// 如果不是有效JSON,按字符串处理
-		str := string(jsonData)
-		if len(str) > 500 {
-			return str[:500] + "..."
-		}
-		return str
+		return string(jsonData)
 	}
 
 	return FormatJSONForLog(data, maxTextLength)

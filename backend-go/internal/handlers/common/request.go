@@ -16,12 +16,21 @@ import (
 
 	"github.com/BenedictKing/ccx/internal/config"
 	"github.com/BenedictKing/ccx/internal/httpclient"
+	"github.com/BenedictKing/ccx/internal/logger"
 	"github.com/BenedictKing/ccx/internal/metrics"
 	"github.com/BenedictKing/ccx/internal/utils"
 	"github.com/gin-gonic/gin"
 )
 
 const MaxUpstreamResponseLogBytes = 1024 * 1024
+
+// logRawToFile 仅在 RawLogOutput 开启时将原始内容写入日志文件。
+// 用于 JSON body/header 的双通道输出：stdout 用精简格式，文件用原始内容。
+func logRawToFile(envCfg *config.EnvConfig, format string, args ...interface{}) {
+	if envCfg.RawLogOutput {
+		logger.RawFileLog().Printf(format, args...)
+	}
+}
 
 type LimitedLogBuffer struct {
 	buf       bytes.Buffer
@@ -161,13 +170,10 @@ func LogUpstreamResponseHeaders(resp *http.Response, envCfg *config.EnvConfig, a
 			respHeaders[key] = values[0]
 		}
 	}
-	var respHeadersJSON []byte
-	if envCfg.RawLogOutput {
-		respHeadersJSON, _ = json.Marshal(respHeaders)
-	} else {
-		respHeadersJSON, _ = json.MarshalIndent(respHeaders, "", "  ")
-	}
+	respHeadersJSON, _ := json.MarshalIndent(respHeaders, "", "  ")
 	log.Printf("[%s-Response] 响应头:\n%s", apiType, string(respHeadersJSON))
+	rawHeadersJSON, _ := json.Marshal(respHeaders)
+	logRawToFile(envCfg, "[%s-Response] 响应头:\n%s", apiType, string(rawHeadersJSON))
 }
 
 func LogUpstreamResponseBody(bodyBytes []byte, envCfg *config.EnvConfig, apiType string) {
@@ -175,13 +181,8 @@ func LogUpstreamResponseBody(bodyBytes []byte, envCfg *config.EnvConfig, apiType
 		return
 	}
 
-	var formattedBody string
-	if envCfg.RawLogOutput {
-		formattedBody = utils.FormatJSONBytesRaw(bodyBytes)
-	} else {
-		formattedBody = utils.FormatJSONBytesForLog(bodyBytes, 500)
-	}
-	log.Printf("[%s-Response] 响应体:\n%s", apiType, formattedBody)
+	log.Printf("[%s-Response] 响应体:\n%s", apiType, utils.FormatJSONBytesForLog(bodyBytes, 0))
+	logRawToFile(envCfg, "[%s-Response] 响应体:\n%s", apiType, utils.FormatJSONBytesRaw(bodyBytes))
 }
 
 func LogUpstreamResponse(resp *http.Response, bodyBytes []byte, envCfg *config.EnvConfig, apiType string) {
@@ -260,13 +261,10 @@ func logRequestDetails(req *http.Request, envCfg *config.EnvConfig, apiType stri
 		}
 	}
 	maskedReqHeaders := utils.MaskSensitiveHeaders(reqHeaders)
-	var reqHeadersJSON []byte
-	if envCfg.RawLogOutput {
-		reqHeadersJSON, _ = json.Marshal(maskedReqHeaders)
-	} else {
-		reqHeadersJSON, _ = json.MarshalIndent(maskedReqHeaders, "", "  ")
-	}
+	reqHeadersJSON, _ := json.MarshalIndent(maskedReqHeaders, "", "  ")
 	log.Printf("[%s-Request-Headers] 实际请求头:\n%s", apiType, string(reqHeadersJSON))
+	rawReqHeadersJSON, _ := json.Marshal(maskedReqHeaders)
+	logRawToFile(envCfg, "[%s-Request-Headers] 实际请求头:\n%s", apiType, string(rawReqHeadersJSON))
 
 	if req.Body != nil {
 		contentType := req.Header.Get("Content-Type")
@@ -277,13 +275,8 @@ func logRequestDetails(req *http.Request, envCfg *config.EnvConfig, apiType stri
 		bodyBytes, err := io.ReadAll(req.Body)
 		if err == nil {
 			req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
-			var formattedBody string
-			if envCfg.RawLogOutput {
-				formattedBody = utils.FormatJSONBytesRaw(bodyBytes)
-			} else {
-				formattedBody = utils.FormatJSONBytesForLog(bodyBytes, 500)
-			}
-			log.Printf("[%s-Request-Body] 实际请求体:\n%s", apiType, formattedBody)
+			log.Printf("[%s-Request-Body] 实际请求体:\n%s", apiType, utils.FormatJSONBytesForLog(bodyBytes, 0))
+			logRawToFile(envCfg, "[%s-Request-Body] 实际请求体:\n%s", apiType, utils.FormatJSONBytesRaw(bodyBytes))
 		}
 	}
 }
@@ -301,13 +294,8 @@ func LogOriginalRequest(c *gin.Context, bodyBytes []byte, envCfg *config.EnvConf
 		if strings.HasPrefix(strings.ToLower(contentType), "multipart/form-data") {
 			log.Printf("[Request-OriginalBody] 原始请求体: [multipart/form-data omitted]")
 		} else {
-			var formattedBody string
-			if envCfg.RawLogOutput {
-				formattedBody = utils.FormatJSONBytesRaw(bodyBytes)
-			} else {
-				formattedBody = utils.FormatJSONBytesForLog(bodyBytes, 500)
-			}
-			log.Printf("[Request-OriginalBody] 原始请求体:\n%s", formattedBody)
+			log.Printf("[Request-OriginalBody] 原始请求体:\n%s", utils.FormatJSONBytesForLog(bodyBytes, 0))
+			logRawToFile(envCfg, "[Request-OriginalBody] 原始请求体:\n%s", utils.FormatJSONBytesRaw(bodyBytes))
 		}
 
 		sanitizedHeaders := make(map[string]string)
@@ -317,13 +305,10 @@ func LogOriginalRequest(c *gin.Context, bodyBytes []byte, envCfg *config.EnvConf
 			}
 		}
 		maskedHeaders := utils.MaskSensitiveHeaders(sanitizedHeaders)
-		var headersJSON []byte
-		if envCfg.RawLogOutput {
-			headersJSON, _ = json.Marshal(maskedHeaders)
-		} else {
-			headersJSON, _ = json.MarshalIndent(maskedHeaders, "", "  ")
-		}
+		headersJSON, _ := json.MarshalIndent(maskedHeaders, "", "  ")
 		log.Printf("[Request-OriginalHeaders] 原始请求头:\n%s", string(headersJSON))
+		rawHeadersJSON, _ := json.Marshal(maskedHeaders)
+		logRawToFile(envCfg, "[Request-OriginalHeaders] 原始请求头:\n%s", string(rawHeadersJSON))
 	}
 }
 
