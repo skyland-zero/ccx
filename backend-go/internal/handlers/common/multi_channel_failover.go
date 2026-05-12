@@ -71,7 +71,7 @@ func HandleMultiChannelFailover(
 			// 继续正常流程
 		}
 
-		selection, err := channelScheduler.SelectChannel(c.Request.Context(), userID, failedChannels, kind, model, c.Param("routePrefix"))
+		selection, err := channelScheduler.SelectChannel(c.Request.Context(), userID, failedChannels, kind, model, c.Param("routePrefix"), c.GetHeader("X-Channel"))
 		if err != nil {
 			lastError = err
 			break

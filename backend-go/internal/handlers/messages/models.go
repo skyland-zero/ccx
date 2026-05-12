@@ -153,7 +153,7 @@ func tryModelsRequest(c *gin.Context, cfgManager *config.ConfigManager, channelS
 	channelType := channelKindLabel(kind)
 
 	for attempt := 0; attempt < maxChannelRetries; attempt++ {
-		selection, err := channelScheduler.SelectChannel(c.Request.Context(), "", failedChannels, kind, "", c.Param("routePrefix"))
+		selection, err := channelScheduler.SelectChannel(c.Request.Context(), "", failedChannels, kind, "", c.Param("routePrefix"), c.GetHeader("X-Channel"))
 		if err != nil {
 			fallbackSelection, fallbackErr := selectChannelWithDisabledKeys(cfgManager, failedChannels, kind, c.Param("routePrefix"))
 			if fallbackErr != nil {

@@ -332,7 +332,7 @@ func (s *ChannelScheduler) RunScheduledRecoveries(now time.Time) ([]ScheduledRec
 	return results, nil
 }
 
-// 优先级: 促销期渠道 > Trace亲和（促销渠道失败时回退） > 渠道优先级顺序
+// 优先级: 指定渠道 > 促销期渠道 > Trace亲和（促销渠道失败时回退） > 渠道优先级顺序
 func (s *ChannelScheduler) SelectChannel(
 	ctx context.Context,
 	userID string,
@@ -340,6 +340,7 @@ func (s *ChannelScheduler) SelectChannel(
 	kind ChannelKind,
 	model string,
 	routePrefix string,
+	channelName string,
 ) (*SelectionResult, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -363,6 +364,29 @@ func (s *ChannelScheduler) SelectChannel(
 			return nil, fmt.Errorf("没有 %s 渠道支持模型 %q，请检查渠道的 supportedModels 配置", kindName, model)
 		}
 		return nil, fmt.Errorf("没有可用的活跃 %s 渠道", kindName)
+	}
+
+	// 指定渠道名（X-Channel 头）：直接定位，跳过所有自动选择逻辑
+	if channelName != "" {
+		for _, ch := range activeChannels {
+			if ch.Name == channelName {
+				if failedChannels[ch.Index] {
+					return nil, fmt.Errorf("指定渠道 %q 在本次请求中已失败", channelName)
+				}
+				upstream := s.getUpstreamByIndex(ch.Index, kind)
+				if upstream == nil {
+					return nil, fmt.Errorf("指定渠道 %q 配置异常", channelName)
+				}
+				prefix := kindSchedulerLogPrefix(kind)
+				log.Printf("[%s-Pin] 通过 X-Channel 指定渠道: [%d] %s", prefix, ch.Index, ch.Name)
+				return &SelectionResult{
+					Upstream:     upstream,
+					ChannelIndex: ch.Index,
+					Reason:       "channel_pin",
+				}, nil
+			}
+		}
+		return nil, fmt.Errorf("未找到名为 %q 的活跃渠道", channelName)
 	}
 
 	// 按路由前缀过滤渠道

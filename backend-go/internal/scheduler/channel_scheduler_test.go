@@ -121,7 +121,7 @@ func TestPromotedChannelBypassesHealthCheck(t *testing.T) {
 	}
 
 	// 选择渠道 - 促销渠道应该被选中，即使它不健康
-	result, err := scheduler.SelectChannel(context.Background(), "test-user", make(map[int]bool), ChannelKindMessages, "", "")
+	result, err := scheduler.SelectChannel(context.Background(), "test-user", make(map[int]bool), ChannelKindMessages, "", "", "")
 	if err != nil {
 		t.Fatalf("选择渠道失败: %v", err)
 	}
@@ -172,7 +172,7 @@ func TestPromotedChannelSkippedAfterFailure(t *testing.T) {
 	}
 
 	// 选择渠道 - 应该跳过促销渠道，选择正常渠道
-	result, err := scheduler.SelectChannel(context.Background(), "test-user", failedChannels, ChannelKindMessages, "", "")
+	result, err := scheduler.SelectChannel(context.Background(), "test-user", failedChannels, ChannelKindMessages, "", "", "")
 	if err != nil {
 		t.Fatalf("选择渠道失败: %v", err)
 	}
@@ -217,7 +217,7 @@ func TestNonPromotedChannelStillChecksHealth(t *testing.T) {
 	}
 
 	// 选择渠道 - 应该跳过不健康的渠道，选择健康的渠道
-	result, err := scheduler.SelectChannel(context.Background(), "test-user", make(map[int]bool), ChannelKindMessages, "", "")
+	result, err := scheduler.SelectChannel(context.Background(), "test-user", make(map[int]bool), ChannelKindMessages, "", "", "")
 	if err != nil {
 		t.Fatalf("选择渠道失败: %v", err)
 	}
@@ -266,7 +266,7 @@ func TestExpiredPromotionNotBypassHealthCheck(t *testing.T) {
 	}
 
 	// 选择渠道 - 过期促销渠道不应该被优先选择，应该选择健康的渠道
-	result, err := scheduler.SelectChannel(context.Background(), "test-user", make(map[int]bool), ChannelKindMessages, "", "")
+	result, err := scheduler.SelectChannel(context.Background(), "test-user", make(map[int]bool), ChannelKindMessages, "", "", "")
 	if err != nil {
 		t.Fatalf("选择渠道失败: %v", err)
 	}
@@ -305,7 +305,7 @@ func TestSelectChannel_DefaultRouteRejectsPrefixedOnlyChannels(t *testing.T) {
 	scheduler, cleanup := createTestScheduler(t, cfg)
 	defer cleanup()
 
-	_, err := scheduler.SelectChannel(context.Background(), "test-user", map[int]bool{}, ChannelKindMessages, "", "")
+	_, err := scheduler.SelectChannel(context.Background(), "test-user", map[int]bool{}, ChannelKindMessages, "", "", "")
 	if err == nil {
 		t.Fatal("SelectChannel() error = nil, want default route rejection")
 	}
@@ -674,7 +674,7 @@ func TestAffinityYieldToHigherPriorityHealthyChannel(t *testing.T) {
 
 	scheduler.traceAffinity.SetPreferredChannel(string(ChannelKindMessages)+":test-user", 1)
 
-	result, err := scheduler.SelectChannel(context.Background(), "test-user", map[int]bool{}, ChannelKindMessages, "", "")
+	result, err := scheduler.SelectChannel(context.Background(), "test-user", map[int]bool{}, ChannelKindMessages, "", "", "")
 	if err != nil {
 		t.Fatalf("选择渠道失败: %v", err)
 	}
@@ -712,7 +712,7 @@ func TestAffinityStillWorksWithoutHigherPriorityAlternative(t *testing.T) {
 
 	scheduler.traceAffinity.SetPreferredChannel(string(ChannelKindMessages)+":test-user", 0)
 
-	result, err := scheduler.SelectChannel(context.Background(), "test-user", map[int]bool{}, ChannelKindMessages, "", "")
+	result, err := scheduler.SelectChannel(context.Background(), "test-user", map[int]bool{}, ChannelKindMessages, "", "", "")
 	if err != nil {
 		t.Fatalf("选择渠道失败: %v", err)
 	}
@@ -759,7 +759,7 @@ func TestSelectChannelFiltersSupportedModels(t *testing.T) {
 	defer cleanup()
 
 	t.Run("命中排除规则时跳过高优先级渠道", func(t *testing.T) {
-		result, err := scheduler.SelectChannel(context.Background(), "test-user", make(map[int]bool), ChannelKindMessages, "gpt-4-image-preview", "")
+		result, err := scheduler.SelectChannel(context.Background(), "test-user", make(map[int]bool), ChannelKindMessages, "gpt-4-image-preview", "", "")
 		if err != nil {
 			t.Fatalf("选择渠道失败: %v", err)
 		}
@@ -774,7 +774,7 @@ func TestSelectChannelFiltersSupportedModels(t *testing.T) {
 		log.SetOutput(&buf)
 		defer log.SetOutput(oldOutput)
 
-		result, err := scheduler.SelectChannel(context.Background(), "test-user", make(map[int]bool), ChannelKindMessages, "gpt-4-image-preview", "")
+		result, err := scheduler.SelectChannel(context.Background(), "test-user", make(map[int]bool), ChannelKindMessages, "gpt-4-image-preview", "", "")
 		if err != nil {
 			t.Fatalf("选择渠道失败: %v", err)
 		}
@@ -792,7 +792,7 @@ func TestSelectChannelFiltersSupportedModels(t *testing.T) {
 	})
 
 	t.Run("非法规则被跳过且不影响合法规则", func(t *testing.T) {
-		result, err := scheduler.SelectChannel(context.Background(), "test-user", make(map[int]bool), ChannelKindMessages, "claude-3-7-sonnet", "")
+		result, err := scheduler.SelectChannel(context.Background(), "test-user", make(map[int]bool), ChannelKindMessages, "claude-3-7-sonnet", "", "")
 		if err != nil {
 			t.Fatalf("选择渠道失败: %v", err)
 		}
@@ -802,7 +802,7 @@ func TestSelectChannelFiltersSupportedModels(t *testing.T) {
 	})
 
 	t.Run("所有活跃渠道都不支持模型时返回明确错误", func(t *testing.T) {
-		_, err := scheduler.SelectChannel(context.Background(), "test-user", make(map[int]bool), ChannelKindMessages, "gemini-2.5-pro", "")
+		_, err := scheduler.SelectChannel(context.Background(), "test-user", make(map[int]bool), ChannelKindMessages, "gemini-2.5-pro", "", "")
 		if err == nil {
 			t.Fatal("期望返回错误，实际为 nil")
 		}
@@ -846,4 +846,88 @@ func TestNormalizedMetricsServiceType(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSelectChannelByName(t *testing.T) {
+	cfg := config.Config{
+		Upstream: []config.UpstreamConfig{
+			{
+				Name:     "channel-a",
+				BaseURL:  "https://a.example.com",
+				APIKeys:  []string{"sk-a"},
+				Status:   "active",
+				Priority: 1,
+			},
+			{
+				Name:     "channel-b",
+				BaseURL:  "https://b.example.com",
+				APIKeys:  []string{"sk-b"},
+				Status:   "active",
+				Priority: 2,
+			},
+		},
+	}
+
+	scheduler, cleanup := createTestScheduler(t, cfg)
+	defer cleanup()
+
+	t.Run("指定渠道名直接定位", func(t *testing.T) {
+		result, err := scheduler.SelectChannel(context.Background(), "test-user", map[int]bool{}, ChannelKindMessages, "", "", "channel-b")
+		if err != nil {
+			t.Fatalf("选择渠道失败: %v", err)
+		}
+		if result.ChannelIndex != 1 {
+			t.Fatalf("期望选择 index=1 (channel-b)，实际为 %d", result.ChannelIndex)
+		}
+		if result.Reason != "channel_pin" {
+			t.Fatalf("期望原因为 channel_pin，实际为 %s", result.Reason)
+		}
+		if result.Upstream.Name != "channel-b" {
+			t.Fatalf("期望选择 channel-b，实际为 %s", result.Upstream.Name)
+		}
+	})
+
+	t.Run("指定渠道名跳过更高优先级渠道", func(t *testing.T) {
+		result, err := scheduler.SelectChannel(context.Background(), "test-user", map[int]bool{}, ChannelKindMessages, "", "", "channel-b")
+		if err != nil {
+			t.Fatalf("选择渠道失败: %v", err)
+		}
+		if result.ChannelIndex != 1 {
+			t.Fatalf("应跳过高优先级 channel-a，实际选择 index=%d", result.ChannelIndex)
+		}
+	})
+
+	t.Run("指定不存在的渠道名返回错误", func(t *testing.T) {
+		_, err := scheduler.SelectChannel(context.Background(), "test-user", map[int]bool{}, ChannelKindMessages, "", "", "nonexistent")
+		if err == nil {
+			t.Fatal("期望返回错误，实际为 nil")
+		}
+		if !strings.Contains(err.Error(), "nonexistent") {
+			t.Fatalf("错误信息应包含渠道名，实际: %v", err)
+		}
+	})
+
+	t.Run("指定已失败的渠道名返回错误", func(t *testing.T) {
+		failed := map[int]bool{1: true}
+		_, err := scheduler.SelectChannel(context.Background(), "test-user", failed, ChannelKindMessages, "", "", "channel-b")
+		if err == nil {
+			t.Fatal("期望返回错误，实际为 nil")
+		}
+		if !strings.Contains(err.Error(), "已失败") {
+			t.Fatalf("错误信息应提示已失败，实际: %v", err)
+		}
+	})
+
+	t.Run("空渠道名走正常选择逻辑", func(t *testing.T) {
+		result, err := scheduler.SelectChannel(context.Background(), "test-user", map[int]bool{}, ChannelKindMessages, "", "", "")
+		if err != nil {
+			t.Fatalf("选择渠道失败: %v", err)
+		}
+		if result.ChannelIndex != 0 {
+			t.Fatalf("正常逻辑应选高优先级 index=0，实际为 %d", result.ChannelIndex)
+		}
+		if result.Reason == "channel_pin" {
+			t.Fatal("空渠道名不应触发 channel_pin")
+		}
+	})
 }
