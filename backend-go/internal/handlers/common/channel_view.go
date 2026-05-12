@@ -40,5 +40,7 @@ func BuildChannelView(up config.UpstreamConfig, index int) gin.H {
 		"disabledApiKeys":               up.DisabledAPIKeys,
 		"autoBlacklistBalance":          up.IsAutoBlacklistBalanceEnabled(),
 		"normalizeMetadataUserId":       up.IsNormalizeMetadataUserIDEnabled(),
+		"codexToolCompat":               up.IsCodexToolCompatEnabled(),
+		"codexToolsCompat":              up.IsCodexToolsCompatEnabled(),
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/BenedictKing/ccx/internal/config"
+	"github.com/tidwall/sjson"
 	"github.com/BenedictKing/ccx/internal/converters"
 	"github.com/BenedictKing/ccx/internal/handlers/common"
 	"github.com/BenedictKing/ccx/internal/middleware"
@@ -138,6 +139,11 @@ func handleMultiChannel(
 					channelScheduler.MarkURLSuccess(scheduler.ChannelKindResponses, channelIndex, url)
 				},
 				func(c *gin.Context, resp *http.Response, upstreamCopy *config.UpstreamConfig, apiKey string, actualRequestBody []byte) (*types.Usage, error) {
+					// Inject codex_tool_compat_enabled for response remapping
+					if responsesReq.TransformerMetadata == nil {
+						responsesReq.TransformerMetadata = make(map[string]interface{})
+					}
+					responsesReq.TransformerMetadata["codex_tool_compat_enabled"] = upstreamCopy.IsCodexToolCompatEnabled()
 					return handleSuccess(c, resp, provider, upstream.ServiceType, envCfg, sessionManager, startTime, &responsesReq, actualRequestBody)
 				},
 				responsesReq.Model,
@@ -225,6 +231,11 @@ func handleSingleChannel(
 		nil,
 		nil,
 		func(c *gin.Context, resp *http.Response, upstreamCopy *config.UpstreamConfig, apiKey string, actualRequestBody []byte) (*types.Usage, error) {
+			// Inject codex_tool_compat_enabled for response remapping
+			if responsesReq.TransformerMetadata == nil {
+				responsesReq.TransformerMetadata = make(map[string]interface{})
+			}
+			responsesReq.TransformerMetadata["codex_tool_compat_enabled"] = upstreamCopy.IsCodexToolCompatEnabled()
 			return handleSuccess(c, resp, provider, upstream.ServiceType, envCfg, sessionManager, startTime, &responsesReq, actualRequestBody)
 		},
 		responsesReq.Model,
@@ -255,6 +266,16 @@ func handleSuccess(
 	defer resp.Body.Close()
 
 	isStream := originalReq != nil && originalReq.Stream
+
+	// Inject codex_tool_compat_enabled into raw JSON so converters can read it.
+	// TransformerMetadata is json:"-" so it does not survive serialization.
+	if originalReq != nil && originalReq.TransformerMetadata != nil {
+		if enabled, ok := originalReq.TransformerMetadata["codex_tool_compat_enabled"].(bool); ok {
+			if injected, err := sjson.SetBytes(originalRequestJSON, "transformer_metadata.codex_tool_compat_enabled", enabled); err == nil {
+				originalRequestJSON = injected
+			}
+		}
+	}
 
 	if isStream {
 		return handleStreamSuccess(c, resp, upstreamType, envCfg, startTime, originalReq, originalRequestJSON)
@@ -289,6 +310,21 @@ func handleSuccess(
 		}
 		log.Printf("[Responses-InvalidBody] 响应体解析失败: %v, body前100字节: %s", err, preview)
 		return nil, fmt.Errorf("%w: %v", common.ErrInvalidResponseBody, err)
+	}
+
+	// Remap Codex custom tool proxy function calls to custom_tool_call items.
+	if originalReq != nil {
+		codexEnabled := true
+		if originalReq.TransformerMetadata != nil {
+			if v, ok := originalReq.TransformerMetadata["codex_tool_compat_enabled"].(bool); ok {
+				codexEnabled = v
+			}
+		}
+		if codexEnabled {
+			codexCtx := converters.BuildCodexToolContext(originalReq.Tools)
+			codexCtx.RemapCustomToolCallsInResponse(responsesResp)
+			codexCtx.RemapNamespaceFunctionCallsInResponse(responsesResp)
+		}
 	}
 
 	// Token 补全逻辑

@@ -232,6 +232,14 @@ func (cm *ConfigManager) UpdateImagesUpstream(index int, updates UpstreamUpdate)
 		v := *updates.NormalizeMetadataUserID
 		upstream.NormalizeMetadataUserID = &v
 	}
+	if updates.CodexToolsCompat != nil {
+		v := *updates.CodexToolsCompat
+		upstream.CodexToolsCompat = &v
+	}
+	if updates.CodexToolCompat != nil {
+		v := *updates.CodexToolCompat
+		upstream.CodexToolCompat = &v
+	}
 	if updates.CustomHeaders != nil {
 		upstream.CustomHeaders = updates.CustomHeaders
 	}
