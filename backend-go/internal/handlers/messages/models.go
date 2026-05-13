@@ -49,8 +49,9 @@ func ModelsHandler(envCfg *config.EnvConfig, cfgManager *config.ConfigManager, c
 		messagesModels := fetchModelsFromChannels(c, cfgManager, channelScheduler, scheduler.ChannelKindMessages)
 		responsesModels := fetchModelsFromChannels(c, cfgManager, channelScheduler, scheduler.ChannelKindResponses)
 		chatModels := fetchModelsFromChannels(c, cfgManager, channelScheduler, scheduler.ChannelKindChat)
+		geminiModels := fetchModelsFromChannels(c, cfgManager, channelScheduler, scheduler.ChannelKindGemini)
 
-		mergedModels := mergeModels(messagesModels, responsesModels, chatModels)
+		mergedModels := mergeModels(messagesModels, responsesModels, chatModels, geminiModels)
 
 		if len(mergedModels) == 0 {
 			c.JSON(http.StatusNotFound, gin.H{
@@ -67,8 +68,8 @@ func ModelsHandler(envCfg *config.EnvConfig, cfgManager *config.ConfigManager, c
 			Data:   mergedModels,
 		}
 
-		log.Printf("[Models] 合并完成: messages=%d, responses=%d, chat=%d, merged=%d",
-			len(messagesModels), len(responsesModels), len(chatModels), len(mergedModels))
+		log.Printf("[Models] 合并完成: messages=%d, responses=%d, chat=%d, gemini=%d, merged=%d",
+			len(messagesModels), len(responsesModels), len(chatModels), len(geminiModels), len(mergedModels))
 
 		c.JSON(http.StatusOK, response)
 	}
@@ -97,6 +98,7 @@ func ModelsDetailHandler(envCfg *config.EnvConfig, cfgManager *config.ConfigMana
 			scheduler.ChannelKindMessages,
 			scheduler.ChannelKindResponses,
 			scheduler.ChannelKindChat,
+			scheduler.ChannelKindGemini,
 		} {
 			if body, ok := tryModelsRequest(c, cfgManager, channelScheduler, "GET", "/"+modelID, kind); ok {
 				c.Data(http.StatusOK, "application/json", body)
@@ -120,13 +122,49 @@ func fetchModelsFromChannels(c *gin.Context, cfgManager *config.ConfigManager, c
 		return nil
 	}
 
+	// Gemini 渠道或 serviceType=gemini 的渠道返回 {"models": [...]} 格式
+	if kind == scheduler.ChannelKindGemini {
+		return parseGeminiModelsResponse(body)
+	}
+
+	// 尝试 OpenAI 格式解析
 	var resp ModelsResponse
 	if err := json.Unmarshal(body, &resp); err != nil {
 		log.Printf("[%s-Models] 解析渠道响应失败: %v", channelKindLabel(kind), err)
 		return nil
 	}
 
+	// 如果 data 为空，尝试 Gemini 格式（Responses 渠道中 serviceType=gemini 的情况）
+	if len(resp.Data) == 0 {
+		if geminiModels := parseGeminiModelsResponse(body); len(geminiModels) > 0 {
+			return geminiModels
+		}
+	}
+
 	return resp.Data
+}
+
+// parseGeminiModelsResponse 解析 Gemini 格式的模型列表响应
+func parseGeminiModelsResponse(body []byte) []ModelEntry {
+	var geminiResp struct {
+		Models []struct {
+			Name string `json:"name"`
+		} `json:"models"`
+	}
+	if err := json.Unmarshal(body, &geminiResp); err != nil {
+		log.Printf("[Gemini-Models] 解析响应失败: %v", err)
+		return nil
+	}
+
+	entries := make([]ModelEntry, 0, len(geminiResp.Models))
+	for _, m := range geminiResp.Models {
+		id := m.Name
+		if idx := strings.LastIndex(m.Name, "/"); idx >= 0 {
+			id = m.Name[idx+1:]
+		}
+		entries = append(entries, ModelEntry{ID: id, Object: "model"})
+	}
+	return entries
 }
 
 // mergeModels 合并多个模型列表并去重（按 ID）
@@ -166,7 +204,12 @@ func tryModelsRequest(c *gin.Context, cfgManager *config.ConfigManager, channelS
 
 		upstream := selection.Upstream
 
-		url := buildModelsURL(upstream.BaseURL) + suffix
+		var url string
+		if upstream.ServiceType == "gemini" || kind == scheduler.ChannelKindGemini {
+			url = buildGeminiModelsURL(upstream.BaseURL) + suffix
+		} else {
+			url = buildModelsURL(upstream.BaseURL) + suffix
+		}
 		client := httpclient.GetManager().GetStandardClient(modelsRequestTimeout, upstream.InsecureSkipVerify, upstream.ProxyURL)
 
 		apiKey, usedDisabledFallback, err := cfgManager.GetAdminAPIKey(upstream, nil, channelType)
@@ -185,7 +228,11 @@ func tryModelsRequest(c *gin.Context, cfgManager *config.ConfigManager, channelS
 			failedChannels[selection.ChannelIndex] = true
 			continue
 		}
-		req.Header.Set("Authorization", "Bearer "+apiKey)
+		if upstream.ServiceType == "gemini" || kind == scheduler.ChannelKindGemini {
+			utils.SetGeminiAuthenticationHeader(req.Header, apiKey)
+		} else {
+			utils.SetAuthenticationHeader(req.Header, apiKey)
+		}
 		req.Header.Set("Content-Type", "application/json")
 		utils.ApplyCustomHeaders(req.Header, upstream.CustomHeaders)
 
@@ -226,6 +273,8 @@ func channelKindLabel(kind scheduler.ChannelKind) string {
 		return "Responses"
 	case scheduler.ChannelKindChat:
 		return "Chat"
+	case scheduler.ChannelKindGemini:
+		return "Gemini"
 	default:
 		return "Messages"
 	}
@@ -310,6 +359,25 @@ func buildModelsURL(baseURL string) string {
 	endpoint := "/models"
 	if !hasVersionSuffix && !skipVersionPrefix {
 		endpoint = "/v1" + endpoint
+	}
+
+	return baseURL + endpoint
+}
+
+// buildGeminiModelsURL 构建 Gemini models 端点的 URL（使用 v1beta 前缀）
+func buildGeminiModelsURL(baseURL string) string {
+	skipVersionPrefix := strings.HasSuffix(baseURL, "#")
+	if skipVersionPrefix {
+		baseURL = strings.TrimSuffix(baseURL, "#")
+	}
+	baseURL = strings.TrimSuffix(baseURL, "/")
+
+	versionPattern := regexp.MustCompile(`/v\d+[a-z]*$`)
+	hasVersionSuffix := versionPattern.MatchString(baseURL)
+
+	endpoint := "/models"
+	if !hasVersionSuffix && !skipVersionPrefix {
+		endpoint = "/v1beta" + endpoint
 	}
 
 	return baseURL + endpoint
