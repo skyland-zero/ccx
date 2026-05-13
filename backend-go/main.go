@@ -32,6 +32,21 @@ import (
 var frontendFS embed.FS
 
 func main() {
+	// 处理 --version / -v：打印版本信息后立即退出，不启动服务
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "--version", "-v", "version":
+			fmt.Printf("ccx %s\n", Version)
+			if BuildTime != "unknown" {
+				fmt.Printf("build time: %s\n", BuildTime)
+			}
+			if GitCommit != "unknown" {
+				fmt.Printf("git commit: %s\n", GitCommit)
+			}
+			os.Exit(0)
+		}
+	}
+
 	// 加载环境变量
 	if err := godotenv.Load(); err != nil {
 		log.Println("没有找到 .env 文件，使用环境变量或默认值")
