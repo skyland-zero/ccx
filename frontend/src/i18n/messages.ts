@@ -221,6 +221,8 @@ export type MessageKey =
   | 'addChannel.injectDummyThoughtSignatureHint'
   | 'addChannel.stripThoughtSignatureLabel'
   | 'addChannel.stripThoughtSignatureHint'
+  | 'addChannel.passbackReasoningContentLabel'
+  | 'addChannel.passbackReasoningContentHint'
   | 'addChannel.customHeadersLabel'
   | 'addChannel.customHeadersHint'
   | 'addChannel.headerNameLabel'
@@ -609,6 +611,8 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'addChannel.injectDummyThoughtSignatureHint': 'Injects a dummy signature into functionCall for third-party APIs that require this field. Disable it for the official API.',
     'addChannel.stripThoughtSignatureLabel': 'Strip thought signature',
     'addChannel.stripThoughtSignatureHint': 'Removes thought_signature from functionCall for older Gemini APIs that do not support it.',
+    'addChannel.passbackReasoningContentLabel': 'Passback reasoning content',
+    'addChannel.passbackReasoningContentHint': 'Convert thinking blocks to reasoning_content when forwarding to Claude-protocol upstreams that require OpenAI-style reasoning_content (e.g. mimo).',
     'addChannel.customHeadersLabel': 'Custom headers (optional)',
     'addChannel.customHeadersHint': 'Add or override HTTP headers sent to the upstream service.',
     'addChannel.headerNameLabel': 'Header name',
@@ -996,6 +1000,8 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'addChannel.injectDummyThoughtSignatureHint': 'Menyisipkan dummy signature ke functionCall agar kompatibel dengan API pihak ketiga yang membutuhkan field ini. Matikan untuk API resmi.',
     'addChannel.stripThoughtSignatureLabel': 'Hapus thought signature',
     'addChannel.stripThoughtSignatureHint': 'Menghapus thought_signature dari functionCall untuk Gemini API lama yang belum mendukung field tersebut.',
+    'addChannel.passbackReasoningContentLabel': 'Teruskan reasoning content',
+    'addChannel.passbackReasoningContentHint': 'Ubah thinking block menjadi reasoning_content saat diteruskan ke upstream protokol Claude yang mewajibkan reasoning_content ala OpenAI (misalnya mimo).',
     'addChannel.customHeadersLabel': 'Custom header (opsional)',
     'addChannel.customHeadersHint': 'Tambahkan atau timpa HTTP header yang dikirim ke upstream.',
     'addChannel.headerNameLabel': 'Nama header',
@@ -1383,6 +1389,8 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'addChannel.injectDummyThoughtSignatureHint': '为 functionCall 注入 dummy signature，兼容需要该字段的第三方 API（官方 API 请关闭）',
     'addChannel.stripThoughtSignatureLabel': '移除 Thought Signature',
     'addChannel.stripThoughtSignatureHint': '移除 functionCall 的 thought_signature 字段，兼容不支持该字段的旧版 Gemini API',
+    'addChannel.passbackReasoningContentLabel': '回传 Reasoning Content',
+    'addChannel.passbackReasoningContentHint': '将 thinking 块转为 reasoning_content 回传，兼容 mimo 等要求 OpenAI 风格 reasoning_content 的 Claude 协议上游',
     'addChannel.customHeadersLabel': '自定义请求头 (可选)',
     'addChannel.customHeadersHint': '添加或覆盖发送到上游的 HTTP 请求头',
     'addChannel.headerNameLabel': 'Header 名称',

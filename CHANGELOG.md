@@ -1,3 +1,14 @@
+## [Unreleased]
+
+### 新增
+
+- **Claude 协议上游 thinking ↔ reasoning_content 双向转换** - 针对 mimo（xiaomimimo）等使用 Claude 协议但内部要求 OpenAI 风格 `reasoning_content` 回传的上游，`UpstreamConfig` 新增 `passbackReasoningContent` 开关；开启后 `ClaudeProvider.ConvertToProviderRequest` 将 assistant 消息中的 `thinking` 内容块提取为消息级 `reasoning_content` 字段，`ConvertToClaudeResponse` 与 `HandleStreamResponse` 将上游响应中的 `reasoning_content`（含 SSE `thinking_delta`）转回 Claude `thinking` 块，修复 mimo-v2.5-pro 因历史消息缺少 `reasoning_content` 返回 `400 "The reasoning_content in the thinking mode must be passed back to the API."` 的问题；新增 `claude_reasoning_test.go` 与 `mimo_reasoning_test.go` 覆盖非流式/流式及开关关闭时的透传行为
+- **前端新增「回传 Reasoning Content」开关** - Messages 渠道 + `serviceType=claude` 时在 `AddChannelModal` 的 Gemini Thought Signature 配置之后显示新开关；同步更新 `Channel`/`ChannelFormLike` 类型定义、`buildChannelPayload` 序列化、`App.vue` 克隆逻辑及 zh-CN/en/id 三语言文案；`channel_metrics_handler.go` 在 `messages` 渠道列表响应中回传 `passbackReasoningContent`，避免编辑时开关状态丢失
+
+### 修复
+
+- **修复 Responses→Chat content parts 纯文本时 messages 为 null** (Issue #39) - `responsesContentToOpenAIChatParts` 此前仅在 content 数组包含图片时返回 parts，纯文本场景错误返回 nil，导致下游 `messages.content` 字段缺失，MiniMax 等上游报 `messages is empty`；移除 `hasImage` 判断，改为按解析出的 part 数量决定是否返回，覆盖 `type:text` / `type:input_text` / content 字符串 / input 字符串四种 input 形态；新增 `openai_converter_issue39_test.go` 与 `responses_to_chat_issue39_test.go` 锁定回归
+
 ## [v2.6.86] - 2026-05-12
 
 ### 新增

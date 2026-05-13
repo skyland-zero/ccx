@@ -793,6 +793,20 @@
               </div>
             </v-col>
 
+            <!-- 回传 Reasoning Content（仅 Messages 渠道 + claude 服务类型显示） -->
+            <v-col v-if="props.channelType === 'messages' && form.serviceType === 'claude'" cols="12">
+              <div class="d-flex align-center justify-space-between">
+                <div class="d-flex align-center ga-2">
+                  <v-icon color="secondary">mdi-brain</v-icon>
+                  <div>
+                    <div class="section-title section-title--soft">{{ t('addChannel.passbackReasoningContentLabel') }}</div>
+                    <div class="text-caption text-medium-emphasis">{{ t('addChannel.passbackReasoningContentHint') }}</div>
+                  </div>
+                </div>
+                <v-switch v-model="form.passbackReasoningContent" inset color="secondary" hide-details />
+              </div>
+            </v-col>
+
             <!-- 自定义请求头 -->
             <v-col cols="12">
               <v-card variant="outlined">
@@ -1600,6 +1614,7 @@ const form = reactive({
   lowQuality: false,
   injectDummyThoughtSignature: false,
   stripThoughtSignature: false,
+  passbackReasoningContent: false,
   description: '',
   apiKeys: [] as string[],
   modelMapping: {} as Record<string, string>,
@@ -1913,6 +1928,7 @@ const hasEditableDraftChanges = computed(() => {
     lowQuality: !!props.channel.lowQuality,
     injectDummyThoughtSignature: !!props.channel.injectDummyThoughtSignature,
     stripThoughtSignature: !!props.channel.stripThoughtSignature,
+    passbackReasoningContent: !!props.channel.passbackReasoningContent,
     description: (props.channel.description || '').trim(),
     apiKeys: normalizeStringArray(props.channel.apiKeys || []),
     modelMapping: Object.fromEntries(Object.entries(props.channel.modelMapping || {}).sort(([a], [b]) => a.localeCompare(b))),

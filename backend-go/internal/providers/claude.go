@@ -49,6 +49,130 @@ func redirectModelInBody(bodyBytes []byte, upstream *config.UpstreamConfig) []by
 	return newBytes
 }
 
+// convertThinkingToReasoningContent 将 assistant 消息中的 thinking 内容块转为 reasoning_content 字段
+// 用于兼容 mimo 等使用 Claude 协议但要求 OpenAI 风格 reasoning_content 回传的上游
+func convertThinkingToReasoningContent(bodyBytes []byte) []byte {
+	decoder := json.NewDecoder(bytes.NewReader(bodyBytes))
+	decoder.UseNumber()
+
+	var data map[string]interface{}
+	if err := decoder.Decode(&data); err != nil {
+		return bodyBytes
+	}
+
+	messages, ok := data["messages"].([]interface{})
+	if !ok {
+		return bodyBytes
+	}
+
+	modified := false
+	for _, msg := range messages {
+		msgMap, ok := msg.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		role, _ := msgMap["role"].(string)
+		if role != "assistant" {
+			continue
+		}
+
+		content, ok := msgMap["content"].([]interface{})
+		if !ok {
+			continue
+		}
+
+		var thinkingTexts []string
+		for _, block := range content {
+			blockMap, ok := block.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			if blockType, _ := blockMap["type"].(string); blockType == "thinking" {
+				if thinking, ok := blockMap["thinking"].(string); ok && thinking != "" {
+					thinkingTexts = append(thinkingTexts, thinking)
+				}
+			}
+		}
+
+		if len(thinkingTexts) > 0 {
+			msgMap["reasoning_content"] = strings.Join(thinkingTexts, "\n")
+			modified = true
+		}
+	}
+
+	if !modified {
+		return bodyBytes
+	}
+
+	newBytes, err := utils.MarshalJSONNoEscape(data)
+	if err != nil {
+		return bodyBytes
+	}
+	return newBytes
+}
+
+// convertReasoningContentToThinking 将响应中的 reasoning_content 转为 Claude thinking 内容块
+// 用于兼容 mimo 等返回 OpenAI 风格 reasoning_content 的 Claude 协议上游
+func convertReasoningContentToThinking(bodyBytes []byte) []byte {
+	decoder := json.NewDecoder(bytes.NewReader(bodyBytes))
+	decoder.UseNumber()
+
+	var data map[string]interface{}
+	if err := decoder.Decode(&data); err != nil {
+		return bodyBytes
+	}
+
+	modified := false
+
+	// 处理顶层 reasoning_content（如果存在）
+	if reasoningContent, ok := data["reasoning_content"].(string); ok && reasoningContent != "" {
+		content, ok := data["content"].([]interface{})
+		if !ok {
+			content = []interface{}{}
+		}
+
+		// 在 content 数组开头插入 thinking 块
+		thinkingBlock := map[string]interface{}{
+			"type":     "thinking",
+			"thinking": reasoningContent,
+		}
+		newContent := append([]interface{}{thinkingBlock}, content...)
+		data["content"] = newContent
+		delete(data, "reasoning_content")
+		modified = true
+	}
+
+	// 处理 content 数组中的 reasoning_content（如果存在）
+	if content, ok := data["content"].([]interface{}); ok {
+		for i, block := range content {
+			blockMap, ok := block.(map[string]interface{})
+			if !ok {
+				continue
+			}
+
+			if reasoningContent, exists := blockMap["reasoning_content"].(string); exists && reasoningContent != "" {
+				// 将 reasoning_content 转为 thinking 块
+				blockMap["type"] = "thinking"
+				blockMap["thinking"] = reasoningContent
+				delete(blockMap, "reasoning_content")
+				content[i] = blockMap
+				modified = true
+			}
+		}
+	}
+
+	if !modified {
+		return bodyBytes
+	}
+
+	newBytes, err := utils.MarshalJSONNoEscape(data)
+	if err != nil {
+		return bodyBytes
+	}
+	return newBytes
+}
+
 // ConvertToProviderRequest 转换为 Claude 请求（实现真正的透传）
 func (p *ClaudeProvider) ConvertToProviderRequest(c *gin.Context, upstream *config.UpstreamConfig, apiKey string) (*http.Request, []byte, error) {
 	// 读取原始请求体
@@ -60,6 +184,11 @@ func (p *ClaudeProvider) ConvertToProviderRequest(c *gin.Context, upstream *conf
 	// 模型重定向：仅修改 model 字段，保持其他内容不变
 	if upstream.ModelMapping != nil && len(upstream.ModelMapping) > 0 {
 		bodyBytes = redirectModelInBody(bodyBytes, upstream)
+	}
+
+	// thinking 块 → reasoning_content 转换（兼容 mimo 等要求 OpenAI 风格 reasoning_content 的 Claude 协议上游）
+	if upstream.PassbackReasoningContent {
+		bodyBytes = convertThinkingToReasoningContent(bodyBytes)
 	}
 
 	// 构建目标URL
@@ -123,6 +252,39 @@ func (p *ClaudeProvider) ConvertToClaudeResponse(providerResp *types.ProviderRes
 	if err := json.Unmarshal(providerResp.Body, &claudeResp); err != nil {
 		return nil, err
 	}
+
+	// 检查响应中是否包含 reasoning_content（mimo 等上游可能返回此字段）
+	// 如果存在，转换为 Claude thinking 内容块
+	var rawResp map[string]interface{}
+	if err := json.Unmarshal(providerResp.Body, &rawResp); err == nil {
+		if content, ok := rawResp["content"].([]interface{}); ok {
+			// 检查是否有 reasoning_content 需要转换
+			hasReasoningContent := false
+			for _, block := range content {
+				if blockMap, ok := block.(map[string]interface{}); ok {
+					if _, exists := blockMap["reasoning_content"]; exists {
+						hasReasoningContent = true
+						break
+					}
+				}
+			}
+
+			// 或者检查顶层是否有 reasoning_content
+			if !hasReasoningContent {
+				if _, exists := rawResp["reasoning_content"]; exists {
+					hasReasoningContent = true
+				}
+			}
+
+			if hasReasoningContent {
+				convertedBody := convertReasoningContentToThinking(providerResp.Body)
+				if err := json.Unmarshal(convertedBody, &claudeResp); err == nil {
+					return &claudeResp, nil
+				}
+			}
+		}
+	}
+
 	return &claudeResp, nil
 }
 
@@ -162,6 +324,30 @@ func (p *ClaudeProvider) HandleStreamResponse(body io.ReadCloser) (<-chan string
 			if strings.Contains(line, `"stop_reason":"tool_use"`) ||
 				strings.Contains(line, `"stop_reason": "tool_use"`) {
 				toolUseStopEmitted = true
+			}
+
+			// 转换流式响应中的 reasoning_content → thinking（兼容 mimo 等上游）
+			if strings.HasPrefix(line, "data: ") && strings.Contains(line, `"reasoning_content"`) {
+				dataJSON := strings.TrimPrefix(line, "data: ")
+				if dataJSON != "[DONE]" {
+					var eventData map[string]interface{}
+					if err := json.Unmarshal([]byte(dataJSON), &eventData); err == nil {
+						// 检查是否包含 reasoning_content
+						if delta, ok := eventData["delta"].(map[string]interface{}); ok {
+							if reasoningContent, exists := delta["reasoning_content"].(string); exists && reasoningContent != "" {
+								// 将 reasoning_content 转为 thinking_delta
+								delta["type"] = "thinking_delta"
+								delta["thinking"] = reasoningContent
+								delete(delta, "reasoning_content")
+
+								// 重新序列化
+								if newJSON, err := json.Marshal(eventData); err == nil {
+									line = "data: " + string(newJSON)
+								}
+							}
+						}
+					}
+				}
 			}
 
 			// 透传所有 SSE 字段（包括注释、id、retry 等）

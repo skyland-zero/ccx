@@ -663,6 +663,10 @@ func GetChannelDashboard(cfgManager *config.ConfigManager, sch *scheduler.Channe
 				channel["stripThoughtSignature"] = up.StripThoughtSignature
 			}
 
+			if channelType == "messages" {
+				channel["passbackReasoningContent"] = up.PassbackReasoningContent
+			}
+
 			channels[i] = channel
 		}
 
