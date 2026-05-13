@@ -795,15 +795,15 @@
 
             <!-- 回传 Reasoning Content（仅 Messages 渠道 + claude 服务类型显示） -->
             <v-col v-if="props.channelType === 'messages' && form.serviceType === 'claude'" cols="12">
-              <div class="d-flex align-center justify-space-between">
-                <div class="d-flex align-center ga-2">
+              <div class="d-flex align-center justify-space-between ga-5">
+                <div class="d-flex align-center ga-2" style="min-width: 0; flex: 1 1 auto;">
                   <v-icon color="secondary">mdi-brain</v-icon>
-                  <div>
+                  <div style="min-width: 0;">
                     <div class="section-title section-title--soft">{{ t('addChannel.passbackReasoningContentLabel') }}</div>
-                    <div class="text-caption text-medium-emphasis">{{ t('addChannel.passbackReasoningContentHint') }}</div>
+                    <div class="text-caption text-medium-emphasis" style="word-break: break-word;">{{ t('addChannel.passbackReasoningContentHint') }}</div>
                   </div>
                 </div>
-                <v-switch v-model="form.passbackReasoningContent" inset color="secondary" hide-details />
+                <v-switch v-model="form.passbackReasoningContent" inset color="secondary" hide-details style="flex-shrink: 0;" />
               </div>
             </v-col>
 
