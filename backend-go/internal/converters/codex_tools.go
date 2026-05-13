@@ -464,30 +464,7 @@ func applyPatchUpdateFileSchema() map[string]interface{} {
 		"properties": map[string]interface{}{
 			"path":    map[string]interface{}{"type": "string", "description": "Target file path."},
 			"move_to": map[string]interface{}{"type": "string", "description": "Optional destination path for move operations."},
-			"hunks": map[string]interface{}{
-				"type":        "array",
-				"description": "Structured update hunks.",
-				"items": map[string]interface{}{
-					"type":                 "object",
-					"additionalProperties": false,
-					"properties": map[string]interface{}{
-						"context": map[string]interface{}{"type": "string", "description": "Optional @@ context header text."},
-						"lines": map[string]interface{}{
-							"type": "array",
-							"items": map[string]interface{}{
-								"type":                 "object",
-								"additionalProperties": false,
-								"properties": map[string]interface{}{
-									"op":   map[string]interface{}{"type": "string", "enum": []string{"context", "add", "remove"}},
-									"text": map[string]interface{}{"type": "string"},
-								},
-								"required": []string{"op", "text"},
-							},
-						},
-					},
-					"required": []string{"lines"},
-				},
-			},
+			"hunks":   applyPatchHunksSchema(),
 		},
 		"required": []string{"path", "hunks"},
 	}
@@ -511,22 +488,54 @@ func applyPatchBatchSchema() map[string]interface{} {
 		"additionalProperties": false,
 		"properties": map[string]interface{}{
 			"operations": map[string]interface{}{
-				"type": "array",
+				"type":        "array",
+				"description": "Ordered list of file patch operations.",
 				"items": map[string]interface{}{
 					"type":                 "object",
 					"additionalProperties": false,
 					"properties": map[string]interface{}{
 						"type":    map[string]interface{}{"type": "string", "enum": []string{"add_file", "delete_file", "update_file", "replace_file"}},
 						"path":    map[string]interface{}{"type": "string"},
-						"move_to": map[string]interface{}{"type": "string"},
-						"content": map[string]interface{}{"type": "string"},
-						"hunks":   map[string]interface{}{"type": "array"},
+						"move_to": map[string]interface{}{"type": "string", "description": "Optional destination path for move operations (update_file only)."},
+						"content": map[string]interface{}{"type": "string", "description": "Full file content for add_file / replace_file."},
+						"hunks":   applyPatchHunksSchema(),
 					},
 					"required": []string{"type", "path"},
 				},
 			},
 		},
 		"required": []string{"operations"},
+	}
+}
+
+// applyPatchHunksSchema 返回 hunks 数组的完整 JSON Schema 定义。
+// 抽取出来供 update_file 单文件工具与 batch 工具共用，确保两处 schema 一致，
+// 避免某些严格校验的上游（如 OpenAI 官方）因 array 缺少 items 字段返回
+// invalid_function_parameters 400 错误。
+func applyPatchHunksSchema() map[string]interface{} {
+	return map[string]interface{}{
+		"type":        "array",
+		"description": "Structured update hunks (required when type=update_file).",
+		"items": map[string]interface{}{
+			"type":                 "object",
+			"additionalProperties": false,
+			"properties": map[string]interface{}{
+				"context": map[string]interface{}{"type": "string", "description": "Optional @@ context header text."},
+				"lines": map[string]interface{}{
+					"type": "array",
+					"items": map[string]interface{}{
+						"type":                 "object",
+						"additionalProperties": false,
+						"properties": map[string]interface{}{
+							"op":   map[string]interface{}{"type": "string", "enum": []string{"context", "add", "remove"}},
+							"text": map[string]interface{}{"type": "string"},
+						},
+						"required": []string{"op", "text"},
+					},
+				},
+			},
+			"required": []string{"lines"},
+		},
 	}
 }
 

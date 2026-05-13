@@ -382,6 +382,51 @@ func TestBackwardCompatibility_ApplyPatchCustomToolStillWorks(t *testing.T) {
 	}
 }
 
+// TestApplyPatchSchemaHunksHaveItems 锁定 hunks 数组的 items 字段：
+// 部分严格校验的上游（如 OpenAI 官方）会对 "type":"array" 但缺少 items 的 schema
+// 返回 400 invalid_function_parameters。
+func TestApplyPatchSchemaHunksHaveItems(t *testing.T) {
+	schemas := map[string]map[string]interface{}{
+		"update_file": applyPatchUpdateFileSchema(),
+		"batch_item":  extractBatchItemSchema(t, applyPatchBatchSchema()),
+	}
+	for name, schema := range schemas {
+		props, _ := schema["properties"].(map[string]interface{})
+		hunks, ok := props["hunks"].(map[string]interface{})
+		if !ok {
+			t.Fatalf("%s: hunks property missing", name)
+		}
+		if hunks["type"] != "array" {
+			t.Fatalf("%s: hunks.type = %v, want array", name, hunks["type"])
+		}
+		items, ok := hunks["items"].(map[string]interface{})
+		if !ok {
+			t.Fatalf("%s: hunks.items missing or wrong type", name)
+		}
+		// 进一步验证嵌套 lines 数组也有 items
+		hunkProps, _ := items["properties"].(map[string]interface{})
+		lines, _ := hunkProps["lines"].(map[string]interface{})
+		if lines["type"] != "array" {
+			t.Fatalf("%s: hunks.items.properties.lines.type = %v, want array", name, lines["type"])
+		}
+		if _, ok := lines["items"]; !ok {
+			t.Fatalf("%s: hunks.items.properties.lines.items missing", name)
+		}
+	}
+}
+
+// extractBatchItemSchema 从 batch schema 中提取 operations.items 子 schema。
+func extractBatchItemSchema(t *testing.T, batch map[string]interface{}) map[string]interface{} {
+	t.Helper()
+	props, _ := batch["properties"].(map[string]interface{})
+	ops, _ := props["operations"].(map[string]interface{})
+	items, ok := ops["items"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("batch schema: operations.items missing")
+	}
+	return items
+}
+
 func TestHistoryReplay_NamespaceFunctionCallFlattened(t *testing.T) {
 	// Simulate a ResponsesItem with namespace from history, converted to OpenAI message.
 	item := types.ResponsesItem{

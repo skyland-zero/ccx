@@ -148,7 +148,7 @@ func handleMultiChannel(
 					if claudeReq.Stream {
 						return common.HandleStreamResponse(c, resp, provider, envCfg, startTime, upstreamCopy, actualRequestBody, claudeReq.Model)
 					}
-					return handleNormalResponse(c, resp, provider, envCfg, startTime, actualRequestBody, upstreamCopy, apiKey)
+					return handleNormalResponse(c, resp, provider, envCfg, startTime, actualRequestBody, upstreamCopy, apiKey, cfgManager.GetFuzzyModeEnabled())
 				},
 				claudeReq.Model,
 				"",
@@ -241,7 +241,7 @@ func handleSingleChannel(
 			if claudeReq.Stream {
 				return common.HandleStreamResponse(c, resp, provider, envCfg, startTime, upstreamCopy, actualRequestBody, claudeReq.Model)
 			}
-			return handleNormalResponse(c, resp, provider, envCfg, startTime, actualRequestBody, upstreamCopy, apiKey)
+			return handleNormalResponse(c, resp, provider, envCfg, startTime, actualRequestBody, upstreamCopy, apiKey, cfgManager.GetFuzzyModeEnabled())
 		},
 		claudeReq.Model,
 		"",
@@ -266,6 +266,7 @@ func handleNormalResponse(
 	requestBody []byte,
 	upstream *config.UpstreamConfig,
 	apiKey string,
+	fuzzyMode bool,
 ) (*types.Usage, error) {
 	defer resp.Body.Close()
 
@@ -297,6 +298,13 @@ func handleNormalResponse(
 		}
 		log.Printf("[Messages-InvalidBody] 响应体解析失败: %v, body前100字节: %s", err, preview)
 		return nil, fmt.Errorf("%w: %v", common.ErrInvalidResponseBody, err)
+	}
+
+	// 空响应拦截（仅 Fuzzy 模式）：上游 200 但 content 语义为空，
+	// Header 未发送，可安全 failover 到下一个 Key/BaseURL/渠道
+	if fuzzyMode && common.IsClaudeResponseEmpty(claudeResp) {
+		log.Printf("[Messages-EmptyResponse] 上游返回空响应（非流式，Key: %s），触发 failover", utils.MaskAPIKey(apiKey))
+		return nil, common.ErrEmptyNonStreamResponse
 	}
 
 	// Token 补全逻辑

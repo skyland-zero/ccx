@@ -153,7 +153,7 @@ func handleMultiChannel(
 					channelScheduler.MarkURLSuccess(scheduler.ChannelKindChat, channelIndex, url)
 				},
 				func(c *gin.Context, resp *http.Response, upstreamCopy *config.UpstreamConfig, apiKey string, actualRequestBody []byte) (*types.Usage, error) {
-					return handleSuccess(c, resp, upstreamCopy.ServiceType, envCfg, startTime, model, isStream)
+					return handleSuccess(c, resp, upstreamCopy.ServiceType, envCfg, startTime, model, isStream, cfgManager.GetFuzzyModeEnabled())
 				},
 				model,
 				"",
@@ -228,7 +228,7 @@ func handleSingleChannel(
 		nil,
 		nil,
 		func(c *gin.Context, resp *http.Response, upstreamCopy *config.UpstreamConfig, apiKey string, actualRequestBody []byte) (*types.Usage, error) {
-			return handleSuccess(c, resp, upstreamCopy.ServiceType, envCfg, startTime, model, isStream)
+			return handleSuccess(c, resp, upstreamCopy.ServiceType, envCfg, startTime, model, isStream, cfgManager.GetFuzzyModeEnabled())
 		},
 		model,
 		"",
@@ -583,6 +583,7 @@ func handleSuccess(
 	startTime time.Time,
 	model string,
 	isStream bool,
+	fuzzyMode bool,
 ) (*types.Usage, error) {
 	defer resp.Body.Close()
 
@@ -610,6 +611,16 @@ func handleSuccess(
 		if err := json.Unmarshal(bodyBytes, &claudeResp); err != nil {
 			return nil, fmt.Errorf("%w: %v", common.ErrInvalidResponseBody, err)
 		}
+		// 空响应拦截（仅 Fuzzy 模式）：在原生 Claude 结构上判空，避免
+		// convertClaudeResponseToChat 丢失 server_tool_use / redacted_thinking
+		// 等语义块导致的误判。Header 未发送，可安全 failover。
+		if fuzzyMode {
+			var claudeTyped types.ClaudeResponse
+			if err := json.Unmarshal(bodyBytes, &claudeTyped); err == nil && common.IsClaudeResponseEmpty(&claudeTyped) {
+				log.Printf("[Chat-EmptyResponse] 上游返回空响应（非流式，upstreamType=%s），触发 failover", upstreamType)
+				return nil, common.ErrEmptyNonStreamResponse
+			}
+		}
 		openaiResp := convertClaudeResponseToChat(claudeResp, model)
 		respBytes, err := json.Marshal(openaiResp)
 		if err != nil {
@@ -631,12 +642,19 @@ func handleSuccess(
 		return usage, nil
 
 	default:
-		// body 已被 ReadAll 读入 bodyBytes，需要重置 resp.Body 以便 PassthroughJSONResponse 读取
-		resp.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+		// 先解析以判断空响应；再决定是 failover 还是透传
 		var respMap map[string]interface{}
-		if err := common.PassthroughJSONResponse(c, resp, &respMap); err != nil {
-			return nil, nil
+		if err := json.Unmarshal(bodyBytes, &respMap); err != nil {
+			// JSON 不可解析：维持原 ErrInvalidResponseBody 语义
+			return nil, fmt.Errorf("%w: %v", common.ErrInvalidResponseBody, err)
 		}
+		if fuzzyMode && common.IsChatResponseEmpty(respMap) {
+			log.Printf("[Chat-EmptyResponse] 上游返回空响应（非流式，upstreamType=%s），触发 failover", upstreamType)
+			return nil, common.ErrEmptyNonStreamResponse
+		}
+		// 透传原始响应体（保留上游字段，避免 marshal 丢失）
+		utils.ForwardResponseHeaders(resp.Header, c.Writer)
+		c.Data(resp.StatusCode, "application/json", bodyBytes)
 		if u, ok := respMap["usage"].(map[string]interface{}); ok {
 			promptTokens, _ := u["prompt_tokens"].(float64)
 			completionTokens, _ := u["completion_tokens"].(float64)

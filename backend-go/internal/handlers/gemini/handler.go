@@ -173,7 +173,7 @@ func handleMultiChannel(
 					channelScheduler.MarkURLSuccess(scheduler.ChannelKindGemini, channelIndex, url)
 				},
 				func(c *gin.Context, resp *http.Response, upstreamCopy *config.UpstreamConfig, apiKey string, actualRequestBody []byte) (*types.Usage, error) {
-					return handleSuccess(c, resp, upstreamCopy.ServiceType, envCfg, startTime, geminiReq, model, isStream)
+					return handleSuccess(c, resp, upstreamCopy.ServiceType, envCfg, startTime, geminiReq, model, isStream, cfgManager.GetFuzzyModeEnabled())
 				},
 				model,
 				"",
@@ -261,7 +261,7 @@ func handleSingleChannel(
 		nil,
 		nil,
 		func(c *gin.Context, resp *http.Response, upstreamCopy *config.UpstreamConfig, apiKey string, actualRequestBody []byte) (*types.Usage, error) {
-			return handleSuccess(c, resp, upstreamCopy.ServiceType, envCfg, startTime, geminiReq, model, isStream)
+			return handleSuccess(c, resp, upstreamCopy.ServiceType, envCfg, startTime, geminiReq, model, isStream, cfgManager.GetFuzzyModeEnabled())
 		},
 		model,
 		"",
@@ -483,6 +483,7 @@ func handleSuccess(
 	geminiReq *types.GeminiRequest,
 	model string,
 	isStream bool,
+	fuzzyMode bool,
 ) (*types.Usage, error) {
 	defer resp.Body.Close()
 
@@ -578,6 +579,13 @@ func handleSuccess(
 	default:
 		// 默认直接透传，避免非必要整包读入内存
 		return nil, common.PassthroughResponse(c, resp)
+	}
+
+	// 空响应拦截（仅 Fuzzy 模式）：上游 200 但 candidates 语义为空，
+	// Header 未发送，可安全 failover 到下一个 Key/BaseURL/渠道
+	if fuzzyMode && common.IsGeminiResponseEmpty(geminiResp) {
+		log.Printf("[Gemini-EmptyResponse] 上游返回空响应（非流式，upstreamType=%s），触发 failover", upstreamType)
+		return nil, common.ErrEmptyNonStreamResponse
 	}
 
 	// 返回 Gemini 格式响应

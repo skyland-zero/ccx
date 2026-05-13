@@ -144,7 +144,7 @@ func handleMultiChannel(
 						responsesReq.TransformerMetadata = make(map[string]interface{})
 					}
 					responsesReq.TransformerMetadata["codex_tool_compat_enabled"] = upstreamCopy.IsCodexToolCompatEnabled()
-					return handleSuccess(c, resp, provider, upstream.ServiceType, envCfg, sessionManager, startTime, &responsesReq, actualRequestBody)
+					return handleSuccess(c, resp, provider, upstream.ServiceType, envCfg, sessionManager, startTime, &responsesReq, actualRequestBody, cfgManager.GetFuzzyModeEnabled())
 				},
 				responsesReq.Model,
 				"",
@@ -236,7 +236,7 @@ func handleSingleChannel(
 				responsesReq.TransformerMetadata = make(map[string]interface{})
 			}
 			responsesReq.TransformerMetadata["codex_tool_compat_enabled"] = upstreamCopy.IsCodexToolCompatEnabled()
-			return handleSuccess(c, resp, provider, upstream.ServiceType, envCfg, sessionManager, startTime, &responsesReq, actualRequestBody)
+			return handleSuccess(c, resp, provider, upstream.ServiceType, envCfg, sessionManager, startTime, &responsesReq, actualRequestBody, cfgManager.GetFuzzyModeEnabled())
 		},
 		responsesReq.Model,
 		"",
@@ -262,6 +262,7 @@ func handleSuccess(
 	startTime time.Time,
 	originalReq *types.ResponsesRequest,
 	originalRequestJSON []byte,
+	fuzzyMode bool,
 ) (*types.Usage, error) {
 	defer resp.Body.Close()
 
@@ -310,6 +311,13 @@ func handleSuccess(
 		}
 		log.Printf("[Responses-InvalidBody] 响应体解析失败: %v, body前100字节: %s", err, preview)
 		return nil, fmt.Errorf("%w: %v", common.ErrInvalidResponseBody, err)
+	}
+
+	// 空响应拦截（仅 Fuzzy 模式）：上游 200 但 output 语义为空，
+	// Header 未发送，可安全 failover 到下一个 Key/BaseURL/渠道
+	if fuzzyMode && common.IsResponsesResponseEmpty(responsesResp) {
+		log.Printf("[Responses-EmptyResponse] 上游返回空响应（非流式，upstreamType=%s），触发 failover", upstreamType)
+		return nil, common.ErrEmptyNonStreamResponse
 	}
 
 	// Remap Codex custom tool proxy function calls to custom_tool_call items.

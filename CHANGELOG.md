@@ -1,3 +1,10 @@
+## [Unreleased]
+
+### 修复
+
+- **Fuzzy 模式下非流式空响应自动 failover** - 此前流式路径已通过 `PreflightStreamEvents` + `ErrEmptyStreamResponse` 拦截上游 200 + 内容为空的响应，但非流式路径仅在 JSON 解析失败时才走 failover；当上游返回 `HTTP 200` + 合法 JSON + 语义空内容（如 `choices[0].message.content=""`、Claude `content=[]`、Responses `output=[]`、Gemini `candidates=[]` 等）时直接透传给客户端，导致 Claude Code / Codex 等下游立即中断。新增 `common/empty_response.go` 定义 `ErrEmptyNonStreamResponse` 与 `IsClaudeResponseEmpty` / `IsChatResponseEmpty` / `IsResponsesResponseEmpty` / `IsGeminiResponseEmpty` 四个协议级判空函数；`messages` / `chat` / `responses` / `gemini` 四个非流式 `handleSuccess` 在响应转换成功后、Header 写出前先判空，仅 Fuzzy 模式下返回 `ErrEmptyNonStreamResponse`，由 `TryUpstreamWithAllKeys` 现有 failover 分支自动切换 Key/BaseURL/渠道；判空保留 tool_use / server_tool_use / redacted_thinking / function_call / reasoning / refusal / Gemini SAFETY/RECITATION/promptFeedback.blockReason 等语义非空场景，避免误触发 failover；chat handler Claude 分支直接在原生 `*types.ClaudeResponse` 上判空（而非转换后的 Chat map），避免 `convertClaudeResponseToChat` 忽略 `server_tool_use` / `redacted_thinking` 导致的误判；`isResponsesItemEmpty` 在 `[]interface{}` content / summary 分支补齐非文本 part 类型检测（与 `isChatMessageEmpty` 保持一致）；严格模式行为不变；新增 `empty_response_test.go` 共 36+ 个表驱动用例覆盖各协议判空规则
+- **修复 Codex 兼容 apply_patch_batch 工具 schema 缺失 items 字段导致 400** - `codex_tools.go` 中 `applyPatchBatchSchema` 的 `operations.items.properties.hunks` 声明为 `"type":"array"` 但未声明 `items` 子 schema，OpenAI 官方等严格校验的上游会返回 `invalid_function_parameters 400: Invalid schema for function 'apply_patch_batch': ... array schema missing items.`；抽取公共 `applyPatchHunksSchema` 供 `update_file` 单文件代理与 `batch` 代理共用，保证两处 schema 结构一致并补齐嵌套 `lines` 数组的 items 定义；新增 `TestApplyPatchSchemaHunksHaveItems` 锁定两处 schema 的 `hunks` / `hunks.items.lines` 均声明了 `items`，防止回归
+
 ## [v2.6.87] - 2026-05-13
 
 ### 新增
