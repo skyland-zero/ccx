@@ -124,7 +124,6 @@ func responsesContentToOpenAIChatParts(content interface{}) []map[string]interfa
 	switch v := content.(type) {
 	case []interface{}:
 		parts := make([]map[string]interface{}, 0, len(v))
-		hasImage := false
 		for _, raw := range v {
 			block, ok := raw.(map[string]interface{})
 			if !ok {
@@ -134,12 +133,9 @@ func responsesContentToOpenAIChatParts(content interface{}) []map[string]interfa
 			if part == nil {
 				continue
 			}
-			if part["type"] == "image_url" {
-				hasImage = true
-			}
 			parts = append(parts, part)
 		}
-		if !hasImage {
+		if len(parts) == 0 {
 			return nil
 		}
 		return parts
