@@ -55,7 +55,8 @@ type StreamPreflightResult struct {
 func PreflightStreamEvents(eventChan <-chan string, errChan <-chan error) *StreamPreflightResult {
 	result := &StreamPreflightResult{}
 	var textBuf bytes.Buffer
-	hasNonTextContent := false // tool_use / thinking 等非文本 content block
+	var thinkingBuf bytes.Buffer
+	hasNonTextContent := false // tool_use / server_tool_use 等非文本语义内容
 	seenEvent := false
 	seenMessageStop := false
 	seenUsageOnlyEvent := false
@@ -72,9 +73,9 @@ func PreflightStreamEvents(eventChan <-chan string, errChan <-chan error) *Strea
 				if hasNonTextContent {
 					return result // 有非文本内容，视为非空
 				}
-				result.IsEmpty = isEmptyContent(textBuf.String())
+				result.IsEmpty = isEmptyStreamContent(textBuf.String(), thinkingBuf.String())
 				result.UnknownEventType = unknownEventType
-				result.Diagnostic = buildClaudePreflightDiagnostic(seenEvent, seenMessageStop, seenUsageOnlyEvent, seenUnknownDataType, unknownEventType, textBuf.String(), result.BufferedEvents)
+				result.Diagnostic = buildClaudePreflightDiagnostic(seenEvent, seenMessageStop, seenUsageOnlyEvent, seenUnknownDataType, unknownEventType, textBuf.String(), thinkingBuf.String(), result.BufferedEvents)
 				return result
 			}
 			seenEvent = true
@@ -107,9 +108,10 @@ func PreflightStreamEvents(eventChan <-chan string, errChan <-chan error) *Strea
 
 			// 提取文本内容
 			ExtractTextFromEvent(event, &textBuf)
+			ExtractThinkingFromEvent(event, &thinkingBuf)
 
 			// 检查是否有有效内容（非空且不是仅 "{"）
-			if !isEmptyContent(textBuf.String()) {
+			if !isEmptyStreamContent(textBuf.String(), thinkingBuf.String()) {
 				// 非空响应，放行
 				return result
 			}
@@ -119,9 +121,9 @@ func PreflightStreamEvents(eventChan <-chan string, errChan <-chan error) *Strea
 				if hasNonTextContent {
 					return result
 				}
-				result.IsEmpty = isEmptyContent(textBuf.String())
+				result.IsEmpty = isEmptyStreamContent(textBuf.String(), thinkingBuf.String())
 				result.UnknownEventType = unknownEventType
-				result.Diagnostic = buildClaudePreflightDiagnostic(seenEvent, true, seenUsageOnlyEvent, seenUnknownDataType, unknownEventType, textBuf.String(), result.BufferedEvents)
+				result.Diagnostic = buildClaudePreflightDiagnostic(seenEvent, true, seenUsageOnlyEvent, seenUnknownDataType, unknownEventType, textBuf.String(), thinkingBuf.String(), result.BufferedEvents)
 				return result
 			}
 
@@ -144,18 +146,18 @@ func PreflightStreamEvents(eventChan <-chan string, errChan <-chan error) *Strea
 	}
 }
 
-func buildClaudePreflightDiagnostic(seenEvent, seenMessageStop, seenUsageOnlyEvent, seenUnknownDataType bool, unknownEventType string, text string, events []string) string {
+func buildClaudePreflightDiagnostic(seenEvent, seenMessageStop, seenUsageOnlyEvent, seenUnknownDataType bool, unknownEventType string, text string, thinking string, events []string) string {
 	switch {
 	case !seenEvent:
 		return "未收到任何 SSE 事件"
-	case seenUsageOnlyEvent && IsEffectivelyEmptyStreamText(text):
+	case seenUsageOnlyEvent && isEmptyStreamContent(text, thinking):
 		return "仅收到 usage/计数类事件，没有文本或语义内容"
-	case seenUnknownDataType && IsEffectivelyEmptyStreamText(text):
+	case seenUnknownDataType && isEmptyStreamContent(text, thinking):
 		if unknownEventType != "" {
 			return "收到了未识别的 SSE data.type=" + unknownEventType + "，但没有文本或语义内容"
 		}
 		return "收到了未识别的 SSE data.type，但没有文本或语义内容"
-	case seenMessageStop && IsEffectivelyEmptyStreamText(text):
+	case seenMessageStop && isEmptyStreamContent(text, thinking):
 		return "流正常结束(message_stop)，但未检测到文本或语义内容"
 	default:
 		return "检测到空流，但未匹配到明确类别"
@@ -208,6 +210,10 @@ func isEmptyContent(text string) bool {
 	return IsEffectivelyEmptyStreamText(text)
 }
 
+func isEmptyStreamContent(text string, thinking string) bool {
+	return IsEffectivelyEmptyStreamText(text) && IsEffectivelyEmptyStreamText(thinking)
+}
+
 // IsEffectivelyEmptyStreamText 判断流式响应文本是否仍可视为“空”
 func IsEffectivelyEmptyStreamText(text string) bool {
 	return text == "" || strings.TrimSpace(text) == "{"
@@ -221,7 +227,7 @@ func extractSSEJSONLine(line string) (string, bool) {
 	return strings.TrimPrefix(jsonStr, " "), true
 }
 
-// hasNonTextContentBlock 检测 SSE 事件是否包含非文本 content block（tool_use / thinking）
+// hasNonTextContentBlock 检测 SSE 事件是否包含可立即判定为有效的非文本语义内容（如 tool_use）
 // 这些 content block 不产生 delta.text，但属于有效响应内容
 func hasNonTextContentBlock(event string) bool {
 	return HasClaudeSemanticContent(event)
@@ -244,7 +250,7 @@ func HasClaudeSemanticContent(event string) bool {
 		if cb, ok := data["content_block"].(map[string]interface{}); ok {
 			if cbType, ok := cb["type"].(string); ok {
 				switch cbType {
-				case "text", "":
+				case "text", "", "thinking", "redacted_thinking":
 				default:
 					return true
 				}
@@ -1583,6 +1589,40 @@ func ExtractTextFromEvent(event string, buf *bytes.Buffer) {
 		if cb, ok := data["content_block"].(map[string]interface{}); ok {
 			if text, ok := cb["text"].(string); ok {
 				buf.WriteString(text)
+			}
+		}
+	}
+}
+
+// ExtractThinkingFromEvent 从 SSE 事件中提取 thinking 内容
+func ExtractThinkingFromEvent(event string, buf *bytes.Buffer) {
+	for _, line := range strings.Split(event, "\n") {
+		jsonStr, ok := extractSSEJSONLine(line)
+		if !ok {
+			continue
+		}
+
+		var data map[string]interface{}
+		if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
+			continue
+		}
+
+		if cb, ok := data["content_block"].(map[string]interface{}); ok {
+			if cbType, _ := cb["type"].(string); cbType == "thinking" || cbType == "redacted_thinking" {
+				if thinking, ok := cb["thinking"].(string); ok {
+					buf.WriteString(thinking)
+				}
+			}
+		}
+
+		if delta, ok := data["delta"].(map[string]interface{}); ok {
+			if deltaType, _ := delta["type"].(string); deltaType == "thinking_delta" || deltaType == "redacted_thinking_delta" {
+				if thinking, ok := delta["thinking"].(string); ok {
+					buf.WriteString(thinking)
+				}
+				if text, ok := delta["text"].(string); ok {
+					buf.WriteString(text)
+				}
 			}
 		}
 	}
