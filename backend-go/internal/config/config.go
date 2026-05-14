@@ -35,7 +35,9 @@ type UpstreamConfig struct {
 	// OpenAI Chat 上游配置：启用后将非标准 Chat role 改写为 user（默认 false）
 	NormalizeNonstandardChatRoles bool `json:"normalizeNonstandardChatRoles,omitempty"`
 	// Codex 工具兼容开关（默认 false）。
-	CodexToolCompat *bool `json:"codexToolCompat,omitempty"`
+	// 透传分支中将 Codex 原生工具转换为 OpenAI function 格式（默认 false）。
+	CodexNativeToolPassthrough bool  `json:"codexNativeToolPassthrough,omitempty"`
+	CodexToolCompat            *bool `json:"codexToolCompat,omitempty"`
 	// Deprecated: 使用 codexToolCompat；保留旧字段仅用于配置读取和旧前端写入兼容。
 	StripCodexClientTools bool `json:"stripCodexClientTools,omitempty"`
 	// 多渠道调度相关字段
@@ -122,6 +124,7 @@ type UpstreamUpdate struct {
 	TextVerbosity                 *string           `json:"textVerbosity"`
 	FastMode                      *bool             `json:"fastMode"`
 	NormalizeNonstandardChatRoles *bool             `json:"normalizeNonstandardChatRoles"`
+	CodexNativeToolPassthrough    *bool             `json:"codexNativeToolPassthrough"`
 	CodexToolCompat               *bool             `json:"codexToolCompat"`
 	StripCodexClientTools         *bool             `json:"stripCodexClientTools"`
 	// 多渠道调度相关字段

@@ -27,6 +27,7 @@ describe('buildChannelPayload', () => {
       supportedModels: ['gpt-5'],
       autoBlacklistBalance: true,
       normalizeMetadataUserId: true,
+      codexNativeToolPassthrough: false,
       codexToolCompat: true
     })
 
@@ -68,6 +69,7 @@ describe('buildChannelPayload', () => {
       supportedModels: [],
       autoBlacklistBalance: true,
       normalizeMetadataUserId: true,
+      codexNativeToolPassthrough: false,
       codexToolCompat: true
     })
 
@@ -104,6 +106,7 @@ describe('buildChannelPayload', () => {
       supportedModels: [],
       autoBlacklistBalance: true,
       normalizeMetadataUserId: true,
+      codexNativeToolPassthrough: false,
       codexToolCompat: true
     })
 
@@ -136,6 +139,7 @@ describe('buildChannelPayload', () => {
       supportedModels: [],
       autoBlacklistBalance: true,
       normalizeMetadataUserId: true,
+      codexNativeToolPassthrough: false,
       codexToolCompat: true
     })
 
@@ -168,6 +172,7 @@ describe('buildChannelPayload', () => {
       supportedModels: ['opus'],
       autoBlacklistBalance: true,
       normalizeMetadataUserId: true,
+      codexNativeToolPassthrough: false,
       codexToolCompat: true
     })
 
@@ -203,6 +208,7 @@ describe('buildChannelPayload', () => {
       supportedModels: [],
       autoBlacklistBalance: false,
       normalizeMetadataUserId: true,
+      codexNativeToolPassthrough: false,
       codexToolCompat: true
     })
 
@@ -234,6 +240,7 @@ describe('buildChannelPayload', () => {
       supportedModels: [],
       autoBlacklistBalance: true,
       normalizeMetadataUserId: false,
+      codexNativeToolPassthrough: false,
       codexToolCompat: true
     })
 
@@ -265,6 +272,7 @@ describe('buildChannelPayload', () => {
       supportedModels: [],
       autoBlacklistBalance: true,
       normalizeMetadataUserId: true,
+      codexNativeToolPassthrough: false,
       codexToolCompat: true,
       normalizeNonstandardChatRoles: true
     })

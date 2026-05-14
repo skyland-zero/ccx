@@ -231,6 +231,13 @@ func responsesRawToolsToOpenAI(tools []interface{}) []map[string]interface{} {
 	return openaiTools
 }
 
+// ConvertRawToolsToOpenAI converts Responses-format tools (including custom/namespace/web_search/local_shell/computer_use)
+// into OpenAI function-call format. Used by the passthrough branch when codexToolCompat is enabled.
+func ConvertRawToolsToOpenAI(tools []interface{}) []map[string]interface{} {
+	ctx := BuildCodexToolContextFromRaw(tools)
+	return responsesRawToolsToOpenAIWithContext(tools, ctx)
+}
+
 func responsesRawToolsToOpenAIWithContext(tools []interface{}, ctx CodexToolContext) []map[string]interface{} {
 	if !ctx.HasCustomTools && !ctx.HasNamespaceTools {
 		return responsesRawToolsToOpenAI(tools)

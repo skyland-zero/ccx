@@ -206,6 +206,9 @@ func (cm *ConfigManager) UpdateUpstream(index int, updates UpstreamUpdate) (shou
 		v := *updates.NormalizeMetadataUserID
 		upstream.NormalizeMetadataUserID = &v
 	}
+	if updates.CodexNativeToolPassthrough != nil {
+		upstream.CodexNativeToolPassthrough = *updates.CodexNativeToolPassthrough
+	}
 	if updates.CodexToolCompat != nil {
 		v := *updates.CodexToolCompat
 		upstream.CodexToolCompat = &v

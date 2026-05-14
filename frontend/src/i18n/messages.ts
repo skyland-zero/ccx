@@ -209,6 +209,8 @@ export type MessageKey =
   | 'addChannel.lowQualityHint'
   | 'addChannel.autoBlacklistBalanceLabel'
   | 'addChannel.autoBlacklistBalanceHint'
+  | 'addChannel.codexNativeToolPassthroughLabel'
+  | 'addChannel.codexNativeToolPassthroughHint'
   | 'addChannel.codexToolCompatLabel'
   | 'addChannel.codexToolCompatHint'
   | 'addChannel.normalizeMetadataUserIdLabel'
@@ -599,6 +601,8 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'addChannel.lowQualityHint': 'When enabled, token usage is force-estimated locally and the local value is used if the deviation exceeds 5%.',
     'addChannel.autoBlacklistBalanceLabel': 'Auto blacklist on insufficient balance',
     'addChannel.autoBlacklistBalanceHint': 'Automatically move the key to the blacklist when the upstream reports insufficient balance.',
+    'addChannel.codexNativeToolPassthroughLabel': 'Codex native tool passthrough',
+    'addChannel.codexNativeToolPassthroughHint': 'Convert Codex native tools (apply_patch, namespace, etc.) to OpenAI function format in passthrough mode, so upstream models can invoke them.',
     'addChannel.codexToolCompatLabel': 'Codex tools compatibility',
     'addChannel.codexToolCompatHint': 'Enable Codex CLI compatibility: strip client-only tools for Responses passthrough upstreams, or convert them to function proxy tools for Chat/Claude/Gemini upstreams.',
     'addChannel.normalizeMetadataUserIdLabel': 'Normalize metadata.user_id',
@@ -988,6 +992,8 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'addChannel.lowQualityHint': 'Jika aktif, token akan diperkirakan secara lokal dan nilai lokal dipakai bila selisihnya lebih dari 5%.',
     'addChannel.autoBlacklistBalanceLabel': 'Blacklist otomatis saat saldo habis',
     'addChannel.autoBlacklistBalanceHint': 'Pindahkan key ke daftar blokir otomatis saat upstream melaporkan saldo tidak cukup.',
+    'addChannel.codexNativeToolPassthroughLabel': 'Passthrough alat native Codex',
+    'addChannel.codexNativeToolPassthroughHint': 'Konversi alat native Codex (apply_patch, namespace, dll.) ke format function OpenAI dalam mode passthrough, agar model upstream dapat memanggilnya.',
     'addChannel.codexToolCompatLabel': 'Kompatibilitas alat Codex',
     'addChannel.codexToolCompatHint': 'Aktifkan kompatibilitas Codex CLI: hapus tool khusus klien untuk upstream Responses passthrough, atau konversi menjadi tool proxy function untuk upstream Chat/Claude/Gemini.',
     'addChannel.normalizeMetadataUserIdLabel': 'Normalisasi metadata.user_id',
@@ -1377,6 +1383,8 @@ export const messages: Record<SupportedLocale, Record<MessageKey, string>> = {
     'addChannel.lowQualityHint': '启用后强制本地估算 token 数量，偏差超过 5% 时使用本地值',
     'addChannel.autoBlacklistBalanceLabel': '余额不足时自动拉黑',
     'addChannel.autoBlacklistBalanceHint': '当上游返回余额不足时，自动将该 Key 移入拉黑列表。',
+    'addChannel.codexNativeToolPassthroughLabel': 'Codex 原生工具透传',
+    'addChannel.codexNativeToolPassthroughHint': '透传模式下将 Codex 原生工具（apply_patch、namespace 等）转换为 OpenAI function 格式，使上游模型可调用。',
     'addChannel.codexToolCompatLabel': 'Codex 工具兼容',
     'addChannel.codexToolCompatHint': '启用 Codex CLI 兼容：Responses 透传上游会剥离客户端专属工具，Chat/Claude/Gemini 上游会转换为 function 代理工具。',
     'addChannel.normalizeMetadataUserIdLabel': '规范化 metadata.user_id',

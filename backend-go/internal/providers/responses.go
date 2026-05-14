@@ -94,7 +94,9 @@ func (p *ResponsesProvider) buildProviderRequestBody(c *gin.Context, requestPath
 			return nil, nil, fmt.Errorf("透传模式下解析请求失败: %w", err)
 		}
 		normalizeResponsesInputForPassthrough(reqMap)
-		if upstream.IsCodexToolCompatEnabled() {
+		if upstream.CodexNativeToolPassthrough {
+			convertCodexToolsForPassthrough(reqMap)
+		} else if upstream.IsCodexToolCompatEnabled() {
 			stripCodexClientOnlyTools(reqMap)
 		}
 		if model, ok := reqMap["model"].(string); ok {
@@ -809,6 +811,30 @@ func stripCodexClientOnlyTools(reqMap map[string]interface{}) {
 	}
 	reqMap["tools"] = kept
 	normalizeToolChoiceAfterToolStrip(reqMap, kept)
+}
+
+// convertCodexToolsForPassthrough 将 Codex 原生工具（custom/namespace/web_search 等）
+// 转换为 OpenAI function 格式，用于透传分支。转换失败时回退到剥离逻辑。
+func convertCodexToolsForPassthrough(reqMap map[string]interface{}) {
+	rawTools, ok := reqMap["tools"].([]interface{})
+	if !ok || len(rawTools) == 0 {
+		return
+	}
+
+	converted := converters.ConvertRawToolsToOpenAI(rawTools)
+	if len(converted) == 0 {
+		stripCodexClientOnlyTools(reqMap)
+		return
+	}
+
+	tools := make([]interface{}, 0, len(converted))
+	for _, t := range converted {
+		tools = append(tools, t)
+	}
+	reqMap["tools"] = tools
+
+	ctx := converters.BuildCodexToolContextFromRaw(rawTools)
+	reqMap["tool_choice"] = converters.ConvertToolChoiceForCodex(reqMap["tool_choice"], ctx)
 }
 
 func normalizeToolChoiceAfterToolStrip(reqMap map[string]interface{}, keptTools []interface{}) {
