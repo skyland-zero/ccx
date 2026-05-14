@@ -1,3 +1,11 @@
+## [v2.6.90] - 2026-05-14
+
+### 新增
+
+- **新增 `codexNativeToolPassthrough` 渠道开关** - 透传分支中将 Codex 原生工具（apply_patch、namespace、web_search、local_shell、computer_use）转换为 OpenAI function 格式，使上游模型可调用；与 `codexToolCompat`（剥离工具）互斥，优先级更高；修复 Issue #52 中 Codex Desktop 原生工具无法被 deepseek 等上游调用的问题
+- **导出 `ConvertRawToolsToOpenAI` 函数** - converters 包新增导出包装，供透传分支复用已有的工具转换逻辑
+- **前端渠道编辑新增开关** - AddChannelModal 中在 Codex 工具兼容开关前新增 "Codex 原生工具透传" 开关，含英文/印尼语/中文三语翻译
+
 ## [v2.6.89] - 2026-05-13
 
 ### 修复

@@ -26,6 +26,7 @@ export interface ChannelFormLike {
   supportedModels: string[]
   autoBlacklistBalance: boolean
   normalizeMetadataUserId: boolean
+  codexNativeToolPassthrough: boolean
   codexToolCompat: boolean
   normalizeNonstandardChatRoles?: boolean
   stripCodexClientTools?: boolean
@@ -67,6 +68,7 @@ export function buildChannelPayload(form: ChannelFormLike): Omit<Channel, 'index
     supportedModels: form.supportedModels,
     autoBlacklistBalance: form.autoBlacklistBalance,
     normalizeMetadataUserId: form.normalizeMetadataUserId,
+    codexNativeToolPassthrough: form.codexNativeToolPassthrough,
     codexToolCompat: form.codexToolCompat,
     normalizeNonstandardChatRoles: !!form.normalizeNonstandardChatRoles,
     stripCodexClientTools: form.codexToolCompat,

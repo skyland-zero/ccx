@@ -380,3 +380,137 @@ func TestNormalizeResponsesInputForPassthrough_PreservesStatefulToolOutput(t *te
 		t.Fatalf("有 previous_response_id 时应保留 function_call_output，当前=%v", item)
 	}
 }
+
+func TestConvertCodexToolsForPassthrough(t *testing.T) {
+	t.Run("转换 custom apply_patch 为 5 个 function 工具", func(t *testing.T) {
+		req := map[string]interface{}{
+			"tools": []interface{}{
+				map[string]interface{}{
+					"type":        "custom",
+					"name":        "apply_patch",
+					"description": "Apply a patch",
+					"schema": map[string]interface{}{
+						"type": "object",
+						"properties": map[string]interface{}{
+							"patch": map[string]interface{}{"type": "string"},
+						},
+					},
+				},
+				map[string]interface{}{
+					"type": "function",
+					"function": map[string]interface{}{
+						"name": "keep_me",
+						"parameters": map[string]interface{}{
+							"type":       "object",
+							"properties": map[string]interface{}{},
+						},
+					},
+				},
+			},
+			"tool_choice": "auto",
+		}
+		convertCodexToolsForPassthrough(req)
+
+		tools, ok := req["tools"].([]interface{})
+		if !ok {
+			t.Fatalf("tools 应存在")
+		}
+		// apply_patch 拆为 5 个 + keep_me = 6
+		if len(tools) != 6 {
+			names := []string{}
+			for _, tool := range tools {
+				if m, ok := tool.(map[string]interface{}); ok {
+					if fn, ok := m["function"].(map[string]interface{}); ok {
+						names = append(names, fn["name"].(string))
+					}
+				}
+			}
+			t.Fatalf("tools 长度=%d，期望 6，工具名=%v", len(tools), names)
+		}
+	})
+
+	t.Run("转换 namespace 工具为 function", func(t *testing.T) {
+		req := map[string]interface{}{
+			"tools": []interface{}{
+				map[string]interface{}{
+					"type": "namespace",
+					"name": "mcp__server__",
+					"tools": []interface{}{
+						map[string]interface{}{
+							"type":        "function",
+							"name":        "list_files",
+							"description": "List files",
+							"parameters": map[string]interface{}{
+								"type":       "object",
+								"properties": map[string]interface{}{},
+							},
+						},
+					},
+				},
+			},
+		}
+		convertCodexToolsForPassthrough(req)
+
+		tools, ok := req["tools"].([]interface{})
+		if !ok || len(tools) == 0 {
+			t.Fatalf("namespace 工具应被转换，当前=%v", req["tools"])
+		}
+		first := tools[0].(map[string]interface{})
+		fn := first["function"].(map[string]interface{})
+		name := fn["name"].(string)
+		if name != "mcp__server__list_files" {
+			t.Fatalf("namespace 函数名=%s，期望 mcp__server__list_files", name)
+		}
+	})
+
+	t.Run("转换 web_search/local_shell/computer_use 为 generic function", func(t *testing.T) {
+		req := map[string]interface{}{
+			"tools": []interface{}{
+				map[string]interface{}{"type": "web_search", "name": "web"},
+				map[string]interface{}{"type": "local_shell", "name": "shell"},
+				map[string]interface{}{"type": "computer_use", "name": "cu"},
+			},
+		}
+		convertCodexToolsForPassthrough(req)
+
+		tools, ok := req["tools"].([]interface{})
+		if !ok || len(tools) != 3 {
+			t.Fatalf("应转换为 3 个 function，当前=%v", req["tools"])
+		}
+		for i, tool := range tools {
+			m := tool.(map[string]interface{})
+			if m["type"] != "function" {
+				t.Fatalf("tools[%d] type=%v，期望 function", i, m["type"])
+			}
+		}
+	})
+
+	t.Run("无可转换工具时不修改", func(t *testing.T) {
+		req := map[string]interface{}{
+			"tools": []interface{}{
+				map[string]interface{}{
+					"type": "function",
+					"function": map[string]interface{}{
+						"name":       "lookup",
+						"parameters": map[string]interface{}{"type": "object", "properties": map[string]interface{}{}},
+					},
+				},
+			},
+			"tool_choice": "auto",
+		}
+		convertCodexToolsForPassthrough(req)
+
+		tools := req["tools"].([]interface{})
+		if len(tools) != 1 {
+			t.Fatalf("纯 function 工具不应被修改，长度=%d", len(tools))
+		}
+	})
+
+	t.Run("空 tools 不报错", func(t *testing.T) {
+		req := map[string]interface{}{"model": "test"}
+		convertCodexToolsForPassthrough(req)
+		if _, ok := req["tools"]; ok {
+			t.Fatalf("不应注入 tools")
+		}
+	})
+}
