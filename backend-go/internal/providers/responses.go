@@ -136,7 +136,7 @@ func (p *ResponsesProvider) buildProviderRequestBody(c *gin.Context, requestPath
 		if responsesReq.TransformerMetadata == nil {
 			responsesReq.TransformerMetadata = make(map[string]interface{})
 		}
-		responsesReq.TransformerMetadata["codex_tool_compat_enabled"] = upstream.IsCodexToolCompatEnabled()
+		responsesReq.TransformerMetadata["codex_tool_compat_enabled"] = upstream.IsCodexToolCompatEnabled() || upstream.CodexNativeToolPassthrough
 		responsesReq.RawTools = extractRawToolsFromRequest(bodyBytes)
 		convertedReq, err := converter.ToProviderRequest(sess, &responsesReq)
 		if err != nil {
